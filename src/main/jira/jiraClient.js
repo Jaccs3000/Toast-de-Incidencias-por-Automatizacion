@@ -25,6 +25,7 @@ export class JiraClient {
     const url = this.buildUrl(pathname);
     const response = await fetch(url, {
       ...options,
+      signal: options.signal ?? AbortSignal.timeout(30000),
       headers: {
         Accept: 'application/json',
         ...this.headers,
@@ -48,18 +49,45 @@ export class JiraClient {
     return this.request(`/rest/api/3/issue/${encodeURIComponent(issueKey)}`);
   }
 
-  async searchIssues(jql, startAt = 0, maxResults = 50) {
+  async searchIssues(jql, maxResults = 50) {
     if (!jql) {
       throw new Error('jql is required.');
     }
 
-    const query = new URLSearchParams({
-      jql,
-      startAt: String(startAt),
-      maxResults: String(maxResults),
-    });
+    const issues = [];
+    let nextPageToken;
 
-    return this.request(`/rest/api/3/search?${query.toString()}`);
+    do {
+      const body = {
+        jql,
+        maxResults,
+        fields: ['*all'],
+      };
+
+      if (nextPageToken) {
+        body.nextPageToken = nextPageToken;
+      }
+
+      const page = await this.request('/rest/api/3/search/jql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (Array.isArray(page?.issues)) {
+        issues.push(...page.issues);
+      }
+
+      nextPageToken = page?.nextPageToken || null;
+    } while (nextPageToken);
+
+    return {
+      issues,
+      total: issues.length,
+      isLast: true,
+    };
   }
 
   async getMyself() {

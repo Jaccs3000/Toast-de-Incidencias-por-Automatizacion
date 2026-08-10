@@ -24,7 +24,7 @@ function normalizeIssue(issue) {
     created: issue?.fields?.created ?? null,
     updated: issue?.fields?.updated ?? null,
     parent: issue?.fields?.parent?.key ?? null,
-    timeestimate: issue?.fields?.timeestimate ?? null,
+    timeestimate: issue?.fields?.timeoriginalestimate ?? issue?.fields?.timeestimate ?? null,
     timespent: issue?.fields?.timespent ?? null,
     issuelinks: toText(issue?.fields?.issuelinks ?? null),
   };

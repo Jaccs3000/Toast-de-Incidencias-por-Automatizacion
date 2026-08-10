@@ -56,7 +56,9 @@ El proyecto usara JavaScript. No se usara Python.
 
 La app obtiene datos desde Jira con endpoints REST y no almacena el JSON completo. Solo persiste los campos configurados y necesarios para funcionar.
 
-Cada sincronizacion parte de una o varias consultas JQL. Las incidencias devueltas por esas consultas solo sirven como punto de entrada para construir los ProjectGroups.
+Cada sincronizacion parte de una o varias consultas JQL configuradas en `config/app.json`. La interfaz permite administrarlas por bloques, incluso si una consulta ocupa varias lineas. Se ejecutan mediante `POST /rest/api/3/search/jql` y sus resultados solo sirven como punto de entrada para construir los ProjectGroups.
+
+Los recorridos obtenidos desde distintas incidencias se consolidan cuando comparten incidencias. Asi, varias entradas del JQL que pertenecen al mismo desarrollo producen un solo ProjectGroup, sin duplicar incidencias ni relaciones.
 
 La JQL no define el alcance final del grupo. El recorrido del grafo debe completar cada ProjectGroup con todas las incidencias que le correspondan, aunque la incidencia de entrada sea distinta.
 
@@ -101,8 +103,10 @@ La validacion se realiza consultando `GET /rest/api/3/myself` con la sesion alma
 Si la sesion expira o deja de ser valida:
 
 - la sincronizacion falla;
-- la app vuelve a mostrar el Toast de inicio de sesion requerido en el siguiente intento;
+- la app vuelve a mostrar la notificacion de inicio de sesion requerido en cada intervalo de sincronizacion configurado mientras la sesion siga invalida;
 - tambien muestra el boton de inicio de sesion en la interfaz.
+
+La sincronizacion automatica o manual nunca abre Playwright por si sola. Chromium administrado por Playwright solo se abre cuando el usuario hace clic en la notificacion, en el Toast interno o en el boton de inicio de sesion.
 
 ### 6. ProjectGroups
 
@@ -196,15 +200,25 @@ Propuesta de uso:
 Propuesta de `app.json`:
 
 - `version`: version de configuracion.
-- `syncIntervalMinutes`: tiempo entre sincronizaciones automaticas, en minutos.
+- `syncIntervalSeconds`: tiempo entre sincronizaciones automaticas, en segundos.
 - `queryDelaySeconds`: espera entre consultas, en segundos.
+- `jqlQueries`: lista de consultas JQL, una cadena por cada consulta.
 - `logRetentionDays`: retencion de logs en dias.
 - `startMinimized`: si la app arranca minimizada.
 - `enableToasts`: si las notificaciones Toast estan activas.
+- `autoSyncEnabled`: activa o apaga la sincronizacion automatica. La sincronizacion manual sigue disponible.
 
-La interfaz se cierra al cerrar la pestaña del navegador. El backend local sigue corriendo hasta que se detiene con el lanzador `run.vbs` o se cierre el proceso por el medio definido para la app.
+La interfaz incluye un boton para detener backend y frontend. Primero se detiene el backend y luego el coordinador detiene Vite, dejando libres los puertos `3000` y `5174`. La interfaz deja de consultar el backend e intenta cerrar la pestaña; si Chrome bloquea ese cierre, muestra un mensaje para cerrarla manualmente.
+
+Las fechas de inicio y fin se muestran como `dd-mm-yyyy hh:mm:ss` usando la zona horaria `America/Bogota`. Durante la sincronizacion se registran temporalmente las etapas de validacion, ejecucion de JQL, recorrido del grafo, persistencia y errores, sin registrar cookies ni credenciales.
+
+La interfaz incluye `Borrar BD local`. Requiere confirmacion, no puede ejecutarse durante una sincronizacion y vacia las tablas de datos dentro de una transaccion. No elimina la sesion Jira, la configuracion ni los logs.
 
 Propuesta final de `graph.json`:
+
+El grafo configura los 14 tipos de incidencia del desarrollo. Usa `subtasks` para las ramas marcadas como subtareas, `parent` para permitir el recorrido desde una subtarea hacia su padre e `issuelinks` para las relaciones entre tipos. Las relaciones se incluyen y expanden por defecto; solo una regla con `include: false` o `expand: false` cambia ese comportamiento. La regla de `Solicitud Paso a Produccion` limita la rama de infraestructura al proyecto `Intervencion de infraestructura (MDI)`.
+
+El campo persistido `timeestimate` representa la estimacion original de Jira (`timeoriginalestimate`) y `timespent` representa el tiempo registrado. El exportado los muestra como horas y minutos.
 
 - `version`: version del esquema.
 - `entryTypes`: tipos de incidencia que pueden iniciar un recorrido.
@@ -269,6 +283,8 @@ La sincronizacion sigue este orden:
 5. Comparar con lo persistido.
 6. Actualizar DuckDB dentro de una transaccion.
 7. Ejecutar reglas SQL y generar alertas.
+
+Si la sesion no es valida, el proceso termina con error controlado despues del primer paso y no abre el navegador de login.
 
 Durante el proceso:
 

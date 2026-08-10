@@ -17,6 +17,37 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+function formatBogotaDate(value) {
+  if (!value) {
+    return '-';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+
+  const parts = new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+
+  return `${parts.day}-${parts.month}-${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export default function App() {
   const [bootstrapContext, setBootstrapContext] = useState(null);
   const [loginState, setLoginState] = useState(null);
@@ -26,16 +57,28 @@ export default function App() {
   const [startupError, setStartupError] = useState(null);
   const [loginInProgress, setLoginInProgress] = useState(false);
   const [shutdownRequested, setShutdownRequested] = useState(false);
+  const [servicesStopped, setServicesStopped] = useState(false);
+  const [jqlQueries, setJqlQueries] = useState([]);
+  const [jqlSaving, setJqlSaving] = useState(false);
+  const [jqlMessage, setJqlMessage] = useState(null);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+  const [autoSyncSaving, setAutoSyncSaving] = useState(false);
+  const [databaseResetting, setDatabaseResetting] = useState(false);
   const [sessionToast, setSessionToast] = useState(null);
   const [sessionToastType, setSessionToastType] = useState('warning');
   const hideToastTimerRef = useRef(null);
-  const sessionNotificationShownRef = useRef(false);
+  const lastSessionNotificationAtRef = useRef(0);
+  const permissionRequestStartedRef = useRef(false);
   const sessionNotificationRef = useRef(null);
+  const servicesStoppedRef = useRef(false);
+  const jqlInitializedRef = useRef(false);
+  const jqlDirtyRef = useRef(false);
 
   const syncStatus = bootstrapContext?.syncStatus ?? null;
   const session = bootstrapContext?.session ?? null;
   const appState = bootstrapContext?.appState ?? 'booting';
   const sessionIsValid = Boolean(session?.ok);
+  const syncInProgress = Boolean(syncStatus?.is_running) || appState === 'syncing';
 
   const appStateLabel = {
     booting: 'Iniciando app',
@@ -85,13 +128,16 @@ export default function App() {
     return true;
   };
 
-  const notifySessionRequired = () => {
-    if (sessionNotificationShownRef.current) {
+  const notifySessionRequired = (intervalSeconds = 300) => {
+    const intervalMs = Math.max(Number(intervalSeconds) || 300, 1) * 1000;
+    const now = Date.now();
+
+    if (now - lastSessionNotificationAtRef.current < intervalMs) {
       return;
     }
 
-    sessionNotificationShownRef.current = true;
-    const fallback = () => showSessionToast('Se requiere inicio de sesion en Jira');
+    lastSessionNotificationAtRef.current = now;
+    const fallback = () => showSessionToast('Se requiere inicio de sesion en Jira', 10000);
 
     if (!('Notification' in window)) {
       fallback();
@@ -111,7 +157,8 @@ export default function App() {
       return;
     }
 
-    if (Notification.permission === 'default') {
+    if (Notification.permission === 'default' && !permissionRequestStartedRef.current) {
+      permissionRequestStartedRef.current = true;
       Notification.requestPermission().then((permission) => {
         if (permission === 'granted') {
           sessionNotificationRef.current = new Notification(
@@ -130,19 +177,29 @@ export default function App() {
       return;
     }
 
-    fallback();
+    if (Notification.permission !== 'default') {
+      fallback();
+    }
   };
 
   const refreshBootstrapContext = async () => {
     const context = await api('/api/bootstrap-context');
     setBootstrapContext(context);
+    if (Array.isArray(context?.jqlQueries) && (!jqlInitializedRef.current || !jqlDirtyRef.current)) {
+      setJqlQueries(context.jqlQueries);
+      jqlInitializedRef.current = true;
+      jqlDirtyRef.current = false;
+    }
+    if (typeof context?.autoSyncEnabled === 'boolean') {
+      setAutoSyncEnabled(context.autoSyncEnabled);
+    }
 
     if (context?.session?.ok) {
-      sessionNotificationShownRef.current = false;
+      lastSessionNotificationAtRef.current = 0;
       closeSessionNotification();
       setSessionToast(null);
     } else {
-      notifySessionRequired();
+      notifySessionRequired(context?.syncIntervalSeconds);
     }
 
     return context;
@@ -162,23 +219,32 @@ export default function App() {
       setIsLoading(true);
       setStartupError(null);
 
-      try {
-        await refreshBootstrapContext();
-        await refreshAlerts();
-      } catch (error) {
-        if (mounted) {
-          setStartupError(error.message);
+      let lastError = null;
+      let initialized = false;
+
+      for (let attempt = 0; attempt < 30 && mounted; attempt += 1) {
+        try {
+          await refreshBootstrapContext();
+          await refreshAlerts();
+          initialized = true;
+          break;
+        } catch (error) {
+          lastError = error;
+          await sleep(1000);
         }
       }
 
       if (mounted) {
+        if (!initialized) {
+          setStartupError(lastError?.message ?? 'El backend no respondio correctamente.');
+        }
         setIsLoading(false);
       }
     };
 
     initialize();
     pollHandle = setInterval(() => {
-      if (!mounted) {
+      if (!mounted || servicesStoppedRef.current) {
         return;
       }
 
@@ -229,10 +295,92 @@ export default function App() {
   };
 
   const handleSync = async () => {
+    if (syncInProgress) {
+      return;
+    }
+
     const result = await api('/api/sync', { method: 'POST', body: '{}' });
     setSyncState(result);
     await refreshBootstrapContext();
     await refreshAlerts();
+  };
+
+  const handleSaveJql = async () => {
+    const queries = jqlQueries
+      .map((query) => query.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+
+    if (queries.length === 0) {
+      setJqlMessage('Debe existir al menos un JQL.');
+      return;
+    }
+
+    setJqlSaving(true);
+    setJqlMessage(null);
+
+    try {
+      const result = await api('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ jqlQueries: queries }),
+      });
+      setJqlQueries(result.jqlQueries ?? queries);
+      jqlDirtyRef.current = false;
+      setJqlMessage('JQL guardado correctamente.');
+    } catch (error) {
+      setJqlMessage(`No se pudo guardar el JQL: ${error.message}`);
+    } finally {
+      setJqlSaving(false);
+    }
+  };
+
+  const handleAddJql = () => {
+    jqlDirtyRef.current = true;
+    setJqlQueries((current) => [...current, '']);
+    setJqlMessage(null);
+  };
+
+  const handleRemoveJql = (index) => {
+    jqlDirtyRef.current = true;
+    setJqlQueries((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setJqlMessage(null);
+  };
+
+  const handleAutoSyncToggle = async (event) => {
+    const nextValue = event.target.checked;
+    setAutoSyncEnabled(nextValue);
+    setAutoSyncSaving(true);
+
+    try {
+      const result = await api('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ autoSyncEnabled: nextValue }),
+      });
+      setAutoSyncEnabled(Boolean(result.autoSyncEnabled));
+    } catch (error) {
+      setAutoSyncEnabled(!nextValue);
+      setJqlMessage(`No se pudo cambiar la sincronizacion automatica: ${error.message}`);
+    } finally {
+      setAutoSyncSaving(false);
+    }
+  };
+
+  const handleDatabaseReset = async () => {
+    if (!window.confirm('Se borraran los datos locales de Jira y ProjectGroups. La sesion y la configuracion se conservaran. Desea continuar?')) {
+      return;
+    }
+
+    setDatabaseResetting(true);
+    try {
+      await api('/api/database/reset', { method: 'POST', body: '{}' });
+      setSyncState(null);
+      setJqlMessage('Base de datos reiniciada correctamente.');
+      await refreshBootstrapContext();
+      await refreshAlerts();
+    } catch (error) {
+      setJqlMessage(`No se pudo borrar la base de datos: ${error.message}`);
+    } finally {
+      setDatabaseResetting(false);
+    }
   };
 
   const handleShutdown = async () => {
@@ -242,6 +390,12 @@ export default function App() {
     } catch {
       // The backend is expected to close immediately after accepting the request.
     }
+
+    closeSessionNotification();
+    clearToastTimer();
+    servicesStoppedRef.current = true;
+    setServicesStopped(true);
+    window.setTimeout(() => window.close(), 300);
   };
 
   if (isLoading) {
@@ -281,6 +435,24 @@ export default function App() {
     );
   }
 
+  if (servicesStopped) {
+    return (
+      <main className="app-shell">
+        <section className="hero startup-hero">
+          <div className="startup-card">
+            <div>
+              <p className="eyebrow">Jira Notifications</p>
+              <h1>Servicios detenidos</h1>
+              <p className="copy">
+                El backend y el frontend se estan cerrando. Ya puede cerrar esta pestana.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <section className="hero">
@@ -290,6 +462,57 @@ export default function App() {
           Base inicial de la aplicacion. La fase 1 deja preparado el arranque,
           la configuracion y la estructura por modulos.
         </p>
+
+        <div className="settings-card">
+          <h2>Consultas JQL</h2>
+          <p className="copy">Cada consulta se ejecuta en cada sincronizacion. Puedes escribirla en varias lineas.</p>
+          <div className="jql-list">
+            {jqlQueries.map((query, index) => (
+              <div className="jql-row" key={`jql-${index}`}>
+                <textarea
+                  value={query}
+                  onChange={(event) => {
+                    jqlDirtyRef.current = true;
+                    setJqlQueries((current) => current.map((item, currentIndex) => (
+                      currentIndex === index ? event.target.value : item
+                    )));
+                  }}
+                  rows={3}
+                  placeholder="project = ABC ORDER BY created DESC"
+                  aria-label={`Consulta JQL ${index + 1}`}
+                />
+                <button
+                  type="button"
+                  className="jql-delete"
+                  onClick={() => handleRemoveJql(index)}
+                  aria-label={`Eliminar consulta JQL ${index + 1}`}
+                  title="Eliminar consulta"
+                >
+                  &#128465;
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="jql-add" onClick={handleAddJql}>
+            + Agregar JQL
+          </button>
+          <div className="settings-actions">
+            <button type="button" onClick={handleSaveJql} disabled={jqlSaving}>
+              {jqlSaving ? 'Guardando...' : 'Guardar JQL'}
+            </button>
+            {jqlMessage ? <span className="settings-message">{jqlMessage}</span> : null}
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={autoSyncEnabled}
+              onChange={handleAutoSyncToggle}
+              disabled={autoSyncSaving}
+            />
+            <span>Sincronizacion automatica</span>
+            <small>{autoSyncEnabled ? 'Activa' : 'Apagada'}</small>
+          </label>
+        </div>
 
         {sessionToast ? (
           <div className={`toast-banner ${sessionToastType === 'success' ? 'toast-success' : 'toast-warning'}`}>
@@ -319,11 +542,11 @@ export default function App() {
             </div>
             <div>
               <dt>Inicio</dt>
-              <dd>{syncStatus?.last_started_at ?? '-'}</dd>
+              <dd>{formatBogotaDate(syncStatus?.last_started_at)}</dd>
             </div>
             <div>
               <dt>Fin</dt>
-              <dd>{syncStatus?.last_finished_at ?? '-'}</dd>
+              <dd>{formatBogotaDate(syncStatus?.last_finished_at)}</dd>
             </div>
           </dl>
 
@@ -333,8 +556,11 @@ export default function App() {
                 {loginInProgress ? 'Esperando inicio de sesion...' : 'Iniciar sesion'}
               </button>
             ) : null}
-            <button type="button" onClick={handleSync}>
-              Sincronizar ahora
+            <button type="button" onClick={handleSync} disabled={syncInProgress}>
+              {syncInProgress ? 'Sincronizando...' : 'Sincronizar ahora'}
+            </button>
+            <button type="button" onClick={handleDatabaseReset} disabled={databaseResetting || syncInProgress}>
+              {databaseResetting ? 'Borrando BD...' : 'Borrar BD local'}
             </button>
             <button type="button" onClick={handleShutdown} disabled={shutdownRequested}>
               {shutdownRequested ? 'Deteniendo servicios...' : 'Detener backend y frontend'}

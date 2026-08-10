@@ -13,6 +13,8 @@ const defaultAppConfig = {
   logRetentionDays: 7,
   startMinimized: true,
   enableToasts: true,
+  autoSyncEnabled: true,
+  jqlQueries: ['project is not EMPTY ORDER BY created DESC'],
 };
 
 const defaultGraphConfig = {
@@ -68,8 +70,23 @@ function validateAppConfig(config) {
 
   normalized.startMinimized = Boolean(normalized.startMinimized);
   normalized.enableToasts = Boolean(normalized.enableToasts);
+  normalized.autoSyncEnabled = Boolean(normalized.autoSyncEnabled);
+  normalized.jqlQueries = Array.isArray(normalized.jqlQueries)
+    ? [...new Set(normalized.jqlQueries.filter((query) => typeof query === 'string').map((query) => query.trim()).filter(Boolean))]
+    : [...defaultAppConfig.jqlQueries];
 
   return normalized;
+}
+
+export async function saveAppConfig(updates = {}) {
+  const current = await readJson('app.json', defaultAppConfig);
+  const next = validateAppConfig({ ...current, ...updates });
+  await fs.writeFile(
+    path.join(configDir, 'app.json'),
+    JSON.stringify(next, null, 2),
+    'utf8',
+  );
+  return next;
 }
 
 function validateGraphConfig(config) {

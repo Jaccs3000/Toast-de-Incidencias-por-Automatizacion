@@ -92,4 +92,30 @@ export class Persistence {
       });
     });
   }
+
+  async close() {
+    if (this.connection) {
+      await new Promise((resolve) => this.connection.close(() => resolve()));
+      this.connection = null;
+    }
+
+    if (this.database) {
+      await new Promise((resolve) => this.database.close(() => resolve()));
+      this.database = null;
+    }
+  }
+
+  async reset() {
+    await this.exec(`
+      BEGIN TRANSACTION;
+      DELETE FROM ALERTS;
+      DELETE FROM JIRA_RELATIONSHIPS;
+      DELETE FROM JIRA_PROJECT_GROUP_ISSUES;
+      DELETE FROM JIRA_PROJECT_GROUPS;
+      DELETE FROM JIRA_ISSUES;
+      DELETE FROM SYNC_STATUS;
+      COMMIT;
+    `);
+    await this.syncStatus.ensureRow();
+  }
 }

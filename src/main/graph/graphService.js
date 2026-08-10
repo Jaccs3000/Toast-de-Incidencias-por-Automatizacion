@@ -2,16 +2,25 @@ function normalizeType(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeComparable(value) {
+  return normalizeType(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('es');
+}
+
 function createIssueIdentity(issue) {
   return issue?.id ? String(issue.id) : issue?.key ? String(issue.key) : '';
 }
 
 function getIssueType(issue) {
-  return normalizeType(issue?.fields?.issuetype?.name);
+  return normalizeComparable(issue?.fields?.issuetype?.name);
 }
 
 function getIssueProject(issue) {
-  return normalizeType(issue?.fields?.project?.name);
+  return normalizeComparable(issue?.fields?.project?.name);
 }
 
 function getParentKey(issue) {
@@ -52,21 +61,29 @@ function getLinkedKeys(issue) {
   }).filter(Boolean);
 }
 
-function matchesTo(rule, issue) {
+function matchesTarget(rule, issue) {
   if (!rule?.to || !Array.isArray(rule.to) || rule.to.includes('*')) {
-    return true;
+    if (!rule?.project) {
+      return true;
+    }
+
+    return getIssueProject(issue) === normalizeComparable(rule.project);
   }
 
   const issueType = getIssueType(issue);
-  return rule.to.some((allowedType) => normalizeType(allowedType) === issueType);
+  if (!rule.to.some((allowedType) => normalizeComparable(allowedType) === issueType)) {
+    return false;
+  }
+
+  return !rule.project || getIssueProject(issue) === normalizeComparable(rule.project);
 }
 
 function shouldInclude(rule) {
-  return Boolean(rule?.include);
+  return rule?.include !== false;
 }
 
 function shouldExpand(rule) {
-  return Boolean(rule?.expand);
+  return rule?.expand !== false;
 }
 
 export class GraphService {
@@ -83,7 +100,9 @@ export class GraphService {
   getRulesForIssue(issue) {
     const graph = this.getGraphConfig();
     const issueType = getIssueType(issue);
-    const node = graph.nodes?.[issueType] ?? null;
+    const nodeEntry = Object.entries(graph.nodes ?? {})
+      .find(([configuredType]) => normalizeComparable(configuredType) === issueType);
+    const node = nodeEntry?.[1] ?? null;
 
     if (!node || !Array.isArray(node.follow)) {
       return [];
@@ -133,10 +152,6 @@ export class GraphService {
       const currentRules = this.getRulesForIssue(current);
 
       for (const rule of currentRules) {
-        if (!matchesTo(rule, current)) {
-          continue;
-        }
-
         const followKeys = new Set();
 
         if (rule.relation === 'subtasks') {
@@ -172,6 +187,10 @@ export class GraphService {
           }
 
           const relatedId = createIssueIdentity(relatedIssue);
+
+          if (!relatedId || !matchesTarget(rule, relatedIssue)) {
+            continue;
+          }
 
           relationships.push({
             fromIssueId: currentId,

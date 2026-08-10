@@ -31,18 +31,20 @@ La aplicacion lee:
 - `graph.json`: reglas para recorrer incidencias y formar ProjectGroups;
 - `projectgroup_rules.json`: reglas para calcular campos del ProjectGroup;
 - reglas SQL de alertas guardadas en DuckDB;
-- consultas JQL guardadas en DuckDB.
+- consultas JQL guardadas en la configuracion local de la app.
 
 ### 4. Como obtiene datos de Jira
 
-La aplicacion consulta Jira por REST usando endpoints como `issue/{key}`.
+La aplicacion consulta Jira por REST usando endpoints como `issue/{key}` y `POST /rest/api/3/search/jql`.
 
+El usuario puede configurar uno o varios JQL desde la interfaz. Cada consulta puede ocupar varias lineas; las consultas se separan en bloques. Se guardan en `config/app.json` y se ejecutan en cada sincronizacion.
 Las consultas JQL devuelven incidencias iniciales.
 Cada incidencia es solo un punto de partida.
 
 Desde ahi, la app recorre relaciones segun el grafo y arma el ProjectGroup completo.
 La JQL no define el alcance final del grupo. Solo define donde empezar.
 A partir de cualquier incidencia valida del grafo, la app debe recorrer todas las relaciones permitidas hasta completar el ProjectGroup entero.
+Si varios recorridos comparten incidencias, se consolidan en un solo ProjectGroup para evitar duplicados.
 
 Campos iniciales que se extraen de cada incidencia:
 
@@ -76,13 +78,16 @@ Si no existe una sesion valida de Jira:
 - la app continua con la sincronizacion.
 
 La sesion queda disponible para siguientes sincronizaciones mientras siga siendo valida.
-Si expira, la app vuelve a pedir inicio de sesion con el mismo Toast y tambien muestra el boton de inicio de sesion.
+Si expira, la app vuelve a mostrar la notificacion de inicio de sesion requerido en cada intervalo de sincronizacion configurado mientras la sesion siga invalida y tambien muestra el boton de inicio de sesion.
+La sincronizacion automatica o manual no abre el navegador de Playwright. Este solo se abre cuando el usuario hace clic en la notificacion, en el Toast interno o en el boton de inicio de sesion.
 
 ### 5. Que es un ProjectGroup
 
 Un ProjectGroup representa un desarrollo completo.
 
 Tiene un `id` propio para poder mostrarse despues en una version mas avanzada de la interfaz.
+
+El grafo completo contempla los 14 tipos de incidencia, sus subtareas, sus enlaces y la rama especial de incidencias del proyecto MDI.
 
 Puede incluir:
 
@@ -166,6 +171,8 @@ Cada sincronizacion:
 7. ejecuta reglas SQL;
 8. genera alertas y Toasts.
 
+Si la sesion no es valida, la sincronizacion termina despues del primer paso y no abre el navegador de login.
+
 La base de datos solo se actualiza cuando todo termina bien.
 
 Si ocurre un error, no se aplica ningun cambio y se deja todo como estaba.
@@ -221,7 +228,11 @@ Si la pagina se refresca, la app vuelve a leer la informacion en la base local y
 
 La aplicacion se ejecuta en local y la interfaz permanece abierta en una pestaña de Google Chrome.
 
-La sincronizacion automatica depende de un backend local que sigue corriendo mientras la app este en uso, aunque el usuario cierre la pestaña de la interfaz.
+La interfaz incluye un boton para detener backend y frontend. Primero se detiene el backend y despues el frontend, dejando libres los puertos `3000` y `5174`. La app deja de consultar los servicios e intenta cerrar la pestaña; si Chrome bloquea ese cierre, informa al usuario que puede cerrarla manualmente.
+
+Las fechas de inicio y fin se muestran como `dd-mm-yyyy hh:mm:ss` con la hora de Bogota. Mientras se prueba la sincronizacion, el log registra sus etapas principales sin guardar cookies ni credenciales.
+
+El boton `Borrar BD local` solicita confirmacion y vacia los datos locales sin borrar la sesion Jira, la configuracion ni los logs. Se desactiva mientras hay una sincronizacion activa.
 
 Flujo de arranque:
 
@@ -246,6 +257,7 @@ El usuario puede cambiar sin tocar el codigo:
 - consultas JQL;
 - reglas SQL;
 - tiempo entre sincronizaciones;
+- activar o apagar la sincronizacion automatica;
 - tiempo de espera entre consultas;
 - numero de sincronizaciones para reenviar alertas no leidas;
 - texto e imagen de cada alerta;

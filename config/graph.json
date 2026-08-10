@@ -2,22 +2,111 @@
   "version": 1,
   "entryTypes": [
     "Testing",
-    "Documentar Criterios de Aceptación",
+    "Documentar Criterios de Aceptaci\u00f3n",
     "Testing de Criterios",
-    "Corrección por Testing",
-    "Criterios - Pruebas Automáticas",
+    "Criterios de aceptaci\u00f3n",
+    "Correcci\u00f3n por Testing",
+    "Criterios \u2013 Pruebas Autom\u00e1ticas",
     "Solicitud de Paso a TEST",
-    "Implementación Q&A",
-    "Solicitud Paso a Producción",
-    "Admon Pre-Producción",
-    "Solicitud Paso a Pre-Producción",
-    "Testing Pre-Producción",
-    "Testing Criterios Pre-Producción",
-    "Criterios Pre-Producción"
+    "Implementaci\u00f3n Q&A",
+    "Solicitud Paso a Producci\u00f3n",
+    "Admon Pre-Producci\u00f3n",
+    "Solicitud Paso a Pre-Producci\u00f3n",
+    "Testing Pre-Producci\u00f3n",
+    "Testing Criterios Pre-Producci\u00f3n",
+    "Criterios Pre-Producci\u00f3n"
   ],
   "nodes": {
     "Testing": {
-      "follow": [{ "relation": "subtasks", "to": ["*"], "include": true, "expand": true }]
+      "follow": [
+        { "relation": "parent", "to": ["*"] },
+        { "relation": "subtasks", "to": ["*"] },
+        { "relation": "issuelinks", "to": ["Documentar Criterios de Aceptaci\u00f3n", "Testing de Criterios", "Correcci\u00f3n por Testing", "Criterios \u2013 Pruebas Autom\u00e1ticas", "Solicitud de Paso a TEST", "Implementaci\u00f3n Q&A", "Solicitud Paso a Producci\u00f3n", "Admon Pre-Producci\u00f3n"] }
+      ]
+    },
+    "Documentar Criterios de Aceptaci\u00f3n": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing"] },
+        { "relation": "subtasks", "to": ["*"] },
+        { "relation": "issuelinks", "to": ["Testing"] }
+      ]
+    },
+    "Testing de Criterios": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing"] },
+        { "relation": "issuelinks", "to": ["Criterios de aceptaci\u00f3n", "Correcci\u00f3n por Testing", "Testing"] }
+      ]
+    },
+    "Criterios de aceptaci\u00f3n": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing de Criterios", "Testing Criterios Pre-Producci\u00f3n"] },
+        { "relation": "subtasks", "to": ["*"] },
+        { "relation": "issuelinks", "to": ["Correcci\u00f3n por Testing", "Testing de Criterios", "Testing Criterios Pre-Producci\u00f3n"] }
+      ]
+    },
+    "Correcci\u00f3n por Testing": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing"] },
+        { "relation": "issuelinks", "to": ["Testing", "Testing de Criterios", "Criterios de aceptaci\u00f3n"] }
+      ]
+    },
+    "Criterios \u2013 Pruebas Autom\u00e1ticas": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing"] },
+        { "relation": "issuelinks", "to": ["Testing"] }
+      ]
+    },
+    "Solicitud de Paso a TEST": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing"] },
+        { "relation": "subtasks", "to": ["*"] },
+        { "relation": "issuelinks", "to": ["Testing"] }
+      ]
+    },
+    "Implementaci\u00f3n Q&A": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing"] },
+        { "relation": "issuelinks", "to": ["Testing"] }
+      ]
+    },
+    "Solicitud Paso a Producci\u00f3n": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing"] },
+        { "relation": "subtasks", "to": ["*"] },
+        { "relation": "issuelinks", "to": ["Testing"] },
+        { "relation": "issuelinks", "to": ["*"], "project": "Intervenci\u00f3n de infraestructura" }
+      ]
+    },
+    "Admon Pre-Producci\u00f3n": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing"] },
+        { "relation": "issuelinks", "to": ["Testing", "Solicitud Paso a Pre-Producci\u00f3n", "Testing Pre-Producci\u00f3n", "Criterios Pre-Producci\u00f3n"] }
+      ]
+    },
+    "Solicitud Paso a Pre-Producci\u00f3n": {
+      "follow": [
+        { "relation": "parent", "to": ["Admon Pre-Producci\u00f3n"] },
+        { "relation": "subtasks", "to": ["*"] },
+        { "relation": "issuelinks", "to": ["Admon Pre-Producci\u00f3n"] }
+      ]
+    },
+    "Testing Pre-Producci\u00f3n": {
+      "follow": [
+        { "relation": "parent", "to": ["Admon Pre-Producci\u00f3n"] },
+        { "relation": "issuelinks", "to": ["Admon Pre-Producci\u00f3n", "Testing Criterios Pre-Producci\u00f3n"] }
+      ]
+    },
+    "Testing Criterios Pre-Producci\u00f3n": {
+      "follow": [
+        { "relation": "parent", "to": ["Testing Pre-Producci\u00f3n"] },
+        { "relation": "issuelinks", "to": ["Criterios de aceptaci\u00f3n", "Testing Pre-Producci\u00f3n"] }
+      ]
+    },
+    "Criterios Pre-Producci\u00f3n": {
+      "follow": [
+        { "relation": "parent", "to": ["Admon Pre-Producci\u00f3n"] },
+        { "relation": "issuelinks", "to": ["Admon Pre-Producci\u00f3n"] }
+      ]
     }
   }
 }

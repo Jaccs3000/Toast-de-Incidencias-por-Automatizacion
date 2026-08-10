@@ -80,6 +80,7 @@ function shutdown(code = 0) {
   }
 
   shuttingDown = true;
+  log('stopping local services');
 
   if (backend && !backend.killed) {
     backend.kill();
@@ -88,8 +89,6 @@ function shutdown(code = 0) {
   if (vite && !vite.killed) {
     vite.kill();
   }
-
-
 
   process.exit(code);
 }
