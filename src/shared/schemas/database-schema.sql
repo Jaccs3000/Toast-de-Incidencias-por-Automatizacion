@@ -1,0 +1,90 @@
+CREATE TABLE IF NOT EXISTS JIRA_ISSUES (
+  id TEXT PRIMARY KEY,
+  key TEXT NOT NULL,
+  project TEXT,
+  issuetype TEXT,
+  summary TEXT,
+  description TEXT,
+  status TEXT,
+  reporter TEXT,
+  assignee TEXT,
+  created TEXT,
+  updated TEXT,
+  parent TEXT,
+  timeestimate INTEGER,
+  timespent INTEGER,
+  issuelinks TEXT
+);
+
+CREATE TABLE IF NOT EXISTS JIRA_PROJECT_GROUPS (
+  id TEXT PRIMARY KEY,
+  root_issue_id TEXT,
+  root_issue_key TEXT,
+  estado_general TEXT,
+  created TEXT,
+  updated TEXT
+);
+
+CREATE TABLE IF NOT EXISTS JIRA_PROJECT_GROUP_ISSUES (
+  project_group_id TEXT NOT NULL,
+  issue_id TEXT NOT NULL,
+  is_root INTEGER NOT NULL DEFAULT 0,
+  depth INTEGER NOT NULL DEFAULT 0,
+  relation_type TEXT,
+  created TEXT,
+  PRIMARY KEY (project_group_id, issue_id)
+);
+
+CREATE TABLE IF NOT EXISTS JIRA_RELATIONSHIPS (
+  id TEXT PRIMARY KEY,
+  project_group_id TEXT NOT NULL,
+  from_issue_id TEXT NOT NULL,
+  to_issue_id TEXT NOT NULL,
+  relation_type TEXT,
+  link_type TEXT,
+  created TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ALERT_RULES (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  sql TEXT NOT NULL,
+  toast_text TEXT,
+  toast_image TEXT,
+  retry_syncs INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created TEXT,
+  updated TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ALERTS (
+  id TEXT PRIMARY KEY,
+  rule_id TEXT NOT NULL,
+  issue_id TEXT NOT NULL,
+  project_group_id TEXT,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created TEXT,
+  updated TEXT,
+  last_notified_at TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_sync INTEGER NOT NULL DEFAULT 0,
+  payload_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS SETTINGS (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated TEXT
+);
+
+CREATE TABLE IF NOT EXISTS SYNC_STATUS (
+  id TEXT PRIMARY KEY,
+  last_status TEXT,
+  last_started_at TEXT,
+  last_finished_at TEXT,
+  last_success_at TEXT,
+  last_error_message TEXT,
+  is_running INTEGER NOT NULL DEFAULT 0,
+  is_canceling INTEGER NOT NULL DEFAULT 0,
+  next_sync_at TEXT
+);

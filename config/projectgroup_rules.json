@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "defaultValue": "Creado",
+  "rules": [
+    {
+      "priority": 1,
+      "enabled": true,
+      "output": "Solicitado montaje Test",
+      "when": {
+        "issueType": "Solicitud de Paso a TEST",
+        "statusNot": "Cerrado",
+        "match": "exists"
+      }
+    }
+  ]
+}

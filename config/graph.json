@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "entryTypes": [
+    "Testing",
+    "Documentar Criterios de Aceptación",
+    "Testing de Criterios",
+    "Corrección por Testing",
+    "Criterios - Pruebas Automáticas",
+    "Solicitud de Paso a TEST",
+    "Implementación Q&A",
+    "Solicitud Paso a Producción",
+    "Admon Pre-Producción",
+    "Solicitud Paso a Pre-Producción",
+    "Testing Pre-Producción",
+    "Testing Criterios Pre-Producción",
+    "Criterios Pre-Producción"
+  ],
+  "nodes": {
+    "Testing": {
+      "follow": [{ "relation": "subtasks", "to": ["*"], "include": true, "expand": true }]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+logs/*
+!logs/.gitkeep
+data/*
+!data/.gitkeep
+data/session/
+*.duckdb
+*.duckdb.wal
