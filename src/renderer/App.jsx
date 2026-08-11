@@ -78,6 +78,11 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function backendAssetUrl(value) {
+  if (!value) return null;
+  return new URL(value, 'http://127.0.0.1:3000').href;
+}
+
 const alertFieldLabels = {
   issuetype: 'Tipo',
   status: 'Estado',
@@ -215,11 +220,17 @@ export default function App() {
   const alertToastInputRef = useRef(null);
   const [messageIssueType, setMessageIssueType] = useState('');
   const [messageField, setMessageField] = useState('key');
+  const [alertImageData, setAlertImageData] = useState(null);
+  const [alertImageName, setAlertImageName] = useState('');
+  const [alertImageUrl, setAlertImageUrl] = useState(null);
+  const [alertImageRemoved, setAlertImageRemoved] = useState(false);
+  const [uiToast, setUiToast] = useState(null);
   const hideToastTimerRef = useRef(null);
+  const uiToastTimerRef = useRef(null);
   const lastSessionNotificationAtRef = useRef(0);
   const permissionRequestStartedRef = useRef(false);
   const sessionNotificationRef = useRef(null);
-  const knownAlertIdsRef = useRef(new Set());
+  const knownAlertNotifiedAtRef = useRef(new Map());
   const alertsInitializedRef = useRef(false);
   const servicesStoppedRef = useRef(false);
   const jqlInitializedRef = useRef(false);
@@ -258,6 +269,17 @@ export default function App() {
     }
   };
 
+  const showUiToast = (message, type = 'success') => {
+    if (uiToastTimerRef.current) {
+      clearTimeout(uiToastTimerRef.current);
+    }
+    setUiToast({ message, type });
+    uiToastTimerRef.current = setTimeout(() => {
+      setUiToast(null);
+      uiToastTimerRef.current = null;
+    }, 3500);
+  };
+
   const closeSessionNotification = () => {
     if (sessionNotificationRef.current) {
       sessionNotificationRef.current.close();
@@ -265,12 +287,12 @@ export default function App() {
     }
   };
 
-  const showNativeNotification = (title, body, onClick) => {
+  const showNativeNotification = (title, body, onClick, icon = null) => {
     if (!('Notification' in window) || Notification.permission !== 'granted') {
       return false;
     }
 
-    const notification = new Notification(title, { body });
+    const notification = new Notification(title, { body, ...(icon ? { icon } : {}) });
     notification.onclick = () => {
       window.focus();
       notification.close();
@@ -368,16 +390,30 @@ export default function App() {
     setAlertsSummary(summary);
 
     const unreadAlerts = Array.isArray(summary?.unreadAlerts) ? summary.unreadAlerts : [];
-    const unreadIds = new Set(unreadAlerts.map((alert) => alert.id));
+    const knownAlerts = knownAlertNotifiedAtRef.current;
     const alertToShow = alertsInitializedRef.current
-      ? unreadAlerts.find((alert) => !knownAlertIdsRef.current.has(alert.id))
-      : unreadAlerts[0];
+      ? unreadAlerts.find((alert) => {
+        if (!knownAlerts.has(alert.id)) {
+          return true;
+        }
+
+        const previousNotifiedAt = knownAlerts.get(alert.id);
+        return Boolean(
+          alert.last_notified_at
+          && previousNotifiedAt
+          && new Date(alert.last_notified_at).getTime() > new Date(previousNotifiedAt).getTime(),
+        );
+      })
+      : null;
     if (alertToShow) {
       const message = alertToShow.toast_message || alertToShow.toast_text || alertToShow.rule_name || 'Nueva alerta de Jira';
       setAlertToast({ id: alertToShow.id, message });
-      showNativeNotification('Jira Notifications', message, () => handleReadAlert(alertToShow.id));
+      const imageUrl = backendAssetUrl(alertToShow.toast_image);
+      showNativeNotification('Jira Notifications', message, () => handleReadAlert(alertToShow.id), imageUrl);
     }
-    knownAlertIdsRef.current = unreadIds;
+    knownAlertNotifiedAtRef.current = new Map(
+      unreadAlerts.map((alert) => [alert.id, alert.last_notified_at ?? null]),
+    );
     alertsInitializedRef.current = true;
     return summary;
   };
@@ -437,6 +473,9 @@ export default function App() {
         clearInterval(pollHandle);
       }
       clearToastTimer();
+      if (uiToastTimerRef.current) {
+        clearTimeout(uiToastTimerRef.current);
+      }
       closeSessionNotification();
     };
   }, []);
@@ -510,11 +549,37 @@ export default function App() {
       setJqlQueries(result.jqlQueries ?? queries);
       jqlDirtyRef.current = false;
       setJqlMessage('JQL guardado correctamente.');
+      showUiToast('JQL guardado correctamente.');
     } catch (error) {
       setJqlMessage(`No se pudo guardar el JQL: ${error.message}`);
     } finally {
       setJqlSaving(false);
     }
+  };
+
+  const handleAlertImageChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const extension = file.name.toLowerCase().split('.').pop();
+    const allowedExtensions = ['png', 'jpg', 'jpeg', 'webp'];
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (!allowedExtensions.includes(extension)
+      || (file.type && !allowedTypes.includes(file.type))
+      || file.size > 2 * 1024 * 1024) {
+      setJqlMessage('La imagen debe ser PNG, JPG, JPEG o WEBP y no superar 2 MB.');
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAlertImageData(String(reader.result));
+      setAlertImageName(file.name);
+      setAlertImageRemoved(false);
+      setJqlMessage(null);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveAlert = async () => {
@@ -537,6 +602,9 @@ export default function App() {
             conditions: validConditions,
           }),
           toast_text: alertForm.toastText,
+          toast_image_data: alertImageData,
+          toast_image_name: alertImageName,
+          remove_toast_image: alertImageRemoved,
           retry_minutes: Math.max(Number(alertForm.retryMinutes) || 0, 0),
           is_active: alertForm.isActive,
         }),
@@ -544,9 +612,14 @@ export default function App() {
       setAlertRules(result.rules ?? []);
       setAlertForm(emptyAlertForm());
       setMessageBuilderExpanded(false);
+      setAlertImageData(null);
+      setAlertImageName('');
+      setAlertImageUrl(null);
+      setAlertImageRemoved(false);
       setNewAlertOpen(false);
       setExpandedAlertId(null);
       setJqlMessage('Alerta guardada correctamente.');
+      showUiToast('Alerta guardada correctamente.');
     } catch (error) {
       setJqlMessage(`No se pudo guardar la alerta: ${error.message}`);
     } finally {
@@ -583,6 +656,7 @@ export default function App() {
         setExpandedAlertId(null);
       }
       await refreshAlertRules();
+      showUiToast('Alerta eliminada correctamente.');
     } catch (error) {
       setJqlMessage(`No se pudo eliminar la alerta: ${error.message}`);
     }
@@ -599,6 +673,10 @@ export default function App() {
       toastText: rule.toast_text ?? '',
       isActive: Boolean(rule.is_active),
     });
+    setAlertImageData(null);
+    setAlertImageName('');
+    setAlertImageUrl(rule.toast_image ?? null);
+    setAlertImageRemoved(false);
     setNewAlertOpen(false);
     setExpandedAlertId(rule.id);
     setMessageBuilderExpanded(false);
@@ -609,6 +687,10 @@ export default function App() {
   const handleNewAlert = () => {
     setAlertForm(emptyAlertForm());
     setMessageBuilderExpanded(false);
+    setAlertImageData(null);
+    setAlertImageName('');
+    setAlertImageUrl(null);
+    setAlertImageRemoved(false);
     setExpandedAlertId(null);
     setNewAlertOpen(true);
     setJqlMessage(null);
@@ -617,6 +699,10 @@ export default function App() {
   const handleCancelAlert = () => {
     setAlertForm(emptyAlertForm());
     setMessageBuilderExpanded(false);
+    setAlertImageData(null);
+    setAlertImageName('');
+    setAlertImageUrl(null);
+    setAlertImageRemoved(false);
     setNewAlertOpen(false);
     setExpandedAlertId(null);
     setJqlMessage(null);
@@ -790,6 +876,33 @@ export default function App() {
         </label>
         <small className="alert-message-help">Puedes combinar texto libre y varios datos de la BD en el orden que prefieras.</small>
       </div>
+      <div className="alert-image-field">
+        <label htmlFor="alert-image-input">Imagen del Toast</label>
+        <input
+          id="alert-image-input"
+          type="file"
+          accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+          onChange={handleAlertImageChange}
+        />
+        {alertImageData ? <small className="alert-image-selected">Imagen seleccionada: {alertImageName}</small> : null}
+        {(alertImageData || alertImageUrl) ? (
+          <div className="alert-image-preview">
+            <img src={alertImageData || backendAssetUrl(alertImageUrl)} alt="Vista previa de la imagen del Toast" />
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setAlertImageData(null);
+                setAlertImageName('');
+                setAlertImageUrl(null);
+                setAlertImageRemoved(true);
+              }}
+            >
+              Eliminar imagen
+            </button>
+          </div>
+        ) : null}
+      </div>
       <div className="settings-actions">
         <button type="button" onClick={handleSaveAlert} disabled={alertSaving}>
           {alertSaving ? 'Guardando...' : (isNew ? 'Guardar alerta' : 'Guardar cambios')}
@@ -820,6 +933,7 @@ export default function App() {
       if (alertToast?.id === id) {
         setAlertToast(null);
       }
+      showUiToast('Alerta marcada como leída.');
       await refreshAlerts();
     } catch (error) {
       setJqlMessage(`No se pudo marcar la alerta: ${error.message}`);
@@ -849,6 +963,7 @@ export default function App() {
         body: JSON.stringify({ autoSyncEnabled: nextValue }),
       });
       setAutoSyncEnabled(Boolean(result.autoSyncEnabled));
+      showUiToast('Sincronización automática actualizada.');
     } catch (error) {
       setAutoSyncEnabled(!nextValue);
       setJqlMessage(`No se pudo cambiar la sincronizacion automatica: ${error.message}`);
@@ -872,6 +987,7 @@ export default function App() {
       });
       setSyncIntervalMinutes(Number(result.syncIntervalMinutes ?? minutes));
       setJqlMessage('Intervalo de sincronizacion guardado correctamente.');
+      showUiToast('Intervalo de sincronización guardado.');
     } catch (error) {
       setJqlMessage(`No se pudo guardar el intervalo: ${error.message}`);
     } finally {
@@ -889,6 +1005,7 @@ export default function App() {
       await api('/api/database/reset', { method: 'POST', body: '{}' });
       setSyncState(null);
       setJqlMessage('Base de datos reiniciada correctamente.');
+      showUiToast('Base de datos local reiniciada.');
       await refreshBootstrapContext();
       await refreshAlerts();
     } catch (error) {
@@ -917,6 +1034,9 @@ export default function App() {
         body: JSON.stringify({ sql }),
       });
       setSqlResult(result);
+      if (result.ok) {
+        showUiToast('Consulta SQL ejecutada correctamente.');
+      }
     } catch (error) {
       setSqlResult({ ok: false, error: error.message });
     } finally {
@@ -1331,6 +1451,11 @@ export default function App() {
           {sqlResult ? <pre className="sql-result">{JSON.stringify(sqlResult, null, 2)}</pre> : null}
         </div>
 
+        {uiToast ? (
+          <div className={`ui-toast ui-toast-${uiToast.type}`} role="status" aria-live="polite">
+            {uiToast.message}
+          </div>
+        ) : null}
         {sessionToast ? (
           <div className={`toast-banner dashboard-toast ${sessionToastType === 'success' ? 'toast-success' : 'toast-warning'}`}>
             <span>{sessionToast}</span>

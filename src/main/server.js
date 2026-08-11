@@ -1,8 +1,19 @@
 import http from 'node:http';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
 import { bootstrapApp } from './app/bootstrap.js';
 import { saveAppConfig } from './config/configLoader.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
+const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
+const MAX_ALERT_IMAGE_BYTES = 2 * 1024 * 1024;
+const ALERT_IMAGE_TYPES = {
+  png: { mime: 'image/png' },
+  jpg: { mime: 'image/jpeg' },
+  jpeg: { mime: 'image/jpeg' },
+  webp: { mime: 'image/webp' },
+};
 
 function log(message, details = '') {
   const suffix = details ? ` ${details}` : '';
@@ -43,6 +54,57 @@ function readBody(req) {
 
     req.on('error', reject);
   });
+}
+
+async function removeAlertImage(imageUrl) {
+  if (!imageUrl) return;
+  const fileName = path.basename(String(imageUrl));
+  if (!fileName || fileName === '.' || fileName === path.sep) return;
+  await fs.unlink(path.join(ALERT_IMAGES_DIR, fileName)).catch(() => {});
+}
+
+async function saveAlertImage(dataUrl, originalName) {
+  const match = String(dataUrl ?? '').match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) {
+    throw new Error('La imagen debe ser PNG, JPG, JPEG o WEBP.');
+  }
+
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length > MAX_ALERT_IMAGE_BYTES) {
+    throw new Error('La imagen no puede superar 2 MB.');
+  }
+
+  const extension = String(originalName ?? '').toLowerCase().split('.').pop();
+  const safeExtension = ALERT_IMAGE_TYPES[extension]?.mime === match[1] ? extension : (
+    match[1] === 'image/png' ? 'png' : match[1] === 'image/webp' ? 'webp' : 'jpg'
+  );
+  const fileName = `${crypto.randomUUID()}.${safeExtension}`;
+  await fs.mkdir(ALERT_IMAGES_DIR, { recursive: true });
+  await fs.writeFile(path.join(ALERT_IMAGES_DIR, fileName), buffer, { flag: 'wx' });
+  return `/alert-images/${fileName}`;
+}
+
+async function handleAlertImage(res, fileName) {
+  const safeName = path.basename(fileName ?? '');
+  const extension = safeName.toLowerCase().split('.').pop();
+  const imageType = ALERT_IMAGE_TYPES[extension];
+  if (!safeName || !imageType) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+
+  try {
+    const image = await fs.readFile(path.join(ALERT_IMAGES_DIR, safeName));
+    res.writeHead(200, {
+      'Content-Type': imageType.mime,
+      'Cache-Control': 'no-cache',
+    });
+    res.end(image);
+  } catch {
+    res.writeHead(404);
+    res.end();
+  }
 }
 
 function toPublicSession(session) {
@@ -340,36 +402,60 @@ async function handleAlertRuleSave(req, res) {
     return;
   }
 
-  await state.runtime.persistence.exec(
-    `
-    INSERT INTO ALERT_RULES (
-      id, name, sql, toast_text, toast_image, condition_config, retry_syncs, retry_minutes, is_active, created, updated
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      name = excluded.name,
-      sql = excluded.sql,
-      toast_text = excluded.toast_text,
-      toast_image = excluded.toast_image,
-      condition_config = excluded.condition_config,
-      retry_syncs = excluded.retry_syncs,
-      retry_minutes = excluded.retry_minutes,
-      is_active = excluded.is_active,
-      updated = excluded.updated
-    `,
-    [
-      id,
-      name,
-      sql,
-      String(body?.toast_text ?? '').trim() || null,
-      String(body?.toast_image ?? '').trim() || null,
-      String(body?.condition_config ?? '').trim() || null,
-      Math.max(Number(body?.retry_syncs ?? 0) || 0, 0),
-      Math.max(Number(body?.retry_minutes ?? 0) || 0, 0),
-      body?.is_active === false ? 0 : 1,
-      body?.created ?? now,
-      now,
-    ],
+  const existingRows = await state.runtime.persistence.query(
+    'SELECT toast_image FROM ALERT_RULES WHERE id = ? LIMIT 1',
+    [id],
   );
+  const previousImage = existingRows[0]?.toast_image ?? null;
+  let toastImage = body?.toast_image ?? previousImage;
+  let newImage = null;
+
+  if (body?.toast_image_data) {
+    newImage = await saveAlertImage(body.toast_image_data, body.toast_image_name);
+    toastImage = newImage;
+  } else if (body?.remove_toast_image === true) {
+    toastImage = null;
+  }
+
+  try {
+    await state.runtime.persistence.exec(
+      `
+      INSERT INTO ALERT_RULES (
+        id, name, sql, toast_text, toast_image, condition_config, retry_syncs, retry_minutes, is_active, created, updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        sql = excluded.sql,
+        toast_text = excluded.toast_text,
+        toast_image = excluded.toast_image,
+        condition_config = excluded.condition_config,
+        retry_syncs = excluded.retry_syncs,
+        retry_minutes = excluded.retry_minutes,
+        is_active = excluded.is_active,
+        updated = excluded.updated
+      `,
+      [
+        id,
+        name,
+        sql,
+        String(body?.toast_text ?? '').trim() || null,
+        toastImage,
+        String(body?.condition_config ?? '').trim() || null,
+        Math.max(Number(body?.retry_syncs ?? 0) || 0, 0),
+        Math.max(Number(body?.retry_minutes ?? 0) || 0, 0),
+        body?.is_active === false ? 0 : 1,
+        body?.created ?? now,
+        now,
+      ],
+    );
+  } catch (error) {
+    if (newImage) await removeAlertImage(newImage);
+    throw error;
+  }
+
+  if (previousImage && previousImage !== toastImage) {
+    await removeAlertImage(previousImage);
+  }
 
   const rules = await state.runtime.persistence.alerts.listRules();
   json(res, 200, { ok: true, rules });
@@ -384,10 +470,17 @@ async function handleAlertRuleDelete(req, res) {
     return;
   }
 
+  const imageRows = await state.runtime.persistence.query(
+    'SELECT toast_image FROM ALERT_RULES WHERE id = ? LIMIT 1',
+    [id],
+  );
+
   await state.runtime.persistence.transaction(async () => {
     await state.runtime.persistence.exec('DELETE FROM ALERTS WHERE rule_id = ?', [id]);
     await state.runtime.persistence.exec('DELETE FROM ALERT_RULES WHERE id = ?', [id]);
   });
+
+  await removeAlertImage(imageRows[0]?.toast_image);
 
   json(res, 200, { ok: true });
 }
@@ -470,6 +563,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/alerts-summary') {
       await handleAlertsSummary(res);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname.startsWith('/alert-images/')) {
+      await handleAlertImage(res, decodeURIComponent(url.pathname.slice('/alert-images/'.length)));
       return;
     }
 

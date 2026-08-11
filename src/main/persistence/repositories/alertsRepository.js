@@ -16,7 +16,7 @@ export class AlertsRepository {
       `
       SELECT a.id, a.rule_id, a.issue_id, a.project_group_id, a.is_read, a.created, a.updated,
              a.last_notified_at, a.retry_count, a.next_retry_sync, a.next_retry_at, a.payload_json,
-             r.name AS rule_name, r.toast_text, r.retry_minutes,
+             r.name AS rule_name, r.toast_text, r.toast_image, r.retry_minutes,
              json_extract_string(a.payload_json, '$.toast_message') AS toast_message
       FROM ALERTS
       a LEFT JOIN ALERT_RULES r ON r.id = a.rule_id
