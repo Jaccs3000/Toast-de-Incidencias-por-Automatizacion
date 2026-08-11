@@ -170,7 +170,9 @@ export class SyncService {
       updated: new Date().toISOString(),
     });
 
-    await Promise.all(projectGroup.issues.map((issue) => this.persistence.issues.upsert(issue)));
+    for (const issue of projectGroup.issues) {
+      await this.persistence.issues.upsert(issue);
+    }
     await this.persistence.projectGroupIssues.replaceForGroup(
       projectGroup.id,
       projectGroup.members,
@@ -196,16 +198,165 @@ export class SyncService {
       updated: new Date().toISOString(),
     });
 
-    const alertResult = await this.alerts.evaluate({ projectGroup });
-
     await this.logs.info('ProjectGroup built from seed issue', {
       projectGroupId: projectGroup.id,
       rootIssueKey: projectGroup.rootIssueKey,
       estadoGeneral,
       issuesCount: projectGroup.issues.length,
       relationshipsCount: projectGroup.relationships.length,
-      createdAlertsCount: alertResult.createdAlertsCount,
     });
+  }
+
+  async getExistingSnapshot() {
+    return this.persistence.query(
+      `
+      SELECT
+        pgi.project_group_id,
+        i.id,
+        i.key,
+        i.project,
+        i.issuetype,
+        i.summary,
+        i.description,
+        i.status,
+        i.reporter,
+        i.assignee,
+        i.created,
+        i.updated,
+        i.parent,
+        i.timeestimate,
+        i.timespent,
+        i.issuelinks
+      FROM JIRA_PROJECT_GROUP_ISSUES pgi
+      JOIN JIRA_ISSUES i ON i.id = pgi.issue_id
+      `,
+    );
+  }
+
+  getSnapshotMap(rows = []) {
+    return new Map(rows.map((row) => [
+      `${row.project_group_id}|${row.id}`,
+      row,
+    ]));
+  }
+
+  getIncomingSnapshot(projectGroups = []) {
+    const snapshot = [];
+
+    for (const group of projectGroups) {
+      for (const issue of group.issues ?? []) {
+        const member = (group.members ?? []).find((item) => String(item.id) === String(issue.id));
+        snapshot.push({
+          project_group_id: group.id,
+          id: String(issue.id),
+          key: issue.key ?? null,
+          project: issue.fields?.project?.key ?? issue.fields?.project?.name ?? null,
+          issuetype: issue.fields?.issuetype?.name ?? null,
+          summary: issue.fields?.summary ?? null,
+          description: issue.fields?.description ?? null,
+          status: issue.fields?.status?.name ?? null,
+          reporter: issue.fields?.reporter?.displayName ?? issue.fields?.reporter?.name ?? null,
+          assignee: issue.fields?.assignee?.displayName ?? issue.fields?.assignee?.name ?? null,
+          created: issue.fields?.created ?? null,
+          updated: issue.fields?.updated ?? null,
+          parent: issue.fields?.parent?.key ?? null,
+          timeestimate: issue.fields?.timeoriginalestimate ?? issue.fields?.timeestimate ?? null,
+          timespent: issue.fields?.timespent ?? null,
+          issuelinks: typeof issue.fields?.issuelinks === 'string'
+            ? issue.fields.issuelinks
+            : JSON.stringify(issue.fields?.issuelinks ?? null),
+          is_root: member?.isRoot ? 1 : 0,
+        });
+      }
+    }
+
+    return snapshot;
+  }
+
+  getChangedFields(before, after) {
+    const fields = [
+      'project', 'issuetype', 'summary', 'description', 'status', 'reporter',
+      'assignee', 'created', 'updated', 'parent', 'timeestimate', 'timespent', 'issuelinks',
+    ];
+
+    return fields.filter((field) => String(before?.[field] ?? '') !== String(after?.[field] ?? ''));
+  }
+
+  compareSnapshots(beforeRows, afterRows) {
+    const before = this.getSnapshotMap(beforeRows);
+    const after = this.getSnapshotMap(afterRows);
+    const changes = [];
+
+    for (const [identity, current] of after) {
+      const previous = before.get(identity);
+      if (!previous) {
+        changes.push({
+          project_group_id: current.project_group_id,
+          issue_id: current.id,
+          issue_key: current.key,
+          change_type: 'created',
+          changed_fields: [],
+          before_json: null,
+          after_json: current,
+        });
+        continue;
+      }
+
+      const changedFields = this.getChangedFields(previous, current);
+      if (changedFields.length > 0) {
+        changes.push({
+          project_group_id: current.project_group_id,
+          issue_id: current.id,
+          issue_key: current.key,
+          change_type: 'updated',
+          changed_fields: changedFields,
+          before_json: previous,
+          after_json: current,
+        });
+      }
+    }
+
+    for (const [identity, previous] of before) {
+      if (!after.has(identity)) {
+        changes.push({
+          project_group_id: previous.project_group_id,
+          issue_id: previous.id,
+          issue_key: previous.key,
+          change_type: 'removed',
+          changed_fields: [],
+          before_json: previous,
+          after_json: null,
+        });
+      }
+    }
+
+    return changes;
+  }
+
+  async persistChanges(syncId, changes) {
+    await this.persistence.exec('DELETE FROM SYNC_CHANGES');
+
+    for (const change of changes) {
+      await this.persistence.exec(
+        `
+        INSERT INTO SYNC_CHANGES (
+          sync_id, project_group_id, issue_id, issue_key, change_type,
+          changed_fields, before_json, after_json, created
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          syncId,
+          change.project_group_id ?? null,
+          change.issue_id,
+          change.issue_key,
+          change.change_type,
+          JSON.stringify(change.changed_fields ?? []),
+          change.before_json ? JSON.stringify(change.before_json) : null,
+          change.after_json ? JSON.stringify(change.after_json) : null,
+          new Date().toISOString(),
+        ],
+      );
+    }
   }
 
   consolidateProjectGroups(candidateGroups) {
@@ -397,16 +548,48 @@ export class SyncService {
         consolidatedGroups: consolidatedGroups.length,
       });
 
+      const previousSnapshot = await this.getExistingSnapshot();
+      const incomingSnapshot = this.getIncomingSnapshot(consolidatedGroups);
+      const changes = this.compareSnapshots(previousSnapshot, incomingSnapshot);
+      const syncId = `sync-${startedAt}`;
+      let alertResult = { createdAlertsCount: 0, createdAlerts: [] };
+
+      await this.logs.info('Synchronization comparison completed', {
+        syncId,
+        created: changes.filter((change) => change.change_type === 'created').length,
+        updated: changes.filter((change) => change.change_type === 'updated').length,
+        removed: changes.filter((change) => change.change_type === 'removed').length,
+      });
+
+      await this.persistence.transaction(async () => {
+        await this.persistence.exec('DELETE FROM JIRA_RELATIONSHIPS');
+        await this.persistence.exec('DELETE FROM JIRA_PROJECT_GROUP_ISSUES');
+        await this.persistence.exec('DELETE FROM JIRA_PROJECT_GROUPS');
+        await this.persistence.exec('DELETE FROM JIRA_ISSUES');
+
+        for (const projectGroup of consolidatedGroups) {
+          const detailedSeedIssue = projectGroup.issues.find((issue) => String(issue?.id) === String(projectGroup.rootIssueId))
+            ?? projectGroup.issues[0];
+          await this.persistProjectGroup(projectGroup, detailedSeedIssue, startedAt);
+        }
+
+        await this.persistChanges(syncId, changes);
+        alertResult = await this.alerts.evaluate({ notify: false });
+      });
+
+      await this.alerts.notifyCreated(alertResult.createdAlerts);
+
       for (const projectGroup of consolidatedGroups) {
-        const detailedSeedIssue = projectGroup.issues.find((issue) => String(issue?.id) === String(projectGroup.rootIssueId))
-          ?? projectGroup.issues[0];
-        await this.persistProjectGroup(projectGroup, detailedSeedIssue, startedAt);
         await this.logs.info('ProjectGroup persisted', {
           projectGroupId: projectGroup.id,
           issuesCount: projectGroup.issues.length,
           relationshipsCount: projectGroup.relationships.length,
         });
       }
+
+      await this.logs.info('Alerts evaluated after commit', {
+        createdAlertsCount: alertResult.createdAlertsCount,
+      });
 
       await this.logs.info('Synchronization cycle finished', {
         reason: 'ProjectGroup build and persistence completed.',

@@ -126,7 +126,8 @@ Caracteristicas:
 
 ### 7. Base de datos
 
-DuckDB guarda solo el estado actual de Jira para el alcance configurado.
+DuckDB mantiene un espejo del estado actual de Jira obtenido en la ultima sincronizacion completa.
+En cada sincronizacion exitosa se reemplazan las tablas de incidencias, ProjectGroups y relaciones por lo recibido y recorrido desde Jira. Lo que ya no venga en esa sincronizacion se elimina de esas tablas.
 
 Tablas principales:
 
@@ -136,6 +137,7 @@ Tablas principales:
 - `JIRA_RELATIONSHIPS`
 - `ALERT_RULES`
 - `ALERTS`
+- `SYNC_CHANGES`
 - `SETTINGS`
 - `SYNC_STATUS`
 
@@ -147,6 +149,7 @@ Propuesta minima de uso:
 - `JIRA_RELATIONSHIPS`: relaciones descubiertas entre incidencias.
 - `ALERT_RULES`: reglas SQL del usuario.
 - `ALERTS`: alertas generadas por reglas.
+- `SYNC_CHANGES`: cambios detectados en la sincronizacion actual: nuevas, actualizadas y ausentes.
 - `SETTINGS`: configuracion interna de la app.
 - `SYNC_STATUS`: estado de la ultima sincronizacion.
 
@@ -274,6 +277,10 @@ Regla del motor:
 
 ### 9. Sincronizacion
 
+La app usa un staging temporal dentro de DuckDB. La BD real solo se modifica en una transaccion final. Si falla Jira, el recorrido, la comparacion, una regla o la persistencia, se hace `ROLLBACK` y se conserva el estado anterior.
+Una incidencia se considera eliminada si existia en la BD y no aparece en el resultado completo de la nueva sincronizacion. Si la sincronizacion falla, el `ROLLBACK` conserva el espejo anterior.
+Los Toast de alertas se muestran solo despues del `COMMIT`.
+
 La sincronizacion sigue este orden:
 
 1. Validar sesion.
@@ -310,6 +317,8 @@ Propuesta de evaluacion de reglas SQL:
 - si una regla devuelve filas, se generan alertas.
 
 ### 10. Alertas y notificaciones
+
+La interfaz incluye un constructor visual de alertas. El usuario selecciona el evento (`Incidencia nueva`, `Incidencia actualizada` o `Incidencia eliminada`), el campo, el operador, el valor y el texto del Toast. La app genera el SQL internamente y no exige escribir SQL para las reglas comunes.
 
 Cada regla SQL devuelve posibles alertas. Cada fila de resultado representa una alerta potencial para una incidencia especifica.
 

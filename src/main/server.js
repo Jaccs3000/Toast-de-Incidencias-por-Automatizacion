@@ -14,7 +14,9 @@ function json(res, statusCode, payload) {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
   });
-  res.end(JSON.stringify(payload));
+  res.end(JSON.stringify(payload, (_, value) => (
+    typeof value === 'bigint' ? Number(value) : value
+  )));
 }
 
 function readBody(req) {
@@ -85,6 +87,8 @@ async function createAppState() {
 const state = await createAppState();
 let syncInProgress = false;
 let syncTimer = null;
+let alertRetryTimer = null;
+let alertRetryInProgress = false;
 
 function stopAutoSyncTimer() {
   if (syncTimer) {
@@ -93,7 +97,34 @@ function stopAutoSyncTimer() {
   }
 }
 
-function startAutoSyncTimer() {
+function startAlertRetryTimer() {
+  if (alertRetryTimer) {
+    clearInterval(alertRetryTimer);
+  }
+
+  alertRetryTimer = setInterval(() => {
+    if (syncInProgress || alertRetryInProgress) {
+      return;
+    }
+
+    alertRetryInProgress = true;
+    state.runtime.alerts.repeatDueUnreadAlerts()
+      .then((alerts) => state.runtime.alerts.notifyCreated(alerts))
+      .catch((error) => log('alert retry failed', error.message))
+      .finally(() => {
+        alertRetryInProgress = false;
+      });
+  }, 1000);
+}
+
+function stopAlertRetryTimer() {
+  if (alertRetryTimer) {
+    clearInterval(alertRetryTimer);
+    alertRetryTimer = null;
+  }
+}
+
+async function startAutoSyncTimer({ scheduleNext = false } = {}) {
   stopAutoSyncTimer();
   const intervalSeconds = Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 0);
   if (!state.runtime.configuration?.app?.autoSyncEnabled
@@ -101,8 +132,18 @@ function startAutoSyncTimer() {
     return;
   }
 
+  if (scheduleNext) {
+    await state.runtime.persistence.syncStatus.updateStatus({
+      next_sync_at: new Date(Date.now() + intervalSeconds * 1000).toISOString(),
+    });
+  }
+
   syncTimer = setInterval(() => {
-    runSyncCycle().catch(() => {});
+    state.runtime.persistence.syncStatus.updateStatus({
+      next_sync_at: null,
+    }).then(() => runSyncCycle()).catch((error) => {
+      log('automatic synchronization failed', error.message);
+    });
   }, intervalSeconds * 1000);
 }
 
@@ -122,8 +163,10 @@ async function handleBootstrapContext(res) {
     session: toPublicSession(state.session),
     syncStatus: state.syncStatus,
     syncIntervalSeconds: Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 300),
+    syncIntervalMinutes: Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 300) / 60,
     jqlQueries: state.runtime.configuration?.app?.jqlQueries ?? [],
     autoSyncEnabled: Boolean(state.runtime.configuration?.app?.autoSyncEnabled),
+    graphIssueTypes: Object.keys(state.runtime.configuration?.graph?.nodes ?? {}),
   });
 }
 
@@ -148,19 +191,30 @@ async function handleSettings(req, res) {
   if (typeof body?.autoSyncEnabled === 'boolean') {
     updates.autoSyncEnabled = body.autoSyncEnabled;
   }
+  if (body?.syncIntervalMinutes !== undefined) {
+    const minutes = Number(body.syncIntervalMinutes);
+    if (!Number.isFinite(minutes) || minutes < 1) {
+      json(res, 400, { ok: false, error: 'El intervalo debe ser de al menos 1 minuto.' });
+      return;
+    }
+
+    updates.syncIntervalSeconds = Math.round(minutes * 60);
+  }
 
   const appConfig = await saveAppConfig(updates);
   state.runtime.configuration.app = appConfig;
   if (appConfig.autoSyncEnabled) {
-    startAutoSyncTimer();
+    await startAutoSyncTimer({ scheduleNext: true });
   } else {
     stopAutoSyncTimer();
+    await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
   }
   log('settings updated', `jqlCount=${appConfig.jqlQueries.length} autoSync=${appConfig.autoSyncEnabled}`);
   json(res, 200, {
     ok: true,
     jqlQueries: appConfig.jqlQueries,
     autoSyncEnabled: appConfig.autoSyncEnabled,
+    syncIntervalMinutes: appConfig.syncIntervalSeconds / 60,
   });
 }
 
@@ -192,6 +246,14 @@ async function handleSync(res) {
     json(res, 200, result);
   } finally {
     syncInProgress = false;
+    const intervalSeconds = Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 0);
+    await state.runtime.persistence.syncStatus.updateStatus({
+      next_sync_at: state.runtime.configuration?.app?.autoSyncEnabled
+        && Number.isFinite(intervalSeconds)
+        && intervalSeconds > 0
+        ? new Date(Date.now() + intervalSeconds * 1000).toISOString()
+        : null,
+    });
     await refreshState();
   }
 }
@@ -213,6 +275,44 @@ async function handleDatabaseReset(res) {
   json(res, 200, { ok: true, message: 'Base de datos reiniciada correctamente.' });
 }
 
+async function handleDatabaseSql(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede consultar la BD durante una sincronizacion.' });
+    return;
+  }
+
+  const body = await readBody(req);
+  const sql = String(body?.sql ?? '').trim();
+  const normalizedSql = sql.toLowerCase();
+
+  if (!sql || sql.length > 10000) {
+    json(res, 400, { ok: false, error: 'La consulta SQL esta vacia o supera el limite permitido.' });
+    return;
+  }
+
+  if (!/^(select|update|delete)\b/i.test(sql) || /;[\s\S]*\S/.test(sql)) {
+    json(res, 400, { ok: false, error: 'Solo se permiten sentencias SELECT, UPDATE o DELETE individuales.' });
+    return;
+  }
+
+  if (/\b(drop|alter|insert|create|truncate|pragma|copy|attach|detach|install|load)\b/i.test(normalizedSql)) {
+    json(res, 400, { ok: false, error: 'La consulta contiene una operacion no permitida.' });
+    return;
+  }
+
+  const isRead = /^select\b/i.test(sql);
+  if (isRead) {
+    const rows = await state.runtime.persistence.query(sql);
+    json(res, 200, { ok: true, type: 'select', rows });
+    return;
+  }
+
+  await state.runtime.persistence.transaction(async () => {
+    await state.runtime.persistence.exec(sql);
+  });
+  json(res, 200, { ok: true, type: 'write', message: 'Consulta ejecutada correctamente.' });
+}
+
 async function handleAlertsSummary(res) {
   const unreadAlerts = await state.runtime.persistence.alerts.listUnread(20);
   const unreadCount = await state.runtime.persistence.alerts.getUnreadCount();
@@ -223,10 +323,87 @@ async function handleAlertsSummary(res) {
   });
 }
 
+async function handleAlertRules(res) {
+  const rules = await state.runtime.persistence.alerts.listRules();
+  json(res, 200, { ok: true, rules });
+}
+
+async function handleAlertRuleSave(req, res) {
+  const body = await readBody(req);
+  const now = new Date().toISOString();
+  const id = String(body?.id ?? `rule-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const name = String(body?.name ?? '').trim();
+  const sql = String(body?.sql ?? '').trim();
+
+  if (!name || !sql) {
+    json(res, 400, { ok: false, error: 'El nombre y el SQL de la alerta son obligatorios.' });
+    return;
+  }
+
+  await state.runtime.persistence.exec(
+    `
+    INSERT INTO ALERT_RULES (
+      id, name, sql, toast_text, toast_image, condition_config, retry_syncs, retry_minutes, is_active, created, updated
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      sql = excluded.sql,
+      toast_text = excluded.toast_text,
+      toast_image = excluded.toast_image,
+      condition_config = excluded.condition_config,
+      retry_syncs = excluded.retry_syncs,
+      retry_minutes = excluded.retry_minutes,
+      is_active = excluded.is_active,
+      updated = excluded.updated
+    `,
+    [
+      id,
+      name,
+      sql,
+      String(body?.toast_text ?? '').trim() || null,
+      String(body?.toast_image ?? '').trim() || null,
+      String(body?.condition_config ?? '').trim() || null,
+      Math.max(Number(body?.retry_syncs ?? 0) || 0, 0),
+      Math.max(Number(body?.retry_minutes ?? 0) || 0, 0),
+      body?.is_active === false ? 0 : 1,
+      body?.created ?? now,
+      now,
+    ],
+  );
+
+  const rules = await state.runtime.persistence.alerts.listRules();
+  json(res, 200, { ok: true, rules });
+}
+
+async function handleAlertRuleDelete(req, res) {
+  const body = await readBody(req);
+  const id = String(body?.id ?? '').trim();
+
+  if (!id) {
+    json(res, 400, { ok: false, error: 'El id de la alerta es obligatorio.' });
+    return;
+  }
+
+  await state.runtime.persistence.transaction(async () => {
+    await state.runtime.persistence.exec('DELETE FROM ALERTS WHERE rule_id = ?', [id]);
+    await state.runtime.persistence.exec('DELETE FROM ALERT_RULES WHERE id = ?', [id]);
+  });
+
+  json(res, 200, { ok: true });
+}
+
+async function handleAlertRead(req, res) {
+  const body = await readBody(req);
+  const id = String(body?.id ?? '').trim();
+  await state.runtime.persistence.alerts.markRead(id);
+  json(res, 200, { ok: true });
+}
+
 function handleShutdown(res) {
   json(res, 200, { ok: true, message: 'Servicios en proceso de apagado.' });
   setTimeout(() => {
     stopAutoSyncTimer();
+    stopAlertRetryTimer();
 
     server.close(() => process.exit(0));
   }, 100);
@@ -286,8 +463,33 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/database/sql') {
+      await handleDatabaseSql(req, res);
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/alerts-summary') {
       await handleAlertsSummary(res);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/alert-rules') {
+      await handleAlertRules(res);
+      return;
+    }
+
+    if (req.method === 'PUT' && url.pathname === '/api/alert-rules') {
+      await handleAlertRuleSave(req, res);
+      return;
+    }
+
+    if (req.method === 'DELETE' && url.pathname === '/api/alert-rules') {
+      await handleAlertRuleDelete(req, res);
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/alerts/read') {
+      await handleAlertRead(req, res);
       return;
     }
 
@@ -309,15 +511,18 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Jira Notifications backend listening on http://127.0.0.1:${PORT}`);
-  startAutoSyncTimer();
+  startAutoSyncTimer().catch((error) => log('automatic synchronization setup failed', error.message));
+  startAlertRetryTimer();
 });
 
 process.on('SIGINT', () => {
   stopAutoSyncTimer();
+  stopAlertRetryTimer();
   server.close(() => process.exit(0));
 });
 
 process.on('SIGTERM', () => {
   stopAutoSyncTimer();
+  stopAlertRetryTimer();
   server.close(() => process.exit(0));
 });

@@ -37,6 +37,22 @@ export class Persistence {
 
     const schema = await loadDatabaseSchema();
     await this.exec(schema);
+    try {
+      await this.exec('ALTER TABLE ALERT_RULES ADD COLUMN condition_config TEXT');
+    } catch {
+      // The column already exists in databases initialized after the schema update.
+    }
+    try {
+      await this.exec('ALTER TABLE ALERT_RULES ADD COLUMN retry_minutes INTEGER');
+      await this.exec('UPDATE ALERT_RULES SET retry_minutes = 0 WHERE retry_minutes IS NULL');
+    } catch {
+      // The column already exists in databases initialized after the schema update.
+    }
+    try {
+      await this.exec('ALTER TABLE ALERTS ADD COLUMN next_retry_at TEXT');
+    } catch {
+      // The column already exists in databases initialized after the schema update.
+    }
     await this.syncStatus.ensureRow();
 
     return schema;
@@ -93,6 +109,24 @@ export class Persistence {
     });
   }
 
+  async transaction(work) {
+    await this.exec('BEGIN TRANSACTION');
+
+    try {
+      const result = await work();
+      await this.exec('COMMIT');
+      return result;
+    } catch (error) {
+      try {
+        await this.exec('ROLLBACK');
+      } catch {
+        // Preserve the original synchronization error.
+      }
+
+      throw error;
+    }
+  }
+
   async close() {
     if (this.connection) {
       await new Promise((resolve) => this.connection.close(() => resolve()));
@@ -113,6 +147,7 @@ export class Persistence {
       DELETE FROM JIRA_PROJECT_GROUP_ISSUES;
       DELETE FROM JIRA_PROJECT_GROUPS;
       DELETE FROM JIRA_ISSUES;
+      DELETE FROM SYNC_CHANGES;
       DELETE FROM SYNC_STATUS;
       COMMIT;
     `);

@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS ALERT_RULES (
   sql TEXT NOT NULL,
   toast_text TEXT,
   toast_image TEXT,
+  condition_config TEXT,
   retry_syncs INTEGER NOT NULL DEFAULT 0,
+  retry_minutes INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
   created TEXT,
   updated TEXT
@@ -68,6 +70,7 @@ CREATE TABLE IF NOT EXISTS ALERTS (
   last_notified_at TEXT,
   retry_count INTEGER NOT NULL DEFAULT 0,
   next_retry_sync INTEGER NOT NULL DEFAULT 0,
+  next_retry_at TEXT,
   payload_json TEXT
 );
 
@@ -87,4 +90,17 @@ CREATE TABLE IF NOT EXISTS SYNC_STATUS (
   is_running INTEGER NOT NULL DEFAULT 0,
   is_canceling INTEGER NOT NULL DEFAULT 0,
   next_sync_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS SYNC_CHANGES (
+  sync_id TEXT NOT NULL,
+  project_group_id TEXT,
+  issue_id TEXT NOT NULL,
+  issue_key TEXT NOT NULL,
+  change_type TEXT NOT NULL,
+  changed_fields TEXT,
+  before_json TEXT,
+  after_json TEXT,
+  created TEXT NOT NULL,
+  PRIMARY KEY (sync_id, project_group_id, issue_id, change_type)
 );

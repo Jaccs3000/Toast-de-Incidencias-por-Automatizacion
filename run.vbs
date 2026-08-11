@@ -23,9 +23,10 @@ shell.CurrentDirectory = scriptDir
 shell.Run Chr(34) & batPath & Chr(34), 0, False
 WriteLog "run.bat launched with hidden CMD"
 
-Dim http, startTime, frontendReady, chromePath, browserCommand
+Dim http, startTime, frontendReady, backendReady, frontendStatus, backendStatus, chromePath, browserCommand
 startTime = Timer
 frontendReady = False
+backendReady = False
 
 Do While Timer - startTime < 30
   On Error Resume Next
@@ -33,19 +34,31 @@ Do While Timer - startTime < 30
   http.Open "GET", "http://127.0.0.1:5174", False
   http.Send
   frontendReady = (Err.Number = 0 And http.Status = 200)
+  frontendStatus = http.Status
+  Err.Clear
+  Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
+  http.Open "GET", "http://127.0.0.1:3000/api/bootstrap-context", False
+  http.Send
+  backendReady = (Err.Number = 0 And http.Status = 200)
+  backendStatus = http.Status
   If frontendReady Then
     WriteLog "frontend health check succeeded with HTTP 200"
   Else
-    WriteLog "frontend health check pending; HTTP status=" & http.Status & "; error=" & Err.Number
+    WriteLog "frontend health check pending; HTTP status=" & frontendStatus & "; error=" & Err.Number
+  End If
+  If backendReady Then
+    WriteLog "backend health check succeeded with HTTP 200"
+  Else
+    WriteLog "backend health check pending; HTTP status=" & backendStatus & "; error=" & Err.Number
   End If
   Err.Clear
   On Error GoTo 0
 
-  If frontendReady Then Exit Do
+  If frontendReady And backendReady Then Exit Do
   WScript.Sleep 250
 Loop
 
-If frontendReady Then
+If frontendReady And backendReady Then
   chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
   If Not fso.FileExists(chromePath) Then
     chromePath = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"

@@ -105,10 +105,12 @@ El recorrido del grafo debe completar el grupo con todas las incidencias que le 
 
 ### 6. Que guarda la base local
 
-La base de datos guarda solo el estado actual de Jira para el alcance configurado.
+La base de datos mantiene un espejo de lo que existe en Jira al finalizar la ultima sincronizacion completa.
+
+Cuando una sincronizacion termina correctamente, se reemplazan las incidencias, ProjectGroups y relaciones anteriores por el resultado recibido y recorrido desde Jira. Todo lo que no se reciba en esa sincronizacion se elimina de esas tablas.
 
 No guarda historico.
-Si una incidencia deja de estar dentro del alcance, deja de existir en la base.
+Si una incidencia ya existia en la base y no se recibe en la nueva sincronizacion, deja de existir en la base.
 
 ### 7. Para que sirve la base local
 
@@ -117,6 +119,8 @@ Sirve para ejecutar consultas SQL sin volver a consultar Jira.
 Esto permite crear reglas de negocio complejas sobre datos ya normalizados.
 
 ### 8. Como funcionan las alertas
+
+El usuario puede crear una alerta desde un constructor visual seleccionando evento, campo, operador y valor. La app genera el SQL internamente para las reglas comunes.
 
 El usuario crea reglas SQL.
 
@@ -157,6 +161,8 @@ Si el Toast informa inicio de sesion requerido y el usuario hace clic:
 - si el login es correcto, se guarda la sesion y el navegador se cierra.
 
 ### 10. Sincronizacion
+
+La app compara el resultado nuevo contra el anterior y clasifica los cambios como incidencia nueva, actualizada o eliminada. Una eliminacion solo se confirma cuando el ProjectGroup fue reconstruido completo. Las alertas se evaluan antes del `COMMIT`, pero sus Toast se muestran solo despues de confirmarlo.
 
 La sincronizacion puede ser automatica o manual.
 

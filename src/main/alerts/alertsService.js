@@ -24,7 +24,55 @@ export class AlertsService {
     return rows[0] ?? null;
   }
 
-  async upsertAlert({ rule, row, projectGroupId }) {
+  async resolveToastText(template, row, projectGroupId) {
+    const text = String(template ?? '');
+    const fieldLabels = {
+      'Clave': 'key',
+      'Resumen': 'summary',
+      'Tipo': 'issuetype',
+      'Estado': 'status',
+      'Responsable': 'assignee',
+      'Reportero': 'reporter',
+      'Proyecto': 'project',
+      'Fecha de creación': 'created',
+      'Fecha de creacion': 'created',
+      'Fecha de actualización': 'updated',
+      'Fecha de actualizacion': 'updated',
+      'Incidencia padre': 'parent',
+      'Estimación': 'timeestimate',
+      'Estimacion': 'timeestimate',
+      'Tiempo empleado': 'timespent',
+    };
+    const tokenPattern = /\[\[([^:]+)::([^\]]+)\]\]/g;
+    const tokens = [...text.matchAll(tokenPattern)];
+    if (tokens.length === 0) {
+      return text;
+    }
+
+    const issues = await this.persistence.query(
+      `
+      SELECT i.*
+      FROM JIRA_PROJECT_GROUP_ISSUES pgi
+      JOIN JIRA_ISSUES i ON i.id = pgi.issue_id
+      WHERE pgi.project_group_id = ?
+      ORDER BY i.id
+      `,
+      [projectGroupId ?? row?.project_group_id ?? null],
+    );
+
+    return text.replace(tokenPattern, (_token, issueType, fieldLabel) => {
+      const field = fieldLabels[fieldLabel] ?? fieldLabel;
+      const values = issues
+        .filter((issue) => String(issue.issuetype ?? '').trim() === String(issueType).trim())
+        .map((issue) => issue[field])
+        .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
+        .map((value) => String(value));
+
+      return [...new Set(values)].join(' | ');
+    });
+  }
+
+  async upsertAlert({ rule, row, projectGroupId, notify = false }) {
     const ruleId = String(rule.id);
     const issueId = String(row.issue_id ?? row.id ?? row.issueId ?? '');
 
@@ -34,7 +82,8 @@ export class AlertsService {
 
     const existing = await this.alertExists(ruleId, issueId);
     const now = new Date().toISOString();
-    const payloadJson = JSON.stringify(row);
+    const toastMessage = await this.resolveToastText(rule.toast_text ?? '', row, projectGroupId);
+    const payloadJson = JSON.stringify({ ...row, toast_message: toastMessage });
 
     if (existing) {
       await this.persistence.exec(
@@ -58,8 +107,8 @@ export class AlertsService {
       INSERT INTO ALERTS (
         id, rule_id, issue_id, project_group_id, is_read,
         created, updated, last_notified_at, retry_count,
-        next_retry_sync, payload_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        next_retry_sync, next_retry_at, payload_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         alertId,
@@ -71,12 +120,13 @@ export class AlertsService {
         now,
         now,
         0,
-        0,
+        Math.max(Number(rule.retry_syncs ?? 0) || 0, 0),
+        new Date(Date.now() + Math.max(Number(rule.retry_minutes ?? 0) || 0, 0) * 60000).toISOString(),
         payloadJson,
       ],
     );
 
-    if (this.toast?.show) {
+    if (notify && this.toast?.show) {
       await this.toast.show({
         title: rule.toast_text ?? 'Alerta Jira',
         message: rule.toast_text ?? 'Se detectó una alerta en Jira.',
@@ -84,17 +134,84 @@ export class AlertsService {
       });
     }
 
-    return { created: true, id: alertId };
+      return { created: true, id: alertId, rule, row, toastMessage };
   }
 
-  async evaluate({ projectGroup }) {
-    if (!this.persistence || !projectGroup?.id) {
+  async repeatUnreadAlerts(rules, notifiedIds = new Set()) {
+    const repeatedAlerts = [];
+
+    for (const rule of rules) {
+      const retryMinutes = Math.max(Number(rule.retry_minutes ?? 0) || 0, 0);
+      if (retryMinutes === 0) {
+        continue;
+      }
+
+      const unreadRows = await this.persistence.query(
+        `
+        SELECT id, issue_id, project_group_id, last_notified_at, next_retry_at, payload_json
+        FROM ALERTS
+        WHERE rule_id = ? AND is_read = 0
+        `,
+        [rule.id],
+      );
+
+      for (const alert of unreadRows) {
+        if (notifiedIds.has(alert.id)) {
+          continue;
+        }
+
+        const now = new Date().toISOString();
+        const nextRetryAt = new Date(alert.last_notified_at ?? now).getTime() + retryMinutes * 60000;
+        if (Date.now() < nextRetryAt) {
+          continue;
+        }
+
+        const row = JSON.parse(alert.payload_json ?? '{}');
+        const toastMessage = await this.resolveToastText(rule.toast_text ?? '', row, alert.project_group_id);
+        const payloadJson = JSON.stringify({ ...row, toast_message: toastMessage });
+        await this.persistence.exec(
+          `
+          UPDATE ALERTS
+          SET retry_count = 0, next_retry_sync = 0, last_notified_at = ?, next_retry_at = ?, updated = ?, payload_json = ?
+          WHERE id = ?
+          `,
+          [now, new Date(Date.now() + retryMinutes * 60000).toISOString(), now, payloadJson, alert.id],
+        );
+
+        repeatedAlerts.push({
+          alertId: alert.id,
+          issueId: String(alert.issue_id),
+          rule,
+          row,
+          projectGroupId: alert.project_group_id,
+          toastMessage,
+        });
+      }
+    }
+
+    return repeatedAlerts;
+  }
+
+  async repeatDueUnreadAlerts() {
+    const rules = await this.persistence.query(
+      `
+      SELECT id, name, sql, toast_text, toast_image, retry_minutes, is_active
+      FROM ALERT_RULES
+      WHERE is_active = 1 AND retry_minutes > 0
+      ORDER BY name ASC
+      `,
+    );
+    return this.repeatUnreadAlerts(rules);
+  }
+
+  async evaluate({ projectGroup = null, notify = false } = {}) {
+    if (!this.persistence) {
       throw new Error('AlertsService dependencies are not fully configured.');
     }
 
     const rules = await this.persistence.query(
       `
-      SELECT id, name, sql, toast_text, toast_image, retry_syncs, is_active
+      SELECT id, name, sql, toast_text, toast_image, retry_minutes, is_active
       FROM ALERT_RULES
       WHERE is_active = 1
       ORDER BY name ASC
@@ -102,6 +219,7 @@ export class AlertsService {
     );
 
     const createdAlerts = [];
+    const notifiedIds = new Set();
 
     for (const rule of rules) {
       const rows = await this.getRuleRows(rule.sql);
@@ -110,23 +228,46 @@ export class AlertsService {
         const result = await this.upsertAlert({
           rule,
           row,
-          projectGroupId: projectGroup.id,
+          projectGroupId: row.project_group_id ?? projectGroup?.id ?? null,
+          notify,
         });
 
         if (result.created) {
+          notifiedIds.add(result.id);
           createdAlerts.push({
             ruleId: rule.id,
             issueId: String(row.issue_id ?? row.id ?? row.issueId ?? ''),
             alertId: result.id,
+            rule: result.rule,
+            row: result.row,
+            projectGroupId: row.project_group_id ?? projectGroup?.id ?? null,
+            toastMessage: result.toastMessage,
           });
         }
       }
     }
 
+    const repeatedAlerts = await this.repeatUnreadAlerts(rules, notifiedIds);
+
     return {
       ok: true,
       createdAlertsCount: createdAlerts.length,
-      createdAlerts,
+      repeatedAlertsCount: repeatedAlerts.length,
+      createdAlerts: [...createdAlerts, ...repeatedAlerts],
     };
+  }
+
+  async notifyCreated(createdAlerts = []) {
+    for (const alert of createdAlerts) {
+      if (!this.toast?.show) {
+        continue;
+      }
+
+      await this.toast.show({
+        title: alert.toastMessage ?? alert.rule?.toast_text ?? 'Alerta Jira',
+        message: alert.toastMessage ?? alert.rule?.toast_text ?? 'Alerta Jira detectada.',
+        payload: alert.row,
+      });
+    }
   }
 }

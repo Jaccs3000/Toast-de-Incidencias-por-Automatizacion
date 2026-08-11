@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +12,7 @@ const viteEntry = path.join(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js
 const backendEntry = path.join(projectRoot, 'src', 'main', 'server.js');
 const frontendHealthUrl = 'http://127.0.0.1:5174';
 const backendUrl = 'http://127.0.0.1:3000/api/bootstrap-context';
+const servicePidPath = path.join(projectRoot, 'data', 'runtime-services.json');
 
 function log(message, details = '') {
   const suffix = details ? ` ${details}` : '';
@@ -24,13 +26,55 @@ if (!existsSync(viteEntry) || !existsSync(backendEntry)) {
 
 log('starting local services', `root=${projectRoot}`);
 
+async function getHealth(url) {
+  return new Promise((resolve) => {
+    let body = '';
+    const request = http.get(url, (response) => {
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { body += chunk; });
+      response.once('end', () => resolve({
+        ok: response.statusCode >= 200 && response.statusCode < 400,
+        statusCode: response.statusCode,
+        body,
+      }));
+    });
+    request.once('error', () => resolve({ ok: false, statusCode: 0, body: '' }));
+  });
+}
+
 async function isReady(url) {
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(1000) });
-    return response.ok;
-  } catch {
-    return false;
+  return (await getHealth(url)).ok;
+}
+
+async function isJiraNotificationsRunning() {
+  const frontend = await getHealth(frontendHealthUrl);
+  const backend = await getHealth(backendUrl);
+  return frontend.ok
+    && frontend.body.includes('Jira Notifications')
+    && backend.ok
+    && backend.body.includes('"appState"');
+}
+
+function stopKnownServices() {
+  if (!existsSync(servicePidPath)) {
+    throw new Error('No hay procesos propios registrados para liberar el estado parcial.');
   }
+
+  const stored = JSON.parse(readFileSync(servicePidPath, 'utf8'));
+  const pids = new Set([stored.backendPid, stored.vitePid]
+    .map(Number)
+    .filter((pid) => pid > 0 && pid !== process.pid));
+
+  for (const pid of pids) {
+    log('stopping known local service', `pid=${pid}`);
+    try {
+      process.kill(pid);
+    } catch (error) {
+      log('local service was already stopped', `pid=${pid}`);
+    }
+  }
+
+  unlinkSync(servicePidPath);
 }
 
 async function waitFor(url, timeoutMs = 15000) {
@@ -46,8 +90,16 @@ async function waitFor(url, timeoutMs = 15000) {
   return false;
 }
 
-if (await isReady(frontendHealthUrl) && await isReady(backendUrl)) {
+const frontendReady = await isReady(frontendHealthUrl);
+const backendReady = await isReady(backendUrl);
+if (await isJiraNotificationsRunning()) {
+  log('local services already running; no restart required');
   process.exit(0);
+}
+
+if (frontendReady || backendReady) {
+  log('partial local service state detected; restarting required-port processes');
+  stopKnownServices();
 }
 
 const backend = spawn(process.execPath, [backendEntry], {
@@ -68,6 +120,8 @@ const vite = spawn(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port'
   stdio: 'inherit',
   shell: false,
 });
+mkdirSync(path.dirname(servicePidPath), { recursive: true });
+writeFileSync(servicePidPath, JSON.stringify({ backendPid: backend.pid, vitePid: vite.pid }), 'utf8');
 vite.on('error', (error) => log('vite process error', error.message));
 vite.on('spawn', () => log('vite process spawned'));
 vite.on('exit', (code, signal) => log('vite process exited', `code=${code} signal=${signal ?? 'none'}`));
@@ -88,6 +142,10 @@ function shutdown(code = 0) {
 
   if (vite && !vite.killed) {
     vite.kill();
+  }
+
+  if (existsSync(servicePidPath)) {
+    unlinkSync(servicePidPath);
   }
 
   process.exit(code);
