@@ -24,7 +24,7 @@ export class AlertsService {
     return rows[0] ?? null;
   }
 
-  async resolveToastText(template, row, projectGroupId) {
+  async resolveToastText(template, row) {
     const text = String(template ?? '');
     const fieldLabels = {
       'Clave': 'key',
@@ -49,26 +49,31 @@ export class AlertsService {
       return text;
     }
 
-    const issues = await this.persistence.query(
-      `
-      SELECT i.*
-      FROM JIRA_PROJECT_GROUP_ISSUES pgi
-      JOIN JIRA_ISSUES i ON i.id = pgi.issue_id
-      WHERE pgi.project_group_id = ?
-      ORDER BY i.id
-      `,
-      [projectGroupId ?? row?.project_group_id ?? null],
-    );
+    let before = {};
+    let after = {};
+    try {
+      before = typeof row?.before_json === 'string'
+        ? JSON.parse(row.before_json)
+        : (row?.before_json ?? {});
+      after = typeof row?.after_json === 'string'
+        ? JSON.parse(row.after_json)
+        : (row?.after_json ?? {});
+    } catch {
+      // Keep the row-level values when a change snapshot is incomplete.
+    }
+
+    const matchingIssue = { ...row, ...before, ...after };
 
     return text.replace(tokenPattern, (_token, issueType, fieldLabel) => {
       const field = fieldLabels[fieldLabel] ?? fieldLabel;
-      const values = issues
-        .filter((issue) => String(issue.issuetype ?? '').trim() === String(issueType).trim())
-        .map((issue) => issue[field])
-        .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
-        .map((value) => String(value));
+      if (String(matchingIssue.issuetype ?? '').trim() !== String(issueType).trim()) {
+        return '';
+      }
 
-      return [...new Set(values)].join(' | ');
+      const value = matchingIssue[field];
+      return value !== null && value !== undefined && String(value).trim() !== ''
+        ? String(value)
+        : '';
     });
   }
 

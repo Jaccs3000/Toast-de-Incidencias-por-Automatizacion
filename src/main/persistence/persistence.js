@@ -43,6 +43,11 @@ export class Persistence {
       // The column already exists in databases initialized after the schema update.
     }
     try {
+      await this.exec('ALTER TABLE JIRA_ISSUES ADD COLUMN issuetype_icon_url TEXT');
+    } catch {
+      // The column already exists in databases initialized after the schema update.
+    }
+    try {
       await this.exec('ALTER TABLE ALERT_RULES ADD COLUMN retry_minutes INTEGER');
       await this.exec('UPDATE ALERT_RULES SET retry_minutes = 0 WHERE retry_minutes IS NULL');
     } catch {

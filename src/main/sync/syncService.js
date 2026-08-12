@@ -216,6 +216,7 @@ export class SyncService {
         i.key,
         i.project,
         i.issuetype,
+        i.issuetype_icon_url,
         i.summary,
         i.description,
         i.status,
@@ -252,6 +253,7 @@ export class SyncService {
           key: issue.key ?? null,
           project: issue.fields?.project?.key ?? issue.fields?.project?.name ?? null,
           issuetype: issue.fields?.issuetype?.name ?? null,
+          issuetype_icon_url: issue.fields?.issuetype?.iconUrl ?? null,
           summary: issue.fields?.summary ?? null,
           description: issue.fields?.description ?? null,
           status: issue.fields?.status?.name ?? null,
@@ -275,7 +277,7 @@ export class SyncService {
 
   getChangedFields(before, after) {
     const fields = [
-      'project', 'issuetype', 'summary', 'description', 'status', 'reporter',
+      'project', 'issuetype', 'issuetype_icon_url', 'summary', 'description', 'status', 'reporter',
       'assignee', 'created', 'updated', 'parent', 'timeestimate', 'timespent', 'issuelinks',
     ];
 

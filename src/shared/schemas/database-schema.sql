@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS JIRA_ISSUES (
   key TEXT NOT NULL,
   project TEXT,
   issuetype TEXT,
+  issuetype_icon_url TEXT,
   summary TEXT,
   description TEXT,
   status TEXT,

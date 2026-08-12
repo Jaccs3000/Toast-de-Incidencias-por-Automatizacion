@@ -567,10 +567,6 @@ async function handleAlertRuleDelete(req, res) {
 }
 
 async function handleAlertRead(req, res) {
-  if (syncInProgress) {
-    json(res, 409, { ok: false, error: 'No se pueden modificar alertas durante una sincronizacion.' });
-    return;
-  }
   const body = await readBody(req);
   const id = String(body?.id ?? '').trim();
   await state.runtime.persistence.alerts.markRead(id);

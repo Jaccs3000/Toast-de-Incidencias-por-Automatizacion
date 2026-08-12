@@ -16,6 +16,7 @@ function normalizeIssue(issue) {
     key: issue?.key ?? null,
     project: issue?.fields?.project?.key ?? issue?.fields?.project?.name ?? null,
     issuetype: issue?.fields?.issuetype?.name ?? null,
+    issuetype_icon_url: issue?.fields?.issuetype?.iconUrl ?? null,
     summary: issue?.fields?.summary ?? null,
     description: issue?.fields?.description ?? null,
     status: issue?.fields?.status?.name ?? null,
@@ -45,14 +46,15 @@ export class IssuesRepository {
     await this.persistence.exec(
       `
       INSERT INTO JIRA_ISSUES (
-        id, key, project, issuetype, summary, description, status,
+        id, key, project, issuetype, issuetype_icon_url, summary, description, status,
         reporter, assignee, created, updated, parent, timeestimate,
         timespent, issuelinks
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         key = excluded.key,
         project = excluded.project,
         issuetype = excluded.issuetype,
+        issuetype_icon_url = excluded.issuetype_icon_url,
         summary = excluded.summary,
         description = excluded.description,
         status = excluded.status,
@@ -70,6 +72,7 @@ export class IssuesRepository {
         normalized.key,
         normalized.project,
         normalized.issuetype,
+        normalized.issuetype_icon_url,
         normalized.summary,
         normalized.description,
         normalized.status,

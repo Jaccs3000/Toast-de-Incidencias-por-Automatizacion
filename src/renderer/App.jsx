@@ -205,6 +205,7 @@ export default function App() {
   const [bootstrapContext, setBootstrapContext] = useState(null);
   const [loginState, setLoginState] = useState(null);
   const [syncState, setSyncState] = useState(null);
+  const [manualSyncInProgress, setManualSyncInProgress] = useState(false);
   const [alertsSummary, setAlertsSummary] = useState(null);
   const [alertRules, setAlertRules] = useState([]);
   const [newAlertOpen, setNewAlertOpen] = useState(false);
@@ -261,7 +262,7 @@ export default function App() {
   const session = bootstrapContext?.session ?? null;
   const appState = bootstrapContext?.appState ?? 'booting';
   const sessionIsValid = Boolean(session?.ok);
-  const syncInProgress = Boolean(syncStatus?.is_running) || appState === 'syncing';
+  const syncInProgress = manualSyncInProgress || Boolean(syncStatus?.is_running) || appState === 'syncing';
   const syncCanceling = Boolean(syncStatus?.is_canceling);
 
   const appStateLabel = {
@@ -336,7 +337,9 @@ export default function App() {
     alertNotificationProcessingRef.current = true;
     const message = alert.toast_message || alert.toast_text || alert.rule_name || 'Nueva alerta de Jira';
     setAlertToast({ id: alert.id, message });
-    const imageUrl = backendAssetUrl(alert.toast_image);
+    const imageUrl = alert.toast_image
+      ? backendAssetUrl(alert.toast_image)
+      : alert.issuetype_icon_url;
     showNativeNotification('Jira Notifications', message, () => handleReadAlert(alert.id), imageUrl);
 
     alertNotificationTimerRef.current = setTimeout(() => {
@@ -518,7 +521,7 @@ export default function App() {
       refreshBootstrapContext().catch(() => {});
       refreshAlerts().catch(() => {});
       refreshAlertRules().catch(() => {});
-    }, 5000);
+    }, 1000);
 
     return () => {
       mounted = false;
@@ -584,10 +587,26 @@ export default function App() {
       return;
     }
 
-    const result = await api('/api/sync', { method: 'POST', body: '{}' });
-    setSyncState(result);
-    await refreshBootstrapContext();
-    await refreshAlerts();
+    setManualSyncInProgress(true);
+    setBootstrapContext((current) => current ? {
+      ...current,
+      appState: 'syncing',
+      syncStatus: {
+        ...(current.syncStatus ?? {}),
+        is_running: 1,
+        is_canceling: 0,
+        last_status: 'Sincronizando...',
+      },
+    } : current);
+
+    try {
+      const result = await api('/api/sync', { method: 'POST', body: '{}' });
+      setSyncState(result);
+      await refreshBootstrapContext();
+      await refreshAlerts();
+    } finally {
+      setManualSyncInProgress(false);
+    }
   };
 
   const handleSaveJql = async () => {
@@ -1553,13 +1572,15 @@ export default function App() {
           <dl className="status-grid">
             <div>
               <dt>Estado app</dt>
-              <dd>{appStateLabel}</dd>
+              <dd className={syncInProgress ? 'sync-status-pulsing' : ''}>{appStateLabel}</dd>
             </div>
             <div>
               <dt>Sincronizacion</dt>
-              <dd>{syncStatus?.last_status ?? 'Cargando...'}</dd>
+              <dd className={syncInProgress ? 'sync-status-pulsing' : ''}>
+                {syncStatus?.last_status ?? 'Cargando...'}
+              </dd>
               <dt>Proxima sincronizacion automatica</dt>
-              <dd>
+              <dd className={syncInProgress ? 'sync-status-pulsing' : ''}>
                 {syncInProgress
                   ? 'Sincronizando...'
                   : autoSyncEnabled
@@ -1616,6 +1637,15 @@ export default function App() {
               <ul className="alerts-list">
                 {alertsSummary.unreadAlerts.map((alert) => (
                   <li key={alert.id} className="alerts-item">
+                    {(alert.toast_image || alert.issuetype_icon_url) ? (
+                      <img
+                        className="alerts-item-image"
+                        src={alert.toast_image ? backendAssetUrl(alert.toast_image) : alert.issuetype_icon_url}
+                        alt=""
+                        width="30"
+                        height="30"
+                      />
+                    ) : null}
                     <span className="alerts-item-message">
                       {alert.toast_message || alert.toast_text || alert.rule_name || 'Nueva alerta de Jira'}
                       {Number(alert.retry_minutes ?? 0) > 0 ? (
@@ -1630,7 +1660,6 @@ export default function App() {
                       type="button"
                       className="alerts-read-button"
                       onClick={() => handleReadAlert(alert.id)}
-                      disabled={syncInProgress}
                       aria-label="Marcar alerta como leida"
                       title="Marcar como leida"
                     >
@@ -1644,12 +1673,6 @@ export default function App() {
             )}
           </div>
 
-          {loginState ? (
-            <pre className="login-state">{JSON.stringify(loginState, null, 2)}</pre>
-          ) : null}
-          {syncState ? (
-            <pre className="login-state">{JSON.stringify(syncState, null, 2)}</pre>
-          ) : null}
         </div>
         </div>
       </section>
