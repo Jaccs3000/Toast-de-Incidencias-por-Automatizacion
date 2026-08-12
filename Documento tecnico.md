@@ -423,6 +423,29 @@ Reglas:
 - no se borra la carpeta contenedora.
 - el archivo de sesion no debe incluirse en control de versiones ni compartirse.
 
-### 15. Objetivo tecnico
+### 15. Estado de la sesion de Windows
+
+Al iniciar el backend, la app registra dos tareas programadas para el usuario actual:
+
+- `Jira Notifications - Windows Session Lock`;
+- `Jira Notifications - Windows Session Unlock`.
+
+Las tareas ejecutan `scripts/update-windows-session-hidden.vbs`, que llama de forma oculta a `scripts/update-windows-session.ps1`, cuando Windows bloquea o desbloquea la sesion. No debe mostrarse ninguna ventana de CMD o PowerShell durante este proceso. El estado actual se guarda en:
+
+- `data/windows-session/session-state.json`;
+
+El historial de eventos se conserva en:
+
+- `data/windows-session/session-state-history.jsonl`.
+
+Cada evento registra `locked` o `unlocked`, la fecha y hora de Colombia (`UTC-05:00`) y el identificador de sesion. Al iniciar el backend por el flujo normal de la app se escribe `unlocked`, porque ese flujo requiere una sesion activa y desbloqueada. Esta marca de arranque no se agrega al historial. Esta primera prueba solo registra los cambios; todavia no bloquea sincronizaciones ni Toast.
+
+Si Windows no permite registrar las tareas, el backend deja el estado en `unknown` y lo registra en el log. No se cambian politicas ni variables de entorno. Al detener el backend, se deshabilitan solo estas dos tareas de la aplicacion. Al iniciar nuevamente, se habilitan si existen o se crean si faltan.
+
+Antes de cada sincronizacion automatica y de cada reenvio de Toast se lee `session-state.json`. Con estado `locked` o `unknown`, la sincronizacion automatica se omite y su proximo intervalo se reinicia. Los reenvios de alertas no se procesan. Al desbloquear, cada alerta no leida conserva el tiempo que le faltaba antes del bloqueo; no se envia Toast inmediatamente. La sincronizacion siguiente ocurre solo cuando llega su nuevo intervalo. Una sincronizacion ya iniciada no se interrumpe.
+
+La sincronizacion manual solo puede solicitarse desde el boton de la interfaz. Antes de ejecutarla, si el estado no es `unlocked`, se actualiza a `unlocked` con origen `manual-sync`; despues se reanudan los conteos pausados y se ejecuta la sincronizacion.
+
+### 16. Objetivo tecnico
 
 La app debe mantenerse simple, modular y facil de extender. Los cambios futuros deben resolverse, en lo posible, con configuracion o con modulos nuevos, no tocando lo que ya este estable.

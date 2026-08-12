@@ -41,15 +41,15 @@ export class JiraClient {
     return response.json();
   }
 
-  async getIssue(issueKey) {
+  async getIssue(issueKey, options = {}) {
     if (!issueKey) {
       throw new Error('issueKey is required.');
     }
 
-    return this.request(`/rest/api/3/issue/${encodeURIComponent(issueKey)}`);
+    return this.request(`/rest/api/3/issue/${encodeURIComponent(issueKey)}`, options);
   }
 
-  async searchIssues(jql, maxResults = 50) {
+  async searchIssues(jql, maxResults = 50, options = {}) {
     if (!jql) {
       throw new Error('jql is required.');
     }
@@ -74,6 +74,7 @@ export class JiraClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: options.signal,
       });
 
       if (Array.isArray(page?.issues)) {
@@ -90,7 +91,7 @@ export class JiraClient {
     };
   }
 
-  async getMyself() {
-    return this.request('/rest/api/3/myself');
+  async getMyself(options = {}) {
+    return this.request('/rest/api/3/myself', options);
   }
 }

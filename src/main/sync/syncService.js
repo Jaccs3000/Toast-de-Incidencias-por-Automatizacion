@@ -449,7 +449,7 @@ export class SyncService {
     });
   }
 
-  async run() {
+  async run({ signal } = {}) {
     if (!this.persistence || !this.jira || !this.logs || !this.auth || !this.graph || !this.alerts) {
       throw new Error('SyncService dependencies are not fully configured.');
     }
@@ -465,11 +465,19 @@ export class SyncService {
     });
 
     try {
+      const throwIfCanceled = () => {
+        if (signal?.aborted) {
+          throw new DOMException('Synchronization canceled.', 'AbortError');
+        }
+      };
+
+      throwIfCanceled();
       if (!this.configuration?.app?.jiraBaseUrl) {
         throw new Error('Jira base URL is not configured.');
       }
 
       let session = await this.auth.validateSession();
+      throwIfCanceled();
 
       if (!session.ok) {
         await this.logs.warn('Synchronization stopped: Jira session invalid');
@@ -495,7 +503,7 @@ export class SyncService {
       });
 
       await this.logs.info('Synchronization phase: validating Jira user');
-      await this.jira.getMyself();
+      await this.jira.getMyself({ signal });
       await this.logs.info('Synchronization phase completed: Jira user validated');
 
       const jqlQueries = this.configuration?.app?.jqlQueries ?? [];
@@ -505,8 +513,9 @@ export class SyncService {
 
       const seedIssues = new Map();
       for (const jql of jqlQueries) {
+        throwIfCanceled();
         await this.logs.info('Executing configured JQL', { jql });
-        const searchResult = await this.jira.searchIssues(jql, 50);
+        const searchResult = await this.jira.searchIssues(jql, 50, { signal });
         await this.logs.info('Configured JQL completed', {
           jql,
           issuesCount: searchResult?.issues?.length ?? 0,
@@ -525,12 +534,15 @@ export class SyncService {
       const candidateGroups = [];
       if (seedIssues.size > 0) {
         for (const seedIssue of seedIssues.values()) {
+          throwIfCanceled();
           await this.logs.info('Loading ProjectGroup seed issue', { issueKey: seedIssue.key });
-          const detailedSeedIssue = await this.jira.getIssue(seedIssue.key);
+          const detailedSeedIssue = await this.jira.getIssue(seedIssue.key, { signal });
           await this.logs.info('Traversing graph for ProjectGroup', { issueKey: seedIssue.key });
-          const projectGroup = await this.graph.buildProjectGroup(detailedSeedIssue, async (issueKey) => {
-            return this.jira.getIssue(issueKey);
-          });
+          const projectGroup = await this.graph.buildProjectGroup(
+            detailedSeedIssue,
+            async (issueKey) => this.jira.getIssue(issueKey, { signal }),
+            { signal },
+          );
           await this.logs.info('Graph traversal completed', {
             issueKey: seedIssue.key,
             issuesCount: projectGroup.issues.length,
@@ -562,21 +574,25 @@ export class SyncService {
       });
 
       await this.persistence.transaction(async () => {
+        throwIfCanceled();
         await this.persistence.exec('DELETE FROM JIRA_RELATIONSHIPS');
         await this.persistence.exec('DELETE FROM JIRA_PROJECT_GROUP_ISSUES');
         await this.persistence.exec('DELETE FROM JIRA_PROJECT_GROUPS');
         await this.persistence.exec('DELETE FROM JIRA_ISSUES');
 
         for (const projectGroup of consolidatedGroups) {
+          throwIfCanceled();
           const detailedSeedIssue = projectGroup.issues.find((issue) => String(issue?.id) === String(projectGroup.rootIssueId))
             ?? projectGroup.issues[0];
           await this.persistProjectGroup(projectGroup, detailedSeedIssue, startedAt);
         }
 
         await this.persistChanges(syncId, changes);
+        throwIfCanceled();
         alertResult = await this.alerts.evaluate({ notify: false });
       });
 
+      throwIfCanceled();
       await this.alerts.notifyCreated(alertResult.createdAlerts);
 
       for (const projectGroup of consolidatedGroups) {
@@ -612,14 +628,16 @@ export class SyncService {
       };
     } catch (error) {
       const finishedAt = new Date().toISOString();
-      await this.logs.error('Synchronization cycle failed', {
+      const canceled = error?.name === 'AbortError';
+      await this.logs[canceled ? 'warn' : 'error'](canceled ? 'Synchronization cycle canceled' : 'Synchronization cycle failed', {
         message: error.message,
       });
 
       await this.persistence.syncStatus.updateStatus({
         last_status: 'Error durante la sincronización.',
         last_finished_at: finishedAt,
-        last_error_message: error.message,
+        last_status: canceled ? 'Sincronizacion detenida.' : 'Error durante la sincronizacion.',
+        last_error_message: canceled ? null : error.message,
         is_running: false,
         is_canceling: false,
       });
@@ -628,6 +646,7 @@ export class SyncService {
         ok: false,
         startedAt,
         finishedAt,
+        canceled,
         error: error.message,
       };
     }

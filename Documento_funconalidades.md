@@ -300,7 +300,21 @@ Ubicacion:
 Si se crea una nueva sesion, primero se borran solo los archivos anteriores de esa carpeta para evitar guardar informacion obsoleta.
 No se borra la carpeta contenedora.
 
-### 19. Objetivo final
+### 19. Registro de bloqueo de Windows
+
+Durante la primera prueba, el backend registra automaticamente dos tareas programadas para el usuario actual. Una responde al bloqueo de la sesion y otra al desbloqueo.
+
+El wrapper oculto `scripts/update-windows-session-hidden.vbs` ejecuta `scripts/update-windows-session.ps1` sin mostrar ventanas. El script actualiza `data/windows-session/session-state.json`. Cada cambio tambien se agrega a `data/windows-session/session-state-history.jsonl` con fecha y hora de Colombia (`UTC-05:00`) para verificar el orden y la hora de los eventos.
+
+Los estados posibles son `locked`, `unlocked` y `unknown`. Al iniciar el backend por el flujo normal de la app, el estado actual se establece como `unlocked`; esa marca no se agrega al historial. `unknown` queda reservado para errores o estados que no puedan confirmarse. Esta funcionalidad solo registra el estado en esta fase; no modifica aun la sincronizacion ni el envio de Toast.
+
+Si la politica del equipo impide crear o ejecutar la tarea, no se intenta saltar la restriccion. La app conserva `unknown` y deja el detalle en el log. Al detener el backend, se deshabilitan solo las dos tareas creadas por la app. Al iniciar nuevamente, se habilitan si existen o se crean si faltan.
+
+Cuando el estado es `locked` o `unknown`, la sincronizacion automatica no se ejecuta al llegar a cero: se reinicia su conteo completo. Tambien se pausa el conteo de reenvio de todas las alertas no leidas. Al pasar a `unlocked`, cada alerta continua desde el tiempo restante que tenia; no se reenvia de inmediato. Si una sincronizacion ya habia comenzado, termina normalmente.
+
+Si el usuario pulsa `Sincronizar ahora`, la app cambia el estado a `unlocked` cuando sea diferente y continua con la sincronizacion manual y el resto del flujo.
+
+### 20. Objetivo final
 
 La app debe monitorear Jira por el usuario y avisarle solo cuando una regla configurada se cumpla.
 

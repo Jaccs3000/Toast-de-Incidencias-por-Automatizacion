@@ -111,7 +111,7 @@ export class GraphService {
     return node.follow;
   }
 
-  async buildProjectGroup(seedIssue, issueLoader = null) {
+  async buildProjectGroup(seedIssue, issueLoader = null, { signal } = {}) {
     if (!seedIssue) {
       throw new Error('A seed issue is required to build a ProjectGroup.');
     }
@@ -130,6 +130,10 @@ export class GraphService {
     const members = [];
 
     while (queue.length > 0) {
+      if (signal?.aborted) {
+        throw new DOMException('Synchronization canceled.', 'AbortError');
+      }
+
       const currentEntry = queue.shift();
       const current = currentEntry?.issue;
       const currentId = createIssueIdentity(current);
@@ -180,6 +184,9 @@ export class GraphService {
 
           let relatedIssue = cache.get(key);
           if (!relatedIssue) {
+            if (signal?.aborted) {
+              throw new DOMException('Synchronization canceled.', 'AbortError');
+            }
             relatedIssue = await loadIssue(key);
             if (relatedIssue) {
               cache.set(key, relatedIssue);

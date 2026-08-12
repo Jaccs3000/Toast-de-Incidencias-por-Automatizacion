@@ -7,6 +7,7 @@ import { GraphService } from '../graph/graphService.js';
 import { SyncService } from '../sync/syncService.js';
 import { AlertsService } from '../alerts/alertsService.js';
 import { ToastService } from '../toast/toastService.js';
+import { WindowsSessionTask } from '../windowsSession/windowsSessionTask.js';
 
 export async function bootstrapApp() {
   const configuration = await loadConfiguration();
@@ -17,6 +18,9 @@ export async function bootstrapApp() {
   });
 
   await logs.initialize();
+
+  const windowsSession = new WindowsSessionTask({ logs });
+  await windowsSession.initialize();
 
   const session = await auth.validateSession();
   const jira = new JiraClient(configuration?.app?.jiraBaseUrl ? {
@@ -61,6 +65,7 @@ export async function bootstrapApp() {
     alerts,
     toast,
     logs,
+    windowsSession,
     syncStatus,
     syncService,
     schema,

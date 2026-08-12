@@ -52,4 +52,29 @@ export class AlertsRepository {
       [new Date().toISOString(), alertId],
     );
   }
+
+  async resumeUnreadRetries({ lockedAt, unlockedAt } = {}) {
+    const lockTime = Number(lockedAt);
+    const unlockTime = Number(unlockedAt);
+    if (!Number.isFinite(lockTime) || !Number.isFinite(unlockTime) || unlockTime < lockTime) {
+      return 0;
+    }
+
+    const rows = await this.persistence.query(
+      'SELECT id, next_retry_at FROM ALERTS WHERE is_read = 0 AND next_retry_at IS NOT NULL',
+    );
+    let updated = 0;
+    for (const row of rows) {
+      const retryAt = new Date(row.next_retry_at).getTime();
+      if (!Number.isFinite(retryAt)) continue;
+      const remaining = Math.max(retryAt - lockTime, 0);
+      const nextRetryAt = new Date(unlockTime + remaining).toISOString();
+      await this.persistence.exec(
+        'UPDATE ALERTS SET next_retry_at = ?, updated = ? WHERE id = ? AND is_read = 0',
+        [nextRetryAt, new Date(unlockTime).toISOString(), row.id],
+      );
+      updated += 1;
+    }
+    return updated;
+  }
 }

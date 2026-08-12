@@ -115,16 +115,33 @@ function sqlText(value) {
   return `'${String(value ?? '').replaceAll("'", "''")}'`;
 }
 
+function normalizedSqlTextExpression(expression) {
+  return `lower(strip_accents(COALESCE(${expression}, '')))`;
+}
+
+function normalizedSqlValue(value) {
+  return `lower(strip_accents(${sqlText(value)}))`;
+}
+
 function buildAlertSql(alertForm) {
   const eventExpression = `c.change_type = ${sqlText(alertForm.event)}`;
   const conditionExpressions = [];
   alertForm.conditions
     .filter((condition) => condition.value.trim())
     .forEach((condition, index) => {
-      const field = `COALESCE(json_extract_string(c.after_json, '$.${condition.field}'), json_extract_string(c.before_json, '$.${condition.field}'))`;
-      const value = condition.operator === 'LIKE'
-        ? `${field} ILIKE ${sqlText(`%${condition.value}%`)}`
-        : `${field} ${condition.operator} ${sqlText(condition.value)}`;
+      const field = normalizedSqlTextExpression(
+        `COALESCE(json_extract_string(c.after_json, '$.${condition.field}'), json_extract_string(c.before_json, '$.${condition.field}'))`,
+      );
+      const normalizedValue = normalizedSqlValue(condition.value);
+      const usesContains = condition.operator === 'LIKE'
+        || (condition.field === 'assignee' && condition.operator === '=');
+      const value = usesContains
+        ? condition.field === 'assignee'
+          ? condition.value.trim().split(/\s+/).map((token) => (
+            `${field} LIKE '%' || ${normalizedSqlValue(token)} || '%'`
+          )).join(' AND ')
+          : `${field} LIKE '%' || ${normalizedValue} || '%'`
+        : `${field} ${condition.operator} ${normalizedValue}`;
       const connector = index === 0 ? '' : (condition.connector || 'AND');
       conditionExpressions.push({ connector, value });
     });
@@ -231,6 +248,10 @@ export default function App() {
   const permissionRequestStartedRef = useRef(false);
   const sessionNotificationRef = useRef(null);
   const knownAlertNotifiedAtRef = useRef(new Map());
+  const alertNotificationQueueRef = useRef([]);
+  const queuedAlertIdsRef = useRef(new Set());
+  const alertNotificationProcessingRef = useRef(false);
+  const alertNotificationTimerRef = useRef(null);
   const alertsInitializedRef = useRef(false);
   const servicesStoppedRef = useRef(false);
   const jqlInitializedRef = useRef(false);
@@ -241,6 +262,7 @@ export default function App() {
   const appState = bootstrapContext?.appState ?? 'booting';
   const sessionIsValid = Boolean(session?.ok);
   const syncInProgress = Boolean(syncStatus?.is_running) || appState === 'syncing';
+  const syncCanceling = Boolean(syncStatus?.is_canceling);
 
   const appStateLabel = {
     booting: 'Iniciando app',
@@ -299,6 +321,42 @@ export default function App() {
       onClick?.();
     };
     return true;
+  };
+
+  const processAlertNotificationQueue = () => {
+    if (alertNotificationProcessingRef.current) {
+      return;
+    }
+
+    const alert = alertNotificationQueueRef.current.shift();
+    if (!alert) {
+      return;
+    }
+
+    alertNotificationProcessingRef.current = true;
+    const message = alert.toast_message || alert.toast_text || alert.rule_name || 'Nueva alerta de Jira';
+    setAlertToast({ id: alert.id, message });
+    const imageUrl = backendAssetUrl(alert.toast_image);
+    showNativeNotification('Jira Notifications', message, () => handleReadAlert(alert.id), imageUrl);
+
+    alertNotificationTimerRef.current = setTimeout(() => {
+      queuedAlertIdsRef.current.delete(alert.id);
+      alertNotificationProcessingRef.current = false;
+      alertNotificationTimerRef.current = null;
+      processAlertNotificationQueue();
+    }, 2500);
+  };
+
+  const enqueueAlertNotifications = (alerts) => {
+    for (const alert of alerts) {
+      if (queuedAlertIdsRef.current.has(alert.id)) {
+        continue;
+      }
+
+      queuedAlertIdsRef.current.add(alert.id);
+      alertNotificationQueueRef.current.push(alert);
+    }
+    processAlertNotificationQueue();
   };
 
   const notifySessionRequired = (intervalSeconds = 300) => {
@@ -391,8 +449,8 @@ export default function App() {
 
     const unreadAlerts = Array.isArray(summary?.unreadAlerts) ? summary.unreadAlerts : [];
     const knownAlerts = knownAlertNotifiedAtRef.current;
-    const alertToShow = alertsInitializedRef.current
-      ? unreadAlerts.find((alert) => {
+    const alertsToShow = alertsInitializedRef.current
+      ? unreadAlerts.filter((alert) => {
         if (!knownAlerts.has(alert.id)) {
           return true;
         }
@@ -404,13 +462,8 @@ export default function App() {
           && new Date(alert.last_notified_at).getTime() > new Date(previousNotifiedAt).getTime(),
         );
       })
-      : null;
-    if (alertToShow) {
-      const message = alertToShow.toast_message || alertToShow.toast_text || alertToShow.rule_name || 'Nueva alerta de Jira';
-      setAlertToast({ id: alertToShow.id, message });
-      const imageUrl = backendAssetUrl(alertToShow.toast_image);
-      showNativeNotification('Jira Notifications', message, () => handleReadAlert(alertToShow.id), imageUrl);
-    }
+      : [];
+    enqueueAlertNotifications(alertsToShow);
     knownAlertNotifiedAtRef.current = new Map(
       unreadAlerts.map((alert) => [alert.id, alert.last_notified_at ?? null]),
     );
@@ -476,6 +529,9 @@ export default function App() {
       if (uiToastTimerRef.current) {
         clearTimeout(uiToastTimerRef.current);
       }
+      if (alertNotificationTimerRef.current) {
+        clearTimeout(alertNotificationTimerRef.current);
+      }
       closeSessionNotification();
     };
   }, []);
@@ -519,6 +575,12 @@ export default function App() {
 
   const handleSync = async () => {
     if (syncInProgress) {
+      try {
+        await api('/api/sync/cancel', { method: 'POST', body: '{}' });
+        showUiToast('Deteniendo sincronización...');
+      } catch (error) {
+        showUiToast(`No se pudo detener la sincronización: ${error.message}`, 'error');
+      }
       return;
     }
 
@@ -777,7 +839,13 @@ export default function App() {
               onChange={(event) => setAlertForm((current) => ({
                 ...current,
                 conditions: current.conditions.map((item, itemIndex) => itemIndex === index
-                  ? { ...item, field: event.target.value }
+                  ? {
+                    ...item,
+                    field: event.target.value,
+                    operator: event.target.value === 'assignee' && item.operator === '='
+                      ? 'LIKE'
+                      : item.operator,
+                  }
                   : item),
               }))}
             >
@@ -1118,6 +1186,7 @@ export default function App() {
     <main className="app-shell">
       <section className="hero">
         <div className="dashboard-grid">
+        <fieldset disabled={syncInProgress} className="dashboard-editable-panels">
         <div className="settings-card dashboard-card dashboard-alert">
           <div className="section-heading">
             <button type="button" className="primary-button" onClick={handleNewAlert}>
@@ -1175,7 +1244,13 @@ export default function App() {
                   onChange={(event) => setAlertForm((current) => ({
                     ...current,
                     conditions: current.conditions.map((item, itemIndex) => itemIndex === index
-                      ? { ...item, field: event.target.value }
+                      ? {
+                        ...item,
+                        field: event.target.value,
+                        operator: event.target.value === 'assignee' && item.operator === '='
+                          ? 'LIKE'
+                          : item.operator,
+                      }
                       : item),
                   }))}
                 >
@@ -1387,6 +1462,7 @@ export default function App() {
             </button>
           </div>
         </div>
+        </fieldset>
 
         <div className="settings-card dashboard-card dashboard-sql">
           <h2>Consulta SQL temporal</h2>
@@ -1407,6 +1483,7 @@ export default function App() {
                 <textarea
                   value={query}
                   onFocus={() => setSelectedSqlIndex(index)}
+                  readOnly={syncInProgress}
                   onChange={(event) => {
                     const next = [...sqlQueries];
                     next[index] = event.target.value;
@@ -1425,7 +1502,7 @@ export default function App() {
                     setSqlQueries(next);
                     setSelectedSqlIndex(Math.min(selectedSqlIndex, next.length - 1));
                   }}
-                  disabled={sqlQueries.length === 1}
+                  disabled={sqlQueries.length === 1 || syncInProgress}
                   aria-label={`Eliminar consulta SQL ${index + 1}`}
                 >
                   Eliminar
@@ -1436,6 +1513,7 @@ export default function App() {
           <button
             type="button"
             className="sql-query-add"
+            disabled={syncInProgress}
             onClick={() => {
               setSqlQueries([...sqlQueries, 'SELECT key, issuetype, status FROM JIRA_ISSUES LIMIT 20']);
               setSelectedSqlIndex(sqlQueries.length);
@@ -1444,7 +1522,11 @@ export default function App() {
             + Agregar consulta SQL
           </button>
           <div className="settings-actions">
-            <button type="button" onClick={handleExecuteSql} disabled={sqlExecuting || syncInProgress}>
+            <button
+              type="button"
+              onClick={handleExecuteSql}
+              disabled={sqlExecuting || (syncInProgress && !/^select\b/i.test((sqlQueries[selectedSqlIndex] ?? '').trim()))}
+            >
               {sqlExecuting ? 'Ejecutando...' : 'Ejecutar SQL'}
             </button>
           </div>
@@ -1460,7 +1542,7 @@ export default function App() {
           <div className={`toast-banner dashboard-toast ${sessionToastType === 'success' ? 'toast-success' : 'toast-warning'}`}>
             <span>{sessionToast}</span>
             {sessionToastType === 'warning' ? (
-              <button type="button" onClick={handleLogin} disabled={loginInProgress}>
+              <button type="button" onClick={handleLogin} disabled={loginInProgress || syncInProgress}>
                 {loginInProgress ? 'Esperando inicio de sesion...' : 'Iniciar sesion'}
               </button>
             ) : null}
@@ -1501,7 +1583,7 @@ export default function App() {
 
           <div className="actions">
             {appState === 'auth_required' || !sessionIsValid ? (
-              <button type="button" onClick={handleLogin} disabled={loginInProgress}>
+              <button type="button" onClick={handleLogin} disabled={loginInProgress || syncInProgress}>
                 {loginInProgress ? 'Esperando inicio de sesion...' : 'Iniciar sesion'}
               </button>
             ) : null}
@@ -1509,18 +1591,18 @@ export default function App() {
               type="button"
               className={syncInProgress ? 'sync-button is-syncing' : 'sync-button'}
               onClick={handleSync}
-              disabled={syncInProgress}
+              disabled={syncCanceling}
             >
               {syncInProgress ? (
                 <>
-                  Sincronizando<span className="sync-dots" aria-hidden="true">...</span>
+                  {syncCanceling ? 'Deteniendo sincronización...' : 'Detener sincronización'}
                 </>
               ) : 'Sincronizar ahora'}
             </button>
             <button type="button" onClick={handleDatabaseReset} disabled={databaseResetting || syncInProgress}>
               {databaseResetting ? 'Borrando BD...' : 'Borrar BD local'}
             </button>
-            <button type="button" onClick={handleShutdown} disabled={shutdownRequested}>
+            <button type="button" onClick={handleShutdown} disabled={shutdownRequested || syncInProgress}>
               {shutdownRequested ? 'Deteniendo servicios...' : 'Detener backend y frontend'}
             </button>
           </div>
@@ -1548,6 +1630,7 @@ export default function App() {
                       type="button"
                       className="alerts-read-button"
                       onClick={() => handleReadAlert(alert.id)}
+                      disabled={syncInProgress}
                       aria-label="Marcar alerta como leida"
                       title="Marcar como leida"
                     >

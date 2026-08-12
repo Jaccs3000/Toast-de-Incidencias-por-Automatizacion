@@ -128,13 +128,36 @@ vite.on('exit', (code, signal) => log('vite process exited', `code=${code} signa
 
 let shuttingDown = false;
 
-function shutdown(code = 0) {
+function requestBackendShutdown() {
+  return new Promise((resolve) => {
+    const request = http.request('http://127.0.0.1:3000/api/shutdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 2000,
+    }, (response) => {
+      response.resume();
+      response.once('end', resolve);
+    });
+    request.once('error', resolve);
+    request.once('timeout', () => {
+      request.destroy();
+      resolve();
+    });
+    request.end('{}');
+  });
+}
+
+async function shutdown(code = 0, { backendAlreadyExited = false } = {}) {
   if (shuttingDown) {
     return;
   }
 
   shuttingDown = true;
   log('stopping local services');
+
+  if (!backendAlreadyExited) {
+    await requestBackendShutdown();
+  }
 
   if (backend && !backend.killed) {
     backend.kill();
@@ -151,15 +174,15 @@ function shutdown(code = 0) {
   process.exit(code);
 }
 
-process.on('SIGINT', () => shutdown(0));
-process.on('SIGTERM', () => shutdown(0));
+process.on('SIGINT', () => { void shutdown(0); });
+process.on('SIGTERM', () => { void shutdown(0); });
 
 backend.on('exit', (code) => {
-  shutdown(code ?? 0);
+  void shutdown(code ?? 0, { backendAlreadyExited: true });
 });
 
 vite.on('exit', (code) => {
-  shutdown(code ?? 0);
+  void shutdown(code ?? 0);
 });
 
 await once(backend, 'spawn');
@@ -170,5 +193,5 @@ if (await waitFor(frontendHealthUrl) && await isReady(backendUrl)) {
   log('backend and frontend are ready');
 } else {
   console.error('The local services did not become ready on ports 3000 and 5174.');
-  shutdown(1);
+  await shutdown(1);
 }

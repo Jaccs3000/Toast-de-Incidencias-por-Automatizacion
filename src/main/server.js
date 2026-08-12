@@ -148,9 +148,14 @@ async function createAppState() {
 
 const state = await createAppState();
 let syncInProgress = false;
+let syncAbortController = null;
 let syncTimer = null;
 let alertRetryTimer = null;
 let alertRetryInProgress = false;
+let shuttingDown = false;
+let windowsSessionState = { state: 'unknown', updatedAt: null };
+let windowsLockStartedAt = null;
+let windowsStateReadInProgress = false;
 
 function stopAutoSyncTimer() {
   if (syncTimer) {
@@ -159,23 +164,53 @@ function stopAutoSyncTimer() {
   }
 }
 
+async function refreshWindowsSessionState() {
+  if (windowsStateReadInProgress) return windowsSessionState;
+  windowsStateReadInProgress = true;
+  try {
+    const next = await state.runtime.windowsSession?.readState?.() ?? { state: 'unknown', updatedAt: null };
+    const previous = windowsSessionState.state;
+    windowsSessionState = next;
+
+    if (previous !== 'locked' && next.state === 'locked') {
+      windowsLockStartedAt = next.updatedAt ?? Date.now();
+      log('Windows session locked; automatic work paused', `lockedAt=${new Date(windowsLockStartedAt).toISOString()}`);
+    } else if (previous === 'locked' && next.state === 'unlocked') {
+      const unlockedAt = next.updatedAt ?? Date.now();
+      if (windowsLockStartedAt !== null) {
+        const updated = await state.runtime.alerts.resumeUnreadRetries({ lockedAt: windowsLockStartedAt, unlockedAt });
+        log('Windows session unlocked; alert countdowns resumed', `updatedAlerts=${updated}`);
+      }
+      windowsLockStartedAt = null;
+    }
+    return windowsSessionState;
+  } finally {
+    windowsStateReadInProgress = false;
+  }
+}
+
+function isWindowsSessionUnlocked() {
+  return windowsSessionState.state === 'unlocked';
+}
+
 function startAlertRetryTimer() {
   if (alertRetryTimer) {
     clearInterval(alertRetryTimer);
   }
 
   alertRetryTimer = setInterval(() => {
-    if (syncInProgress || alertRetryInProgress) {
-      return;
-    }
+    refreshWindowsSessionState().then(() => {
+      if (!isWindowsSessionUnlocked() || syncInProgress || alertRetryInProgress) return;
 
-    alertRetryInProgress = true;
-    state.runtime.alerts.repeatDueUnreadAlerts()
-      .then((alerts) => state.runtime.alerts.notifyCreated(alerts))
-      .catch((error) => log('alert retry failed', error.message))
-      .finally(() => {
-        alertRetryInProgress = false;
-      });
+      alertRetryInProgress = true;
+      return state.runtime.alerts.repeatDueUnreadAlerts()
+        .then((alerts) => {
+          if (alerts.length > 0) log('alert retry cycle found due alerts', `count=${alerts.length}`);
+          return state.runtime.alerts.notifyCreated(alerts);
+        })
+        .catch((error) => log('alert retry failed', error.message))
+        .finally(() => { alertRetryInProgress = false; });
+    }).catch((error) => log('Windows session state read failed', error.message));
   }, 1000);
 }
 
@@ -201,11 +236,22 @@ async function startAutoSyncTimer({ scheduleNext = false } = {}) {
   }
 
   syncTimer = setInterval(() => {
-    state.runtime.persistence.syncStatus.updateStatus({
-      next_sync_at: null,
-    }).then(() => runSyncCycle()).catch((error) => {
-      log('automatic synchronization failed', error.message);
-    });
+    refreshWindowsSessionState().then(async () => {
+      const nextSyncAt = new Date(Date.now() + intervalSeconds * 1000).toISOString();
+      if (!isWindowsSessionUnlocked()) {
+        await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: nextSyncAt });
+        log('automatic synchronization skipped; Windows session is not unlocked', `state=${windowsSessionState.state}`);
+        return;
+      }
+      await refreshWindowsSessionState();
+      if (!isWindowsSessionUnlocked()) {
+        await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: nextSyncAt });
+        log('automatic synchronization canceled before start; Windows session changed', `state=${windowsSessionState.state}`);
+        return;
+      }
+      await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
+      await runSyncCycle({ automatic: true });
+    }).catch((error) => log('automatic synchronization failed', error.message));
   }, intervalSeconds * 1000);
 }
 
@@ -220,6 +266,7 @@ async function refreshState() {
 
 async function handleBootstrapContext(res) {
   await refreshState();
+  await refreshWindowsSessionState();
   json(res, 200, {
     appState: state.appState,
     session: toPublicSession(state.session),
@@ -228,11 +275,16 @@ async function handleBootstrapContext(res) {
     syncIntervalMinutes: Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 300) / 60,
     jqlQueries: state.runtime.configuration?.app?.jqlQueries ?? [],
     autoSyncEnabled: Boolean(state.runtime.configuration?.app?.autoSyncEnabled),
+    windowsSession: windowsSessionState,
     graphIssueTypes: Object.keys(state.runtime.configuration?.graph?.nodes ?? {}),
   });
 }
 
 async function handleSettings(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede cambiar la configuracion durante una sincronizacion.' });
+    return;
+  }
   const body = await readBody(req);
   const requestedJqlQueries = Array.isArray(body?.jqlQueries)
     ? [...new Set(body.jqlQueries
@@ -281,6 +333,10 @@ async function handleSettings(req, res) {
 }
 
 async function handleLogin(res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede iniciar sesion durante una sincronizacion.' });
+    return;
+  }
   log('login requested');
   const result = await state.runtime.auth.loginAndValidate();
   log('login finished', `ok=${result.ok} reason=${result.reason ?? 'none'}`);
@@ -298,16 +354,18 @@ async function handleSync(res) {
     return;
   }
 
+  syncAbortController = new AbortController();
   syncInProgress = true;
   await refreshState();
 
   try {
-    const result = await state.runtime.syncService.run();
+    const result = await state.runtime.syncService.run({ signal: syncAbortController.signal });
     state.lastSyncResult = result;
     await refreshState();
     json(res, 200, result);
   } finally {
     syncInProgress = false;
+    syncAbortController = null;
     const intervalSeconds = Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 0);
     await state.runtime.persistence.syncStatus.updateStatus({
       next_sync_at: state.runtime.configuration?.app?.autoSyncEnabled
@@ -318,6 +376,21 @@ async function handleSync(res) {
     });
     await refreshState();
   }
+}
+
+async function handleSyncCancel(res) {
+  if (!syncInProgress || !syncAbortController) {
+    json(res, 409, { ok: false, error: 'No hay una sincronizacion activa.' });
+    return;
+  }
+
+  await state.runtime.persistence.syncStatus.updateStatus({
+    is_canceling: true,
+    last_status: 'Deteniendo sincronizacion...',
+  });
+  syncAbortController.abort();
+  log('synchronization cancellation requested');
+  json(res, 200, { ok: true, message: 'Se solicito detener la sincronizacion.' });
 }
 
 async function handleDatabaseReset(res) {
@@ -338,11 +411,6 @@ async function handleDatabaseReset(res) {
 }
 
 async function handleDatabaseSql(req, res) {
-  if (syncInProgress) {
-    json(res, 409, { ok: false, error: 'No se puede consultar la BD durante una sincronizacion.' });
-    return;
-  }
-
   const body = await readBody(req);
   const sql = String(body?.sql ?? '').trim();
   const normalizedSql = sql.toLowerCase();
@@ -369,6 +437,11 @@ async function handleDatabaseSql(req, res) {
     return;
   }
 
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede modificar la BD durante una sincronizacion.' });
+    return;
+  }
+
   await state.runtime.persistence.transaction(async () => {
     await state.runtime.persistence.exec(sql);
   });
@@ -391,6 +464,10 @@ async function handleAlertRules(res) {
 }
 
 async function handleAlertRuleSave(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se pueden modificar alertas durante una sincronizacion.' });
+    return;
+  }
   const body = await readBody(req);
   const now = new Date().toISOString();
   const id = String(body?.id ?? `rule-${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -462,6 +539,10 @@ async function handleAlertRuleSave(req, res) {
 }
 
 async function handleAlertRuleDelete(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se pueden modificar alertas durante una sincronizacion.' });
+    return;
+  }
   const body = await readBody(req);
   const id = String(body?.id ?? '').trim();
 
@@ -486,6 +567,10 @@ async function handleAlertRuleDelete(req, res) {
 }
 
 async function handleAlertRead(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se pueden modificar alertas durante una sincronizacion.' });
+    return;
+  }
   const body = await readBody(req);
   const id = String(body?.id ?? '').trim();
   await state.runtime.persistence.alerts.markRead(id);
@@ -493,30 +578,55 @@ async function handleAlertRead(req, res) {
 }
 
 function handleShutdown(res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se pueden detener los servicios durante una sincronizacion.' });
+    return;
+  }
   json(res, 200, { ok: true, message: 'Servicios en proceso de apagado.' });
-  setTimeout(() => {
+  setTimeout(async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     stopAutoSyncTimer();
     stopAlertRetryTimer();
-
-    server.close(() => process.exit(0));
+    try {
+      await state.runtime.windowsSession?.disableTasks();
+    } finally {
+      server.close(() => process.exit(0));
+    }
   }, 100);
 }
 
-async function runSyncCycle() {
+async function runSyncCycle({ automatic = false } = {}) {
   if (syncInProgress) {
     return { ok: false, error: 'Synchronization already in progress.' };
   }
 
+  await refreshWindowsSessionState();
+  if (automatic && !isWindowsSessionUnlocked()) {
+    log('automatic synchronization skipped; Windows session is not unlocked', `state=${windowsSessionState.state}`);
+    return { ok: false, skipped: true, reason: 'windows-session-not-unlocked' };
+  }
+
+  syncAbortController = new AbortController();
   syncInProgress = true;
   await refreshState();
 
   try {
-    const result = await state.runtime.syncService.run();
+    const result = await state.runtime.syncService.run({ signal: syncAbortController.signal });
     state.lastSyncResult = result;
     await refreshState();
     return result;
   } finally {
     syncInProgress = false;
+    const intervalSeconds = Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 0);
+    await state.runtime.persistence.syncStatus.updateStatus({
+      next_sync_at: state.runtime.configuration?.app?.autoSyncEnabled
+        && Number.isFinite(intervalSeconds)
+        && intervalSeconds > 0
+        ? new Date(Date.now() + intervalSeconds * 1000).toISOString()
+        : null,
+    });
+    syncAbortController = null;
     await refreshState();
   }
 }
@@ -544,9 +654,21 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/sync') {
       await readBody(req).catch(() => ({}));
+      const currentWindowsState = await refreshWindowsSessionState();
+      if (!isWindowsSessionUnlocked()) {
+        await state.runtime.windowsSession?.markManualSyncUnlocked?.();
+        await refreshWindowsSessionState();
+        log('manual synchronization changed Windows session state to unlocked', `previousState=${currentWindowsState.state}`);
+      }
       const result = await runSyncCycle();
       const statusCode = result?.ok === false && result?.error === 'Synchronization already in progress.' ? 409 : 200;
       json(res, statusCode, result);
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/sync/cancel') {
+      await readBody(req).catch(() => ({}));
+      await handleSyncCancel(res);
       return;
     }
 
@@ -609,18 +731,23 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Jira Notifications backend listening on http://127.0.0.1:${PORT}`);
-  startAutoSyncTimer().catch((error) => log('automatic synchronization setup failed', error.message));
-  startAlertRetryTimer();
+  refreshWindowsSessionState()
+    .then(() => startAutoSyncTimer({ scheduleNext: true }))
+    .then(() => startAlertRetryTimer())
+    .catch((error) => log('automatic synchronization setup failed', error.message));
 });
 
-process.on('SIGINT', () => {
+async function shutdownFromSignal() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   stopAutoSyncTimer();
   stopAlertRetryTimer();
-  server.close(() => process.exit(0));
-});
+  try {
+    await state.runtime.windowsSession?.disableTasks();
+  } finally {
+    server.close(() => process.exit(0));
+  }
+}
 
-process.on('SIGTERM', () => {
-  stopAutoSyncTimer();
-  stopAlertRetryTimer();
-  server.close(() => process.exit(0));
-});
+process.on('SIGINT', shutdownFromSignal);
+process.on('SIGTERM', shutdownFromSignal);

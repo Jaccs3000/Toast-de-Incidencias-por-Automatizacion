@@ -126,6 +126,15 @@ export class AlertsService {
       ],
     );
 
+    await this.logs?.info?.('Alert created and toast pending', {
+      alertId,
+      ruleId,
+      issueId,
+      retryMinutes: Number(rule.retry_minutes ?? 0),
+      lastNotifiedAt: now,
+      nextRetryAt: new Date(Date.now() + Math.max(Number(rule.retry_minutes ?? 0) || 0, 0) * 60000).toISOString(),
+    });
+
     if (notify && this.toast?.show) {
       await this.toast.show({
         title: rule.toast_text ?? 'Alerta Jira',
@@ -166,6 +175,15 @@ export class AlertsService {
           continue;
         }
 
+        await this.logs?.info?.('Alert retry due; requesting toast', {
+          alertId: alert.id,
+          ruleId: rule.id,
+          issueId: alert.issue_id,
+          lastNotifiedAt: alert.last_notified_at,
+          scheduledRetryAt: new Date(nextRetryAt).toISOString(),
+          requestedAt: now,
+        });
+
         const row = JSON.parse(alert.payload_json ?? '{}');
         const toastMessage = await this.resolveToastText(rule.toast_text ?? '', row, alert.project_group_id);
         const payloadJson = JSON.stringify({ ...row, toast_message: toastMessage });
@@ -202,6 +220,10 @@ export class AlertsService {
       `,
     );
     return this.repeatUnreadAlerts(rules);
+  }
+
+  async resumeUnreadRetries({ lockedAt, unlockedAt } = {}) {
+    return this.persistence.alerts.resumeUnreadRetries({ lockedAt, unlockedAt });
   }
 
   async evaluate({ projectGroup = null, notify = false } = {}) {
@@ -260,13 +282,27 @@ export class AlertsService {
   async notifyCreated(createdAlerts = []) {
     for (const alert of createdAlerts) {
       if (!this.toast?.show) {
+        await this.logs?.warn?.('Toast skipped: toast service unavailable', {
+          alertId: alert.alertId,
+          ruleId: alert.rule?.id,
+        });
         continue;
       }
 
-      await this.toast.show({
+      const result = await this.toast.show({
         title: alert.toastMessage ?? alert.rule?.toast_text ?? 'Alerta Jira',
         message: alert.toastMessage ?? alert.rule?.toast_text ?? 'Alerta Jira detectada.',
+        alertId: alert.alertId,
+        ruleId: alert.rule?.id,
+        issueId: alert.issueId,
         payload: alert.row,
+      });
+      await this.logs?.info?.('Toast request completed', {
+        alertId: alert.alertId,
+        ruleId: alert.rule?.id,
+        issueId: alert.issueId,
+        result,
+        requestedAt: new Date().toISOString(),
       });
     }
   }
