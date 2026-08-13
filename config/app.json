@@ -3,12 +3,13 @@
   "jiraBaseUrl": "https://puertodecartagena.atlassian.net/",
   "chromeUserDataDir": "",
   "chromeProfileDirectory": "Default",
-  "syncIntervalSeconds": 300,
+  "syncIntervalSeconds": 900,
   "queryDelaySeconds": 1,
   "logRetentionDays": 7,
   "startMinimized": true,
   "enableToasts": true,
   "autoSyncEnabled": true,
+  "alertRetryEnabled": true,
   "jqlQueries": [
     "type = \"Documentar Criterios de Aceptación\" AND assignee = currentUser() AND status != Cerrado",
     "created >= -60d AND reporter = 712020:e0f54237-99d1-4264-9fd6-0ee5f330380f AND status = Cerrado AND type = \"Implementación Q&A\""

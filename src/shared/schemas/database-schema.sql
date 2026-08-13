@@ -11,9 +11,11 @@ CREATE TABLE IF NOT EXISTS JIRA_ISSUES (
   assignee TEXT,
   created TEXT,
   updated TEXT,
+  resolutiondate TEXT,
   parent TEXT,
   timeestimate INTEGER,
   timespent INTEGER,
+  timeremaining INTEGER NOT NULL DEFAULT 0,
   issuelinks TEXT
 );
 

@@ -1,3 +1,8 @@
+function secondsToMinutes(value) {
+  const seconds = Number(value ?? 0);
+  return Number.isFinite(seconds) ? Math.round(seconds / 60) : 0;
+}
+
 export class SyncService {
   constructor({
     persistence,
@@ -224,9 +229,11 @@ export class SyncService {
         i.assignee,
         i.created,
         i.updated,
+        i.resolutiondate,
         i.parent,
         i.timeestimate,
         i.timespent,
+        i.timeremaining,
         i.issuelinks
       FROM JIRA_PROJECT_GROUP_ISSUES pgi
       JOIN JIRA_ISSUES i ON i.id = pgi.issue_id
@@ -261,9 +268,12 @@ export class SyncService {
           assignee: issue.fields?.assignee?.displayName ?? issue.fields?.assignee?.name ?? null,
           created: issue.fields?.created ?? null,
           updated: issue.fields?.updated ?? null,
+          resolutiondate: issue.fields?.resolutiondate ?? null,
           parent: issue.fields?.parent?.key ?? null,
-          timeestimate: issue.fields?.timeoriginalestimate ?? issue.fields?.timeestimate ?? null,
-          timespent: issue.fields?.timespent ?? null,
+          timeestimate: secondsToMinutes(issue.fields?.timeoriginalestimate ?? issue.fields?.timeestimate),
+          timespent: secondsToMinutes(issue.fields?.timespent),
+          timeremaining: secondsToMinutes(issue.fields?.timeoriginalestimate ?? issue.fields?.timeestimate)
+            - secondsToMinutes(issue.fields?.timespent),
           issuelinks: typeof issue.fields?.issuelinks === 'string'
             ? issue.fields.issuelinks
             : JSON.stringify(issue.fields?.issuelinks ?? null),
@@ -278,7 +288,7 @@ export class SyncService {
   getChangedFields(before, after) {
     const fields = [
       'project', 'issuetype', 'issuetype_icon_url', 'summary', 'description', 'status', 'reporter',
-      'assignee', 'created', 'updated', 'parent', 'timeestimate', 'timespent', 'issuelinks',
+      'assignee', 'created', 'updated', 'resolutiondate', 'parent', 'timeestimate', 'timespent', 'timeremaining', 'issuelinks',
     ];
 
     return fields.filter((field) => String(before?.[field] ?? '') !== String(after?.[field] ?? ''));

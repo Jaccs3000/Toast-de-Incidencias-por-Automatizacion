@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "fields": [
+    { "field": "key", "label": "Incidencia", "type": "text" },
+    { "field": "project", "label": "Proyecto", "type": "text" },
+    { "field": "issuetype", "label": "Tipo", "type": "text" },
+    { "field": "summary", "label": "Resumen", "type": "text" },
+    { "field": "description", "label": "Descripcion", "type": "text" },
+    { "field": "status", "label": "Estado", "type": "text" },
+    { "field": "reporter", "label": "Informador", "type": "text" },
+    { "field": "assignee", "label": "Responsable", "type": "text" },
+    { "field": "created", "label": "Fecha de creacion", "type": "datetime" },
+    { "field": "updated", "label": "Fecha de actualizacion", "type": "datetime" },
+    { "field": "resolutiondate", "label": "Fecha de resolucion", "type": "datetime" },
+    { "field": "parent", "label": "Incidencia padre", "type": "text" },
+    { "field": "timeestimate", "label": "Estimacion", "type": "number" },
+    { "field": "timespent", "label": "Tiempo empleado", "type": "number" },
+    { "field": "timeremaining", "label": "Tiempo restante", "type": "number" }
+  ],
+  "operators": [
+    { "value": "=", "label": "es igual" },
+    { "value": "<>", "label": "distinto de" },
+    { "value": "LIKE", "label": "contiene" },
+    { "value": ">", "label": "mayor que" },
+    { "value": "<", "label": "menor que" },
+    { "value": ">=", "label": "mayor o igual que" },
+    { "value": "<=", "label": "menor o igual que" },
+    { "value": "IS NULL", "label": "esta vacio" },
+    { "value": "IS NOT NULL", "label": "no esta vacio" }
+  ]
+}

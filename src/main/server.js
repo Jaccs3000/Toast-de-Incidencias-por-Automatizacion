@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { bootstrapApp } from './app/bootstrap.js';
 import { saveAppConfig } from './config/configLoader.js';
+import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
@@ -196,6 +197,11 @@ function isWindowsSessionUnlocked() {
 function startAlertRetryTimer() {
   if (alertRetryTimer) {
     clearInterval(alertRetryTimer);
+    alertRetryTimer = null;
+  }
+
+  if (!state.runtime.configuration?.app?.alertRetryEnabled) {
+    return;
   }
 
   alertRetryTimer = setInterval(() => {
@@ -267,6 +273,9 @@ async function refreshState() {
 async function handleBootstrapContext(res) {
   await refreshState();
   await refreshWindowsSessionState();
+  if (state.runtime.jiraCatalogService) {
+    state.runtime.jiraCatalog = await state.runtime.jiraCatalogService.load();
+  }
   json(res, 200, {
     appState: state.appState,
     session: toPublicSession(state.session),
@@ -275,6 +284,14 @@ async function handleBootstrapContext(res) {
     syncIntervalMinutes: Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 300) / 60,
     jqlQueries: state.runtime.configuration?.app?.jqlQueries ?? [],
     autoSyncEnabled: Boolean(state.runtime.configuration?.app?.autoSyncEnabled),
+    alertRetryEnabled: Boolean(state.runtime.configuration?.app?.alertRetryEnabled),
+    alertFields: state.runtime.configuration?.alertFields?.fields ?? [],
+    alertOperators: state.runtime.configuration?.alertFields?.operators ?? [],
+    jiraCatalog: state.runtime.jiraCatalog ?? {
+      projects: [],
+      issueTypes: [],
+      statuses: [],
+    },
     windowsSession: windowsSessionState,
     graphIssueTypes: Object.keys(state.runtime.configuration?.graph?.nodes ?? {}),
   });
@@ -305,6 +322,9 @@ async function handleSettings(req, res) {
   if (typeof body?.autoSyncEnabled === 'boolean') {
     updates.autoSyncEnabled = body.autoSyncEnabled;
   }
+  if (typeof body?.alertRetryEnabled === 'boolean') {
+    updates.alertRetryEnabled = body.alertRetryEnabled;
+  }
   if (body?.syncIntervalMinutes !== undefined) {
     const minutes = Number(body.syncIntervalMinutes);
     if (!Number.isFinite(minutes) || minutes < 1) {
@@ -323,11 +343,17 @@ async function handleSettings(req, res) {
     stopAutoSyncTimer();
     await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
   }
+  if (appConfig.alertRetryEnabled) {
+    startAlertRetryTimer();
+  } else {
+    stopAlertRetryTimer();
+  }
   log('settings updated', `jqlCount=${appConfig.jqlQueries.length} autoSync=${appConfig.autoSyncEnabled}`);
   json(res, 200, {
     ok: true,
     jqlQueries: appConfig.jqlQueries,
     autoSyncEnabled: appConfig.autoSyncEnabled,
+    alertRetryEnabled: appConfig.alertRetryEnabled,
     syncIntervalMinutes: appConfig.syncIntervalSeconds / 60,
   });
 }
@@ -340,6 +366,17 @@ async function handleLogin(res) {
   log('login requested');
   const result = await state.runtime.auth.loginAndValidate();
   log('login finished', `ok=${result.ok} reason=${result.reason ?? 'none'}`);
+  if (result.ok) {
+    state.runtime.jira.setSession({
+      baseUrl: result.baseUrl,
+      headers: result.headers,
+    });
+    state.runtime.jiraCatalog = await state.runtime.jiraCatalogService.refresh(
+      state.runtime.jira,
+      result,
+    );
+    log('Jira catalog refreshed after successful login', `projects=${state.runtime.jiraCatalog.projects.length} issueTypes=${state.runtime.jiraCatalog.issueTypes.length} statuses=${state.runtime.jiraCatalog.statuses.length}`);
+  }
   state.session = result;
   state.appState = result.ok ? 'ready' : 'auth_required';
   json(res, 200, toPublicSession(result));
@@ -476,6 +513,19 @@ async function handleAlertRuleSave(req, res) {
 
   if (!name || !sql) {
     json(res, 400, { ok: false, error: 'El nombre y el SQL de la alerta son obligatorios.' });
+    return;
+  }
+
+  const conditionValidation = validateAlertConditionConfig(body?.condition_config, {
+    fields: state.runtime.configuration?.alertFields?.fields ?? [],
+    operators: state.runtime.configuration?.alertFields?.operators ?? [],
+  });
+  if (!conditionValidation.ok) {
+    json(res, 400, {
+      ok: false,
+      error: 'La alerta contiene condiciones inválidas.',
+      details: conditionValidation.errors,
+    });
     return;
   }
 

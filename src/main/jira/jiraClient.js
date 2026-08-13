@@ -94,4 +94,27 @@ export class JiraClient {
   async getMyself(options = {}) {
     return this.request('/rest/api/3/myself', options);
   }
+
+  async listProjects(options = {}) {
+    const projects = [];
+    let startAt = 0;
+    const maxResults = 50;
+
+    while (true) {
+      const page = await this.request(`/rest/api/3/project/search?startAt=${startAt}&maxResults=${maxResults}`, options);
+      projects.push(...(Array.isArray(page?.values) ? page.values : []));
+      if (page?.isLast || projects.length >= Number(page?.total ?? projects.length) || !page?.values?.length) break;
+      startAt += maxResults;
+    }
+
+    return projects;
+  }
+
+  async listIssueTypes(options = {}) {
+    return this.request('/rest/api/3/issuetype', options);
+  }
+
+  async listStatuses(options = {}) {
+    return this.request('/rest/api/3/status', options);
+  }
 }

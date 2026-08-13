@@ -14,6 +14,7 @@ const defaultAppConfig = {
   startMinimized: true,
   enableToasts: true,
   autoSyncEnabled: true,
+  alertRetryEnabled: true,
   jqlQueries: ['project is not EMPTY ORDER BY created DESC'],
 };
 
@@ -27,6 +28,12 @@ const defaultProjectGroupRulesConfig = {
   version: 1,
   defaultValue: 'Creado',
   rules: [],
+};
+
+const defaultAlertFieldsConfig = {
+  version: 1,
+  fields: [],
+  operators: [],
 };
 
 async function readJson(fileName, fallback) {
@@ -71,6 +78,7 @@ function validateAppConfig(config) {
   normalized.startMinimized = Boolean(normalized.startMinimized);
   normalized.enableToasts = Boolean(normalized.enableToasts);
   normalized.autoSyncEnabled = Boolean(normalized.autoSyncEnabled);
+  normalized.alertRetryEnabled = Boolean(normalized.alertRetryEnabled);
   normalized.jqlQueries = Array.isArray(normalized.jqlQueries)
     ? [...new Set(normalized.jqlQueries.filter((query) => typeof query === 'string').map((query) => query.trim()).filter(Boolean))]
     : [...defaultAppConfig.jqlQueries];
@@ -118,16 +126,25 @@ function validateProjectGroupRulesConfig(config) {
 }
 
 export async function loadConfiguration() {
-  const [appConfig, graphConfig, projectGroupRulesConfig] = await Promise.all([
+  const [appConfig, graphConfig, projectGroupRulesConfig, alertFieldsConfig] = await Promise.all([
     readJson('app.json', defaultAppConfig),
     readJson('graph.json', defaultGraphConfig),
     readJson('projectgroup_rules.json', defaultProjectGroupRulesConfig),
+    readJson('alert-fields.json', defaultAlertFieldsConfig),
   ]);
+
+  const normalizedAlertFields = {
+    ...defaultAlertFieldsConfig,
+    ...alertFieldsConfig,
+    fields: Array.isArray(alertFieldsConfig.fields) ? alertFieldsConfig.fields : [],
+    operators: Array.isArray(alertFieldsConfig.operators) ? alertFieldsConfig.operators : [],
+  };
 
   return {
     app: validateAppConfig(appConfig),
     graph: validateGraphConfig(graphConfig),
     projectGroupRules: validateProjectGroupRulesConfig(projectGroupRulesConfig),
+    alertFields: normalizedAlertFields,
   };
 }
 

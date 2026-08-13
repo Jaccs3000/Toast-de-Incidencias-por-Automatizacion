@@ -56,8 +56,13 @@ export class AlertsRepository {
   }
 
   async resumeUnreadRetries({ lockedAt, unlockedAt } = {}) {
-    const lockTime = Number(lockedAt);
-    const unlockTime = Number(unlockedAt);
+    const toTimestamp = (value) => {
+      if (typeof value === 'number') return value;
+      const timestamp = new Date(value ?? '').getTime();
+      return Number.isFinite(timestamp) ? timestamp : Number(value);
+    };
+    const lockTime = toTimestamp(lockedAt);
+    const unlockTime = toTimestamp(unlockedAt);
     if (!Number.isFinite(lockTime) || !Number.isFinite(unlockTime) || unlockTime < lockTime) {
       return 0;
     }

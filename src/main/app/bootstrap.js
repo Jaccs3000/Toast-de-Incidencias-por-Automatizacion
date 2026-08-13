@@ -3,6 +3,7 @@ import { Persistence } from '../persistence/persistence.js';
 import { LogService } from '../logs/logService.js';
 import { AuthService } from '../auth/authService.js';
 import { JiraClient } from '../jira/jiraClient.js';
+import { JiraCatalogService } from '../jira/jiraCatalogService.js';
 import { GraphService } from '../graph/graphService.js';
 import { SyncService } from '../sync/syncService.js';
 import { AlertsService } from '../alerts/alertsService.js';
@@ -27,6 +28,8 @@ export async function bootstrapApp() {
     baseUrl: configuration.app.jiraBaseUrl,
     headers: session.ok ? session.headers : {},
   } : {});
+  const jiraCatalogService = new JiraCatalogService({ logs });
+  const jiraCatalog = await jiraCatalogService.refresh(jira, session);
   const graph = new GraphService({
     configuration,
     jira,
@@ -61,6 +64,8 @@ export async function bootstrapApp() {
     auth,
     session,
     jira,
+    jiraCatalog,
+    jiraCatalogService,
     graph,
     alerts,
     toast,

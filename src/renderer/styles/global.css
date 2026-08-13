@@ -364,11 +364,56 @@ h1 {
   letter-spacing: 0.08em;
 }
 
+.alert-validation-errors {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 126, 126, 0.45);
+  border-radius: 10px;
+  background: rgba(255, 91, 91, 0.1);
+  color: #ffb6b6;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .condition-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1.5fr 42px;
   gap: 8px;
   margin-top: 8px;
+}
+
+.date-mask-input {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.date-mask-guide,
+.date-mask-input input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(142, 162, 255, 0.24);
+  border-radius: 10px;
+  font: inherit;
+  letter-spacing: 0;
+  box-sizing: border-box;
+}
+
+.date-mask-guide {
+  display: block;
+  overflow: hidden;
+  white-space: pre;
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(242, 245, 255, 0.34);
+  pointer-events: none;
+}
+
+.date-mask-input input {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  color: #f2f5ff;
 }
 
 .condition-connector-row {
@@ -878,6 +923,34 @@ h1 {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #c9d2ff;
+}
+
+.alerts-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.alerts-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #dfe6ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.alerts-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #8ea2ff;
+}
+
+.alerts-toggle small {
+  color: #8ea2ff;
+  font-weight: 400;
 }
 
 .alerts-badge {

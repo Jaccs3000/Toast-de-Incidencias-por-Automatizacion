@@ -48,6 +48,33 @@ export class Persistence {
       // The column already exists in databases initialized after the schema update.
     }
     try {
+      await this.exec('ALTER TABLE JIRA_ISSUES ADD COLUMN resolutiondate TEXT');
+    } catch {
+      // The column already exists in databases initialized after the schema update.
+    }
+    try {
+      await this.exec('ALTER TABLE JIRA_ISSUES ADD COLUMN timeremaining INTEGER DEFAULT 0');
+      await this.exec('UPDATE JIRA_ISSUES SET timeremaining = 0 WHERE timeremaining IS NULL');
+    } catch {
+      // The column already exists in databases initialized after the schema update.
+    }
+    const timeUnitMigration = await this.query(
+      "SELECT value FROM SETTINGS WHERE key = 'jira_time_fields_minutes_v1' LIMIT 1",
+    );
+    if (timeUnitMigration.length === 0) {
+      await this.exec(`
+        UPDATE JIRA_ISSUES SET
+          timeestimate = CAST(ROUND(COALESCE(timeestimate, 0) / 60.0) AS INTEGER),
+          timespent = CAST(ROUND(COALESCE(timespent, 0) / 60.0) AS INTEGER),
+          timeremaining = CAST(ROUND(COALESCE(timeremaining, 0) / 60.0) AS INTEGER)
+      `);
+      await this.settings.upsert(
+        'jira_time_fields_minutes_v1',
+        'true',
+        new Date().toISOString(),
+      );
+    }
+    try {
       await this.exec('ALTER TABLE ALERT_RULES ADD COLUMN retry_minutes INTEGER');
       await this.exec('UPDATE ALERT_RULES SET retry_minutes = 0 WHERE retry_minutes IS NULL');
     } catch {
@@ -57,6 +84,28 @@ export class Persistence {
       await this.exec('ALTER TABLE ALERTS ADD COLUMN next_retry_at TEXT');
     } catch {
       // The column already exists in databases initialized after the schema update.
+    }
+    try {
+      await this.exec(`
+        DELETE FROM ALERTS
+        WHERE id IN (
+          SELECT id
+          FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY rule_id, issue_id
+                     ORDER BY created ASC, id ASC
+                   ) AS duplicate_number
+            FROM ALERTS
+          ) ranked
+          WHERE duplicate_number > 1
+        )
+      `);
+      await this.exec(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_rule_issue ON ALERTS(rule_id, issue_id)',
+      );
+    } catch {
+      // Keep startup compatible with databases that do not support this migration.
     }
     await this.syncStatus.ensureRow();
 

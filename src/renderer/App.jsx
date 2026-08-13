@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -70,7 +71,10 @@ function formatAlertRetryCountdown(alert, now = Date.now()) {
     return null;
   }
 
-  const retryDueAt = new Date(alert.last_notified_at).getTime() + retryMinutes * 60000;
+  const storedRetryAt = new Date(alert.next_retry_at ?? '').getTime();
+  const retryDueAt = Number.isFinite(storedRetryAt)
+    ? storedRetryAt
+    : new Date(alert.last_notified_at).getTime() + retryMinutes * 60000;
   return formatCountdown(new Date(retryDueAt).toISOString(), now);
 }
 
@@ -84,10 +88,21 @@ function backendAssetUrl(value) {
 }
 
 const alertFieldLabels = {
-  issuetype: 'Tipo',
-  status: 'Estado',
-  assignee: 'Responsable',
+  key: 'Incidencia',
   project: 'Proyecto',
+  issuetype: 'Tipo',
+  summary: 'Resumen',
+  description: 'Descripcion',
+  status: 'Estado',
+  reporter: 'Informador',
+  assignee: 'Responsable',
+  created: 'Fecha de creacion',
+  updated: 'Fecha de actualizacion',
+  resolutiondate: 'Fecha de resolucion',
+  parent: 'Incidencia padre',
+  timeestimate: 'Estimacion',
+  timespent: 'Tiempo empleado',
+  timeremaining: 'Tiempo restante',
 };
 
 const alertOperators = {
@@ -97,18 +112,20 @@ const alertOperators = {
 };
 
 const alertMessageFields = {
-  key: 'Clave',
+  key: 'Incidencia',
   summary: 'Resumen',
   issuetype: 'Tipo',
   status: 'Estado',
   assignee: 'Responsable',
-  reporter: 'Reportero',
+  reporter: 'Informador',
   project: 'Proyecto',
   created: 'Fecha de creación',
   updated: 'Fecha de actualización',
   parent: 'Incidencia padre',
   timeestimate: 'Estimación',
   timespent: 'Tiempo empleado',
+  resolutiondate: 'Fecha de resolucion',
+  timeremaining: 'Tiempo restante',
 };
 
 function sqlText(value) {
@@ -123,32 +140,94 @@ function normalizedSqlValue(value) {
   return `lower(strip_accents(${sqlText(value)}))`;
 }
 
+function normalizeDateConditionValue(value) {
+  const text = String(value ?? '').trim();
+  const colombian = text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (!colombian) return text;
+  const [, day, month, year, hour = '00', minute = '00', second = '00'] = colombian;
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}-05:00`;
+}
+
+function formatDateDigits(value) {
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 12);
+  const parts = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)];
+  let result = parts.filter(Boolean).join('/');
+  if (digits.length > 8) result += ` ${digits.slice(8, 10)}`;
+  if (digits.length > 10) result += `:${digits.slice(10, 12)}`;
+  return result;
+}
+
+function formatDateForInput(value) {
+  const text = String(value ?? '').trim();
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(text)) return formatDateDigits(text);
+  if (!/^\d{4}-\d{2}-\d{2}/.test(text)) return formatDateDigits(text);
+  const date = new Date(text);
+  if (!text || Number.isNaN(date.getTime())) return formatDateDigits(text);
+  const parts = new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}`;
+}
+
+function formatDateMask(value) {
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 12);
+  let digitIndex = 0;
+  return 'dd/mm/aaaa HH:mm'.split('').map((character) => {
+    if (!'dmaH'.includes(character)) return character;
+    const replacement = digits[digitIndex];
+    digitIndex += 1;
+    return replacement ?? character;
+  }).join('');
+}
+
 function buildAlertSql(alertForm) {
   const eventExpression = `c.change_type = ${sqlText(alertForm.event)}`;
   const conditionExpressions = [];
+  const numericFields = new Set(['timeestimate', 'timespent', 'timeremaining']);
+  const datetimeFields = new Set(['created', 'updated', 'resolutiondate']);
   alertForm.conditions
-    .filter((condition) => condition.value.trim())
+    .filter((condition) => condition.value.trim() || ['IS NULL', 'IS NOT NULL'].includes(condition.operator))
     .forEach((condition, index) => {
-      const field = normalizedSqlTextExpression(
-        `COALESCE(json_extract_string(c.after_json, '$.${condition.field}'), json_extract_string(c.before_json, '$.${condition.field}'))`,
-      );
-      const normalizedValue = normalizedSqlValue(condition.value);
+      const rawField = `COALESCE(json_extract_string(c.after_json, '$.${condition.field}'), json_extract_string(c.before_json, '$.${condition.field}'))`;
+      const field = numericFields.has(condition.field)
+        ? `TRY_CAST(${rawField} AS DOUBLE)`
+        : datetimeFields.has(condition.field)
+          ? `TRY_CAST(${rawField} AS TIMESTAMP)`
+          : normalizedSqlTextExpression(rawField);
+      const textField = normalizedSqlTextExpression(rawField);
+      const normalizedValue = numericFields.has(condition.field)
+        ? `TRY_CAST(${sqlText(condition.value.trim().replace(',', '.'))} AS DOUBLE)`
+        : datetimeFields.has(condition.field)
+          ? `TRY_CAST(${sqlText(normalizeDateConditionValue(condition.value))} AS TIMESTAMP)`
+          : normalizedSqlValue(condition.value);
       const usesContains = condition.operator === 'LIKE'
         || (condition.field === 'assignee' && condition.operator === '=');
-      const value = usesContains
+      const value = condition.operator === 'IS NULL'
+        ? `COALESCE(${rawField}, '') = ''`
+        : condition.operator === 'IS NOT NULL'
+        ? `COALESCE(${rawField}, '') <> ''`
+        : usesContains
         ? condition.field === 'assignee'
           ? condition.value.trim().split(/\s+/).map((token) => (
-            `${field} LIKE '%' || ${normalizedSqlValue(token)} || '%'`
+            `${textField} LIKE '%' || ${normalizedSqlValue(token)} || '%'`
           )).join(' AND ')
-          : `${field} LIKE '%' || ${normalizedValue} || '%'`
-        : `${field} ${condition.operator} ${normalizedValue}`;
+          : `${textField} LIKE '%' || ${normalizedValue} || '%'`
+          : `${field} ${condition.operator} ${normalizedValue}`;
       const connector = index === 0 ? '' : (condition.connector || 'AND');
       conditionExpressions.push({ connector, value });
     });
 
   const expressions = [eventExpression];
   if (conditionExpressions.length > 0) {
-    expressions.push(`(${conditionExpressions.map(({ connector, value }) => `${connector ? `${connector} ` : ''}${value}`).join(' ')})`);
+    const groupedConditions = conditionExpressions.reduce((result, { connector, value }, index) => (
+      index === 0 ? `(${value})` : `(${result} ${connector} (${value}))`
+    ), '');
+    expressions.push(groupedConditions);
   }
 
   return `SELECT issue_id, issue_key, project_group_id, change_type, changed_fields, after_json, before_json\nFROM SYNC_CHANGES c\nWHERE ${expressions.join('\n  AND ')}`;
@@ -166,7 +245,11 @@ function emptyAlertForm() {
   };
 }
 
-function parseStoredAlertRule(rule) {
+function parseStoredAlertRule(rule, fieldDefinitions = alertFieldLabels) {
+  const allowedFields = new Set(Array.isArray(fieldDefinitions)
+    ? fieldDefinitions.map((definition) => definition.field)
+    : Object.keys(fieldDefinitions));
+
   try {
     const stored = JSON.parse(rule.condition_config ?? '');
     if (stored?.event && Array.isArray(stored.conditions)) {
@@ -190,7 +273,7 @@ function parseStoredAlertRule(rule) {
     field: match[1],
     operator: match[2].toUpperCase() === 'ILIKE' ? 'LIKE' : match[2],
     value: match[3].replace(/^%|%$/g, ''),
-  })).filter((condition) => alertFieldLabels[condition.field]).map((condition, index) => ({
+  })).filter((condition) => allowedFields.has(condition.field)).map((condition, index) => ({
     ...condition,
     connector: index === 0 ? undefined : 'AND',
   }));
@@ -212,6 +295,9 @@ export default function App() {
   const [expandedAlertId, setExpandedAlertId] = useState(null);
   const [countdownNow, setCountdownNow] = useState(Date.now());
   const [graphIssueTypes, setGraphIssueTypes] = useState([]);
+  const [alertFieldDefinitions, setAlertFieldDefinitions] = useState([]);
+  const [alertOperatorDefinitions, setAlertOperatorDefinitions] = useState([]);
+  const [jiraCatalog, setJiraCatalog] = useState({ projects: [], issueTypes: [], statuses: [] });
   const [alertForm, setAlertForm] = useState(emptyAlertForm);
   const [messageBuilderExpanded, setMessageBuilderExpanded] = useState(false);
   const [alertSaving, setAlertSaving] = useState(false);
@@ -225,6 +311,8 @@ export default function App() {
   const [jqlMessage, setJqlMessage] = useState(null);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
   const [autoSyncSaving, setAutoSyncSaving] = useState(false);
+  const [alertRetryEnabled, setAlertRetryEnabled] = useState(true);
+  const [alertRetrySaving, setAlertRetrySaving] = useState(false);
   const [syncIntervalMinutes, setSyncIntervalMinutes] = useState(5);
   const [syncIntervalSaving, setSyncIntervalSaving] = useState(false);
   const [databaseResetting, setDatabaseResetting] = useState(false);
@@ -253,10 +341,14 @@ export default function App() {
   const queuedAlertIdsRef = useRef(new Set());
   const alertNotificationProcessingRef = useRef(false);
   const alertNotificationTimerRef = useRef(null);
+  const alertRetryEnabledRef = useRef(true);
   const alertsInitializedRef = useRef(false);
   const servicesStoppedRef = useRef(false);
   const jqlInitializedRef = useRef(false);
   const jqlDirtyRef = useRef(false);
+  const syncIntervalDirtyRef = useRef(false);
+  const autoSyncDirtyRef = useRef(false);
+  const alertRetryDirtyRef = useRef(false);
 
   const syncStatus = bootstrapContext?.syncStatus ?? null;
   const session = bootstrapContext?.session ?? null;
@@ -264,6 +356,88 @@ export default function App() {
   const sessionIsValid = Boolean(session?.ok);
   const syncInProgress = manualSyncInProgress || Boolean(syncStatus?.is_running) || appState === 'syncing';
   const syncCanceling = Boolean(syncStatus?.is_canceling);
+  const conditionFields = alertFieldDefinitions.length > 0
+    ? alertFieldDefinitions
+    : Object.entries(alertFieldLabels).map(([field, label]) => ({ field, label }));
+  const conditionOperators = alertOperatorDefinitions.length > 0
+    ? alertOperatorDefinitions
+    : Object.entries(alertOperators).map(([value, label]) => ({ value, label }));
+  const operatorsForField = (fieldName) => {
+    const field = conditionFields.find((item) => item.field === fieldName);
+    const allowed = field?.type === 'text'
+      ? new Set(['=', '<>', 'LIKE', 'IS NULL', 'IS NOT NULL'])
+      : new Set(['=', '<>', '>', '<', '>=', '<=', 'IS NULL', 'IS NOT NULL']);
+    return conditionOperators.filter((operator) => allowed.has(operator.value));
+  };
+  const alertValidation = validateAlertConditionConfig({
+    event: alertForm.event,
+    conditions: alertForm.conditions,
+  }, {
+    fields: conditionFields,
+    operators: conditionOperators,
+  });
+
+  const renderConditionValueControl = (condition, index) => {
+    const definition = conditionFields.find((item) => item.field === condition.field);
+    const catalogKey = condition.field === 'project'
+      ? 'projects'
+      : condition.field === 'issuetype' ? 'issueTypes' : 'statuses';
+    const catalogOptions = (jiraCatalog?.[catalogKey] ?? []).map((item) => (
+      typeof item === 'string' ? { value: item, label: item } : item
+    ));
+    const updateValue = (event) => setAlertForm((current) => ({
+      ...current,
+      conditions: current.conditions.map((item, itemIndex) => itemIndex === index
+        ? {
+          ...item,
+          value: definition?.type === 'datetime'
+            ? formatDateDigits(event.target.value)
+            : event.target.value,
+        }
+        : item),
+    }));
+
+    if (['project', 'issuetype', 'status'].includes(condition.field) && catalogOptions.length > 0) {
+      return (
+        <select className="condition-value-combobox" value={condition.value} onChange={updateValue}>
+          <option value="">Seleccione una opcion</option>
+          {catalogOptions.map((option) => (
+            <option value={option.value} key={option.value}>{option.label}</option>
+          ))}
+        </select>
+      );
+    }
+
+    if (definition?.type === 'datetime') {
+      const displayValue = formatDateForInput(condition.value);
+      return (
+        <span className="date-mask-input">
+          <span className="date-mask-guide" aria-hidden="true">{formatDateMask(displayValue)}</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength="16"
+            value={displayValue}
+            onChange={updateValue}
+            placeholder="dd/mm/aaaa HH:mm"
+            aria-label="Fecha y hora en formato dd/mm/aaaa HH:mm"
+          />
+        </span>
+      );
+    }
+
+    return (
+      <input
+        type={definition?.type === 'number' ? 'number' : 'text'}
+        inputMode={definition?.type === 'datetime' ? 'numeric' : undefined}
+        maxLength={definition?.type === 'datetime' ? 16 : undefined}
+        step={definition?.type === 'number' ? 'any' : undefined}
+        value={definition?.type === 'datetime' ? formatDateForInput(condition.value) : condition.value}
+        onChange={updateValue}
+        placeholder={definition?.type === 'datetime' ? 'dd/mm/aaaa HH:mm' : definition?.type === 'number' ? 'Valor en minutos' : 'Valor'}
+      />
+    );
+  };
 
   const appStateLabel = {
     booting: 'Iniciando app',
@@ -317,7 +491,6 @@ export default function App() {
 
     const notification = new Notification(title, { body, ...(icon ? { icon } : {}) });
     notification.onclick = () => {
-      window.focus();
       notification.close();
       onClick?.();
     };
@@ -428,10 +601,27 @@ export default function App() {
       setGraphIssueTypes(context.graphIssueTypes);
       setMessageIssueType((current) => current || context.graphIssueTypes[0] || '');
     }
-    if (typeof context?.autoSyncEnabled === 'boolean') {
+    if (Array.isArray(context?.alertFields)) {
+      setAlertFieldDefinitions(context.alertFields);
+    }
+    if (Array.isArray(context?.alertOperators)) {
+      setAlertOperatorDefinitions(context.alertOperators);
+    }
+    if (context?.jiraCatalog && typeof context.jiraCatalog === 'object') {
+      setJiraCatalog({
+        projects: Array.isArray(context.jiraCatalog.projects) ? context.jiraCatalog.projects : [],
+        issueTypes: Array.isArray(context.jiraCatalog.issueTypes) ? context.jiraCatalog.issueTypes : [],
+        statuses: Array.isArray(context.jiraCatalog.statuses) ? context.jiraCatalog.statuses : [],
+      });
+    }
+    if (!autoSyncDirtyRef.current && typeof context?.autoSyncEnabled === 'boolean') {
       setAutoSyncEnabled(context.autoSyncEnabled);
     }
-    if (Number.isFinite(Number(context?.syncIntervalMinutes))) {
+    if (!alertRetryDirtyRef.current && typeof context?.alertRetryEnabled === 'boolean') {
+      alertRetryEnabledRef.current = context.alertRetryEnabled;
+      setAlertRetryEnabled(context.alertRetryEnabled);
+    }
+    if (!syncIntervalDirtyRef.current && Number.isFinite(Number(context?.syncIntervalMinutes))) {
       setSyncIntervalMinutes(Number(context.syncIntervalMinutes));
     }
 
@@ -452,23 +642,34 @@ export default function App() {
 
     const unreadAlerts = Array.isArray(summary?.unreadAlerts) ? summary.unreadAlerts : [];
     const knownAlerts = knownAlertNotifiedAtRef.current;
-    const alertsToShow = alertsInitializedRef.current
+    const alertsToShow = alertRetryEnabledRef.current && alertsInitializedRef.current
       ? unreadAlerts.filter((alert) => {
-        if (!knownAlerts.has(alert.id)) {
-          return true;
+        const previous = knownAlerts.get(alert.id);
+        if (!previous) {
+          const retryMinutes = Number(alert?.retry_minutes ?? 0);
+          if (!Number.isFinite(retryMinutes) || retryMinutes <= 0) {
+            return true;
+          }
+
+          const retryAt = new Date(alert?.next_retry_at ?? '').getTime();
+          return !Number.isFinite(retryAt) || Date.now() >= retryAt;
         }
 
-        const previousNotifiedAt = knownAlerts.get(alert.id);
+        // A changed last_notified_at proves the backend sent a new retry.
+        // next_retry_at already points to the following retry at this point.
         return Boolean(
           alert.last_notified_at
-          && previousNotifiedAt
-          && new Date(alert.last_notified_at).getTime() > new Date(previousNotifiedAt).getTime(),
+          && previous.lastNotifiedAt
+          && new Date(alert.last_notified_at).getTime() > new Date(previous.lastNotifiedAt).getTime(),
         );
       })
       : [];
     enqueueAlertNotifications(alertsToShow);
     knownAlertNotifiedAtRef.current = new Map(
-      unreadAlerts.map((alert) => [alert.id, alert.last_notified_at ?? null]),
+      unreadAlerts.map((alert) => [alert.id, {
+        lastNotifiedAt: alert.last_notified_at ?? null,
+        nextRetryAt: alert.next_retry_at ?? null,
+      }]),
     );
     alertsInitializedRef.current = true;
     return summary;
@@ -664,9 +865,17 @@ export default function App() {
   };
 
   const handleSaveAlert = async () => {
-    const validConditions = alertForm.conditions.filter((condition) => condition.value.trim());
-    if (!alertForm.name.trim() || !alertForm.toastText.trim() || validConditions.length === 0) {
-      setJqlMessage('La alerta requiere nombre, texto de Toast y al menos una condicion con valor.');
+    const validConditions = alertForm.conditions.filter((condition) => (
+      ['IS NULL', 'IS NOT NULL'].includes(condition.operator) || condition.value.trim()
+    ));
+    if (!alertForm.name.trim() || !alertForm.toastText.trim()) {
+      setJqlMessage('La alerta requiere nombre y texto de Toast.');
+      showUiToast('Completa el nombre y el texto del Toast.', 'error');
+      return;
+    }
+    if (!alertValidation.ok || validConditions.length === 0) {
+      setJqlMessage(alertValidation.errors.join(' '));
+      showUiToast('Corrige las condiciones de la alerta.', 'error');
       return;
     }
 
@@ -744,7 +953,7 @@ export default function App() {
   };
 
   const handleEditAlert = (rule) => {
-    const stored = parseStoredAlertRule(rule);
+    const stored = parseStoredAlertRule(rule, alertFieldDefinitions);
     setAlertForm({
       id: rule.id,
       name: rule.name ?? '',
@@ -834,6 +1043,11 @@ export default function App() {
       </div>
       <div className="condition-builder">
         <h3>Condiciones</h3>
+        {alertValidation.errors.length > 0 ? (
+          <div className="alert-validation-errors" role="alert">
+            {alertValidation.errors.map((error) => <div key={error}>{error}</div>)}
+          </div>
+        ) : null}
         {alertForm.conditions.map((condition, index) => (
           <div key={`condition-${index}`}>
             {index > 0 ? (
@@ -863,13 +1077,15 @@ export default function App() {
                     field: event.target.value,
                     operator: event.target.value === 'assignee' && item.operator === '='
                       ? 'LIKE'
-                      : item.operator,
+                      : operatorsForField(event.target.value).some((option) => option.value === item.operator)
+                        ? item.operator
+                        : operatorsForField(event.target.value)[0]?.value,
                   }
                   : item),
               }))}
             >
-              {Object.entries(alertFieldLabels).map(([value, label]) => (
-                <option value={value} key={value}>{label}</option>
+              {conditionFields.map(({ field, label }) => (
+                <option value={field} key={field}>{label}</option>
               ))}
             </select>
             <select
@@ -881,11 +1097,17 @@ export default function App() {
                   : item),
               }))}
             >
-              {Object.entries(alertOperators).map(([value, label]) => (
+              {operatorsForField(condition.field).map(({ value, label }) => (
                 <option value={value} key={value}>{label}</option>
               ))}
             </select>
-            <input
+            {renderConditionValueControl(condition, index)}
+            {false && <input
+              type={conditionFields.find((item) => item.field === condition.field)?.type === 'datetime'
+                ? 'datetime-local'
+                : conditionFields.find((item) => item.field === condition.field)?.type === 'number' ? 'number' : 'text'}
+              step={conditionFields.find((item) => item.field === condition.field)?.type === 'number' ? 'any' : undefined}
+              list={['project', 'issuetype', 'status'].includes(condition.field) ? `jira-catalog-${condition.field}-${index}` : undefined}
               value={condition.value}
               onChange={(event) => setAlertForm((current) => ({
                 ...current,
@@ -894,7 +1116,7 @@ export default function App() {
                   : item),
               }))}
               placeholder="Criterios de aceptación"
-            />
+            />}
             <button
               type="button"
               className="jql-delete"
@@ -909,6 +1131,17 @@ export default function App() {
             </div>
           </div>
         ))}
+        {alertForm.conditions.map((condition, index) => {
+          if (!['project', 'issuetype', 'status'].includes(condition.field)) return null;
+          const catalogKey = condition.field === 'project' ? 'projects' : condition.field === 'issuetype' ? 'issueTypes' : 'statuses';
+          const options = (jiraCatalog?.[catalogKey] ?? []).map((item) => typeof item === 'string' ? { value: item, label: item } : item);
+          if (options.length === 0) return null;
+          return (
+            <datalist id={`jira-catalog-${condition.field}-${index}`} key={`catalog-${condition.field}-${index}`}>
+              {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </datalist>
+          );
+        })}
         <button
           type="button"
           className="jql-add"
@@ -1041,6 +1274,7 @@ export default function App() {
 
   const handleAutoSyncToggle = async (event) => {
     const nextValue = event.target.checked;
+    autoSyncDirtyRef.current = true;
     setAutoSyncEnabled(nextValue);
     setAutoSyncSaving(true);
 
@@ -1049,13 +1283,42 @@ export default function App() {
         method: 'PUT',
         body: JSON.stringify({ autoSyncEnabled: nextValue }),
       });
+      autoSyncDirtyRef.current = false;
       setAutoSyncEnabled(Boolean(result.autoSyncEnabled));
       showUiToast('Sincronización automática actualizada.');
     } catch (error) {
+      autoSyncDirtyRef.current = false;
       setAutoSyncEnabled(!nextValue);
       setJqlMessage(`No se pudo cambiar la sincronizacion automatica: ${error.message}`);
     } finally {
       setAutoSyncSaving(false);
+    }
+  };
+
+  const handleAlertRetryToggle = async (event) => {
+    const nextValue = event.target.checked;
+    alertRetryDirtyRef.current = true;
+    alertRetryEnabledRef.current = nextValue;
+    setAlertRetryEnabled(nextValue);
+    setAlertRetrySaving(true);
+
+    try {
+      const result = await api('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ alertRetryEnabled: nextValue }),
+      });
+      alertRetryDirtyRef.current = false;
+      const savedValue = Boolean(result.alertRetryEnabled);
+      alertRetryEnabledRef.current = savedValue;
+      setAlertRetryEnabled(savedValue);
+      showUiToast('Reenvio de toast de alertas actualizado.');
+    } catch (error) {
+      alertRetryDirtyRef.current = false;
+      alertRetryEnabledRef.current = !nextValue;
+      setAlertRetryEnabled(!nextValue);
+      setJqlMessage(`No se pudo cambiar el reenvio de toast: ${error.message}`);
+    } finally {
+      setAlertRetrySaving(false);
     }
   };
 
@@ -1072,6 +1335,7 @@ export default function App() {
         method: 'PUT',
         body: JSON.stringify({ syncIntervalMinutes: minutes }),
       });
+      syncIntervalDirtyRef.current = false;
       setSyncIntervalMinutes(Number(result.syncIntervalMinutes ?? minutes));
       setJqlMessage('Intervalo de sincronizacion guardado correctamente.');
       showUiToast('Intervalo de sincronización guardado.');
@@ -1268,13 +1532,15 @@ export default function App() {
                         field: event.target.value,
                         operator: event.target.value === 'assignee' && item.operator === '='
                           ? 'LIKE'
-                          : item.operator,
+                          : operatorsForField(event.target.value).some((option) => option.value === item.operator)
+                            ? item.operator
+                            : operatorsForField(event.target.value)[0]?.value,
                       }
                       : item),
                   }))}
                 >
-                  {Object.entries(alertFieldLabels).map(([value, label]) => (
-                    <option value={value} key={value}>{label}</option>
+                  {conditionFields.map(({ field, label }) => (
+                    <option value={field} key={field}>{label}</option>
                   ))}
                 </select>
                 <select
@@ -1286,11 +1552,16 @@ export default function App() {
                       : item),
                   }))}
                 >
-                  {Object.entries(alertOperators).map(([value, label]) => (
+                  {operatorsForField(condition.field).map(({ value, label }) => (
                     <option value={value} key={value}>{label}</option>
                   ))}
                 </select>
                 <input
+                  type={conditionFields.find((item) => item.field === condition.field)?.type === 'datetime'
+                    ? 'datetime-local'
+                    : conditionFields.find((item) => item.field === condition.field)?.type === 'number' ? 'number' : 'text'}
+                  step={conditionFields.find((item) => item.field === condition.field)?.type === 'number' ? 'any' : undefined}
+                  list={['project', 'issuetype', 'status'].includes(condition.field) ? `jira-catalog-${condition.field}-${index}` : undefined}
                   value={condition.value}
                   onChange={(event) => setAlertForm((current) => ({
                     ...current,
@@ -1313,6 +1584,15 @@ export default function App() {
                 </button>
               </div>
             ))}
+            {alertForm.conditions.map((condition, index) => {
+              if (!['project', 'issuetype', 'status'].includes(condition.field)) return null;
+              const catalogKey = condition.field === 'project' ? 'projects' : condition.field === 'issuetype' ? 'issueTypes' : 'statuses';
+              const options = (jiraCatalog?.[catalogKey] ?? []).map((item) => typeof item === 'string' ? { value: item, label: item } : item);
+              if (options.length === 0) return null;
+              return <datalist id={`jira-catalog-${condition.field}-${index}`} key={`catalog-${condition.field}-${index}`}>
+                {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </datalist>;
+            })}
             <button
               type="button"
               className="jql-add"
@@ -1473,7 +1753,11 @@ export default function App() {
               min="1"
               step="1"
               value={syncIntervalMinutes}
-              onChange={(event) => setSyncIntervalMinutes(event.target.value)}
+              onChange={(event) => {
+                syncIntervalDirtyRef.current = true;
+                setSyncIntervalMinutes(event.target.value);
+              }}
+              onFocus={() => { syncIntervalDirtyRef.current = true; }}
             />
             <span>minutos</span>
             <button type="button" onClick={handleSyncIntervalSave} disabled={syncIntervalSaving}>
@@ -1630,7 +1914,19 @@ export default function App() {
 
           <div className="alerts-panel">
             <div className="alerts-header">
-              <h3>Alertas</h3>
+              <div className="alerts-heading">
+                <h3>Alertas</h3>
+                <label className="alerts-toggle">
+                  <input
+                    type="checkbox"
+                    checked={alertRetryEnabled}
+                    onChange={handleAlertRetryToggle}
+                    disabled={alertRetrySaving}
+                  />
+                  <span>Reenvio de Toast</span>
+                  <small>{alertRetryEnabled ? 'Activo' : 'Apagado'}</small>
+                </label>
+              </div>
               <span className="alerts-badge">{alertsSummary?.unreadCount ?? 0}</span>
             </div>
             {Array.isArray(alertsSummary?.unreadAlerts) && alertsSummary.unreadAlerts.length > 0 ? (
@@ -1650,9 +1946,9 @@ export default function App() {
                       {alert.toast_message || alert.toast_text || alert.rule_name || 'Nueva alerta de Jira'}
                       {Number(alert.retry_minutes ?? 0) > 0 ? (
                         <small className="alerts-retry-countdown">
-                          Proximo Toast: {autoSyncEnabled
+                          Proximo Toast: {alertRetryEnabled
                             ? (formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente')
-                            : 'sincronizacion automatica apagada'}
+                            : 'reenvio de toast apagado'}
                         </small>
                       ) : null}
                     </span>

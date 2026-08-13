@@ -1,3 +1,25 @@
+function formatToastValue(field, value) {
+  if (!['created', 'updated', 'resolutiondate'].includes(field) || !value) {
+    return value;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date).replace(',', '');
+}
+
 export class AlertsService {
   constructor({ persistence, toast, logs } = {}) {
     this.persistence = persistence;
@@ -27,21 +49,25 @@ export class AlertsService {
   async resolveToastText(template, row) {
     const text = String(template ?? '');
     const fieldLabels = {
+      'Incidencia': 'key',
       'Clave': 'key',
       'Resumen': 'summary',
       'Tipo': 'issuetype',
       'Estado': 'status',
       'Responsable': 'assignee',
+      'Informador': 'reporter',
       'Reportero': 'reporter',
       'Proyecto': 'project',
       'Fecha de creación': 'created',
       'Fecha de creacion': 'created',
       'Fecha de actualización': 'updated',
       'Fecha de actualizacion': 'updated',
+      'Fecha de resolucion': 'resolutiondate',
       'Incidencia padre': 'parent',
       'Estimación': 'timeestimate',
       'Estimacion': 'timeestimate',
       'Tiempo empleado': 'timespent',
+      'Tiempo restante': 'timeremaining',
     };
     const tokenPattern = /\[\[([^:]+)::([^\]]+)\]\]/g;
     const tokens = [...text.matchAll(tokenPattern)];
@@ -72,7 +98,7 @@ export class AlertsService {
 
       const value = matchingIssue[field];
       return value !== null && value !== undefined && String(value).trim() !== ''
-        ? String(value)
+        ? String(formatToastValue(field, value))
         : '';
     });
   }
@@ -175,7 +201,9 @@ export class AlertsService {
         }
 
         const now = new Date().toISOString();
-        const nextRetryAt = new Date(alert.last_notified_at ?? now).getTime() + retryMinutes * 60000;
+        const storedRetryAt = new Date(alert.next_retry_at ?? '').getTime();
+        const legacyRetryAt = new Date(alert.last_notified_at ?? now).getTime() + retryMinutes * 60000;
+        const nextRetryAt = Number.isFinite(storedRetryAt) ? storedRetryAt : legacyRetryAt;
         if (Date.now() < nextRetryAt) {
           continue;
         }
@@ -208,6 +236,7 @@ export class AlertsService {
           row,
           projectGroupId: alert.project_group_id,
           toastMessage,
+          isRetry: true,
         });
       }
     }
@@ -249,32 +278,47 @@ export class AlertsService {
     const notifiedIds = new Set();
 
     for (const rule of rules) {
-      const rows = await this.getRuleRows(rule.sql);
+      try {
+        const rows = await this.getRuleRows(rule.sql);
 
-      for (const row of rows) {
-        const result = await this.upsertAlert({
-          rule,
-          row,
-          projectGroupId: row.project_group_id ?? projectGroup?.id ?? null,
-          notify,
-        });
-
-        if (result.created) {
-          notifiedIds.add(result.id);
-          createdAlerts.push({
-            ruleId: rule.id,
-            issueId: String(row.issue_id ?? row.id ?? row.issueId ?? ''),
-            alertId: result.id,
-            rule: result.rule,
-            row: result.row,
+        for (const row of rows) {
+          const result = await this.upsertAlert({
+            rule,
+            row,
             projectGroupId: row.project_group_id ?? projectGroup?.id ?? null,
-            toastMessage: result.toastMessage,
+            notify,
           });
+
+          if (result.created) {
+            notifiedIds.add(result.id);
+            createdAlerts.push({
+              ruleId: rule.id,
+              issueId: String(row.issue_id ?? row.id ?? row.issueId ?? ''),
+              alertId: result.id,
+              rule: result.rule,
+              row: result.row,
+              projectGroupId: row.project_group_id ?? projectGroup?.id ?? null,
+              toastMessage: result.toastMessage,
+            });
+          }
         }
+      } catch (error) {
+        await this.logs?.error?.('Alert rule skipped because its condition could not be evaluated', {
+          ruleId: rule.id,
+          ruleName: rule.name,
+          error: error.message,
+        });
       }
     }
 
-    const repeatedAlerts = await this.repeatUnreadAlerts(rules, notifiedIds);
+    let repeatedAlerts = [];
+    try {
+      repeatedAlerts = await this.repeatUnreadAlerts(rules, notifiedIds);
+    } catch (error) {
+      await this.logs?.error?.('Alert retries skipped because they could not be evaluated', {
+        error: error.message,
+      });
+    }
 
     return {
       ok: true,
@@ -286,29 +330,56 @@ export class AlertsService {
 
   async notifyCreated(createdAlerts = []) {
     for (const alert of createdAlerts) {
-      if (!this.toast?.show) {
-        await this.logs?.warn?.('Toast skipped: toast service unavailable', {
+      try {
+        const retryMinutes = Math.max(Number(alert.rule?.retry_minutes ?? 0) || 0, 0);
+        if (retryMinutes > 0 && !alert.isRetry && alert.alertId) {
+          const rows = await this.persistence.query(
+            'SELECT next_retry_at, is_read FROM ALERTS WHERE id = ? LIMIT 1',
+            [alert.alertId],
+          );
+          const storedAlert = rows[0];
+          const retryAt = new Date(storedAlert?.next_retry_at ?? '').getTime();
+          if (storedAlert?.is_read === 0 && Number.isFinite(retryAt) && Date.now() < retryAt) {
+            await this.logs?.info?.('Toast postponed until alert retry is due', {
+              alertId: alert.alertId,
+              ruleId: alert.rule?.id,
+              issueId: alert.issueId,
+              retryAt: storedAlert.next_retry_at,
+            });
+            continue;
+          }
+        }
+
+        if (!this.toast?.show) {
+          await this.logs?.warn?.('Toast skipped: toast service unavailable', {
+            alertId: alert.alertId,
+            ruleId: alert.rule?.id,
+          });
+          continue;
+        }
+
+        const result = await this.toast.show({
+          title: alert.toastMessage ?? alert.rule?.toast_text ?? 'Alerta Jira',
+          message: alert.toastMessage ?? alert.rule?.toast_text ?? 'Alerta Jira detectada.',
           alertId: alert.alertId,
           ruleId: alert.rule?.id,
+          issueId: alert.issueId,
+          payload: alert.row,
         });
-        continue;
+        await this.logs?.info?.('Toast request completed', {
+          alertId: alert.alertId,
+          ruleId: alert.rule?.id,
+          issueId: alert.issueId,
+          result,
+          requestedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        await this.logs?.error?.('Alert toast skipped after notification error', {
+          alertId: alert.alertId,
+          ruleId: alert.rule?.id,
+          error: error.message,
+        });
       }
-
-      const result = await this.toast.show({
-        title: alert.toastMessage ?? alert.rule?.toast_text ?? 'Alerta Jira',
-        message: alert.toastMessage ?? alert.rule?.toast_text ?? 'Alerta Jira detectada.',
-        alertId: alert.alertId,
-        ruleId: alert.rule?.id,
-        issueId: alert.issueId,
-        payload: alert.row,
-      });
-      await this.logs?.info?.('Toast request completed', {
-        alertId: alert.alertId,
-        ruleId: alert.rule?.id,
-        issueId: alert.issueId,
-        result,
-        requestedAt: new Date().toISOString(),
-      });
     }
   }
 }

@@ -1,0 +1,459 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-13T22:19:21.703Z",
+  "projects": [
+    {
+      "value": "AP",
+      "label": "Actualización/Migración/Problemas Plataforma"
+    },
+    {
+      "value": "ADM",
+      "label": "Admin Direccion de IT"
+    },
+    {
+      "value": "ADA",
+      "label": "Administración de aplicaciones"
+    },
+    {
+      "value": "ADT",
+      "label": "Administración de Tags"
+    },
+    {
+      "value": "ABO2",
+      "label": "Archivos Bodega-NUBE"
+    },
+    {
+      "value": "ADI",
+      "label": "ARIM de Importación"
+    },
+    {
+      "value": "AUDIT",
+      "label": "Auditorias"
+    },
+    {
+      "value": "AT",
+      "label": "Automatización TestComplete"
+    },
+    {
+      "value": "AUTOQAI",
+      "label": "AUTOQAI"
+    },
+    {
+      "value": "AUE2",
+      "label": "Autorizador de Embarque-NUBE"
+    },
+    {
+      "value": "BAP",
+      "label": "BAPLIES EN SAC400"
+    },
+    {
+      "value": "BD",
+      "label": "Bases de Datos"
+    },
+    {
+      "value": "BH",
+      "label": "BLs Hijos"
+    },
+    {
+      "value": "CPP",
+      "label": "Casos de Problemas de Producción"
+    },
+    {
+      "value": "CDC",
+      "label": "Citas de Camiones"
+    },
+    {
+      "value": "CDA2",
+      "label": "Control de acceso-NUBE"
+    },
+    {
+      "value": "CRM2",
+      "label": "CRM-NUBE"
+    },
+    {
+      "value": "DCCEP2",
+      "label": "Despacho de Camiones - CEP-NUBE"
+    },
+    {
+      "value": "AAC2",
+      "label": "Documentacion SPRC/CTC-NUBE"
+    },
+    {
+      "value": "DYN",
+      "label": "DYNATRACE"
+    },
+    {
+      "value": "DWI",
+      "label": "Estadistica e Informes Oficiales"
+    },
+    {
+      "value": "FE",
+      "label": "Facturacion Electronica"
+    },
+    {
+      "value": "FCT",
+      "label": "Facturacion y Recaudo"
+    },
+    {
+      "value": "GDC",
+      "label": "Gestión De Certificados"
+    },
+    {
+      "value": "IST",
+      "label": "Inducciones de Seguridad y Salud en el Trabajo"
+    },
+    {
+      "value": "DIAN",
+      "label": "Integración DIAN"
+    },
+    {
+      "value": "SIIS",
+      "label": "Integracion SIIS"
+    },
+    {
+      "value": "MDI",
+      "label": "Intervención de infraestructura"
+    },
+    {
+      "value": "KACT",
+      "label": "KACTUS - Actualizaciones y Customizaciones"
+    },
+    {
+      "value": "LEG",
+      "label": "LEGAL"
+    },
+    {
+      "value": "LDE",
+      "label": "Listas de Embarque"
+    },
+    {
+      "value": "MEAM",
+      "label": "MAXIMO-EAM"
+    },
+    {
+      "value": "MPW9",
+      "label": "Migración Power 9"
+    },
+    {
+      "value": "NCUATRO",
+      "label": "N4 Navis"
+    },
+    {
+      "value": "AFO",
+      "label": "Nueva Plataforma Aforos"
+    },
+    {
+      "value": "OPM",
+      "label": "Operacion Maritima"
+    },
+    {
+      "value": "OMA",
+      "label": "Operaciones Maritimas"
+    },
+    {
+      "value": "PDD2",
+      "label": "Paso Documentos Docuware-NUBE"
+    },
+    {
+      "value": "PSC2",
+      "label": "Planeacion de Servicios a la Carga-NUBE"
+    },
+    {
+      "value": "CSA",
+      "label": "Portafolio Proyectos & Tareas"
+    },
+    {
+      "value": "PAT",
+      "label": "Prueba Automatizacion Testcomplete"
+    },
+    {
+      "value": "PA",
+      "label": "Puerta Automática"
+    },
+    {
+      "value": "RCMS",
+      "label": "Reffers - RCMS Identec"
+    },
+    {
+      "value": "RSA",
+      "label": "Resultados Auditorias"
+    },
+    {
+      "value": "RENMAX2",
+      "label": "Revisión Rendimiento Maximo-NUBE"
+    },
+    {
+      "value": "RTG",
+      "label": "RTG Automatizados "
+    },
+    {
+      "value": "AC",
+      "label": "SAC400"
+    },
+    {
+      "value": "SAC2",
+      "label": "Sac400 a Contecar-NUBE"
+    },
+    {
+      "value": "SACWEB",
+      "label": "SAC400 WEB"
+    },
+    {
+      "value": "SCAN",
+      "label": "Scanners"
+    },
+    {
+      "value": "SEG",
+      "label": "Seguridad de Aplicaciones"
+    },
+    {
+      "value": "SI",
+      "label": "Seguridad Informática"
+    },
+    {
+      "value": "SLE2",
+      "label": "Solicitud Equipos Telecomunicaciones-NUBE"
+    },
+    {
+      "value": "STM",
+      "label": "Solicitudes Tarificacion Maritima"
+    },
+    {
+      "value": "SAP",
+      "label": "Soporte Aplicaciones"
+    },
+    {
+      "value": "SHW2",
+      "label": "Soporte de Hardware-NUBE"
+    },
+    {
+      "value": "SEDI",
+      "label": "Soporte EDI"
+    },
+    {
+      "value": "SOPMAX",
+      "label": "Soporte MAXIMO"
+    },
+    {
+      "value": "SPONLINE",
+      "label": "Soporte SPRCOnLine"
+    },
+    {
+      "value": "SPC",
+      "label": "SPARCS"
+    },
+    {
+      "value": "ONL",
+      "label": "SPRCOnLine"
+    },
+    {
+      "value": "TA",
+      "label": "Tareas Administrativas"
+    },
+    {
+      "value": "QA",
+      "label": "Tareas Varias Q&A"
+    },
+    {
+      "value": "TQ",
+      "label": "Testing & QA"
+    },
+    {
+      "value": "TBSM",
+      "label": "Tivoli - TBSM"
+    },
+    {
+      "value": "INTRA",
+      "label": "Traslado Intraterminal"
+    },
+    {
+      "value": "TCA",
+      "label": "TYCA"
+    },
+    {
+      "value": "UEB",
+      "label": "Ubicaciones en Bodega"
+    },
+    {
+      "value": "UTIL",
+      "label": "Utilitarios"
+    },
+    {
+      "value": "VEHNET",
+      "label": "Vehiculos Vehnet"
+    },
+    {
+      "value": "WHENET",
+      "label": "WHERENET"
+    },
+    {
+      "value": "ZEUS",
+      "label": "ZEUS"
+    },
+    {
+      "value": "ZEUSUP",
+      "label": "ZEUS Actualizaciones"
+    }
+  ],
+  "issueTypes": [
+    "Accion de Mejora",
+    "Actualizar automatización",
+    "Admin de Usuarios",
+    "Admon Pre-Produccion",
+    "Aprobación",
+    "Atención Telefónica",
+    "Bascula",
+    "Bug",
+    "Capacitación",
+    "Caso de Prueba",
+    "CCTV",
+    "Construir automatización",
+    "Consulta",
+    "Contrato",
+    "Corrección por Error del Usuario",
+    "Correccion por Testing",
+    "Correccion por Testing (migrated)",
+    "Criterios – Pruebas Automáticas",
+    "Criterios – Validación Pruebas Generales",
+    "Criterios de aceptación",
+    "Criterios Pre-Producción",
+    "Daños",
+    "DE_INVESTIGACIONES",
+    "DE_PROYECTO",
+    "DE_SUB_TAREA",
+    "Documentar Criterios de Aceptación",
+    "Email",
+    "Épica",
+    "Error",
+    "Fibra Optica",
+    "Historia",
+    "Historia de Solicitudes",
+    "Iluminador",
+    "Implementación Q&A",
+    "Impresora",
+    "Informe",
+    "Intervención a producción",
+    "Licencias Software",
+    "Media Converter",
+    "Mejora",
+    "Mejoras Locativas",
+    "Migración TestComplete",
+    "Modificar Condicion de Facturacion",
+    "Mtto de Equipos",
+    "Mtto de Instalaciones",
+    "No Conformidad Interna",
+    "No Conformidad Proveedores",
+    "Nueva función",
+    "Objetivo",
+    "OCR - RPM",
+    "Otros Equipos",
+    "PC - Estacion de Trabajo",
+    "Personas",
+    "Peticion Juridica",
+    "PRE-PROD - Intervención DBA",
+    "PRE-PROD - Intervención Infraestructura",
+    "PRE-PROD - Validación Montaje Dev",
+    "Principal",
+    "Problema de Datos",
+    "Proceso Judicial",
+    "Producción - Intervención DBA",
+    "Producción - Intervención Infraestructura",
+    "Pruebas Desarrollo",
+    "Quejas y Reclamos",
+    "Radio de Comunicaciones",
+    "Reglas de firewall",
+    "Reporte Ambiental",
+    "Reporte Fundación Puerto Cartagena",
+    "Reporte SST",
+    "Reposicion de Elementos de Trabajo",
+    "Requerimientos de auditorias",
+    "RSIS_Reporte Sisnar",
+    "S5P_Hito",
+    "S5P_Prioridad",
+    "Scheduler",
+    "Servidor",
+    "Solicitud de  Documentación",
+    "Solicitud de Equipos",
+    "Solicitud de Paso a TEST",
+    "Solicitud general",
+    "Solicitud Paso a Pre-Producción",
+    "Solicitud Paso a Producción",
+    "Solicitudes de Usuario",
+    "Soporte de Software",
+    "Soporte Interno",
+    "Soporte Puerta",
+    "Subtarea",
+    "Subtarea proyecto GH",
+    "Switch",
+    "Switch (PoE)",
+    "Tarea",
+    "Tarea de Reversión",
+    "Tarea GH",
+    "Tarea Técnica",
+    "Telefono",
+    "Terminal Remota",
+    "TEST - Intervención DBA",
+    "TEST - Intervención Infraestructura",
+    "TEST - Validación Montaje Dev",
+    "Test criterios de aceptación",
+    "Test Tarea",
+    "Testing",
+    "Testing Criterios Pre-Producción",
+    "Testing de Criterios",
+    "Testing Pre-Producción"
+  ],
+  "statuses": [
+    "Aceptado",
+    "Aprobación solicitante",
+    "Aprobado seguridad",
+    "Archivado",
+    "Asignada a área",
+    "Asignada a persona",
+    "Asignado",
+    "Bloqueda",
+    "Calificado",
+    "Cancelado",
+    "Cerrado",
+    "Clasificado",
+    "Creado",
+    "En analisis",
+    "En desarrollo",
+    "En ejecución",
+    "En elaboracion de respuesta",
+    "En Espera",
+    "En espera Capacitación",
+    "En espera de comprobante",
+    "En espera de disponibilidad",
+    "En Espera de Jira de Testing",
+    "En Espera de Respuesta",
+    "En espera de Sub-task",
+    "En espera de validación de pago",
+    "En espera PRE-PROD",
+    "EN GESTION",
+    "En Progreso",
+    "En Pruebas",
+    "En revisión",
+    "En Revisión",
+    "En validacion",
+    "Finalizado",
+    "Identificado",
+    "No Aceptado",
+    "Pendiente de Backup",
+    "Pendiente de cierre",
+    "Planeado",
+    "Por asignar",
+    "Por hacer",
+    "Por pasar a producción",
+    "Por Probar",
+    "Reabierto",
+    "Rechazado",
+    "Recibido",
+    "Respondido",
+    "Resuelto / En Producción",
+    "Revisado y aprobado redes",
+    "Seguimiento",
+    "SEGUIMIENTO",
+    "Tareas por hacer",
+    "Terminado"
+  ]
+}
