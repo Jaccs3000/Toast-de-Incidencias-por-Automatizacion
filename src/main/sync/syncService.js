@@ -434,94 +434,19 @@ export class SyncService {
     }
   }
 
-  consolidateProjectGroups(candidateGroups) {
-    const groups = Array.isArray(candidateGroups) ? candidateGroups : [];
-    const parent = groups.map((_, index) => index);
-
-    const find = (index) => {
-      if (parent[index] !== index) {
-        parent[index] = find(parent[index]);
-      }
-      return parent[index];
-    };
-
-    const union = (left, right) => {
-      const leftRoot = find(left);
-      const rightRoot = find(right);
-      if (leftRoot !== rightRoot) {
-        parent[rightRoot] = leftRoot;
-      }
-    };
-
-    const issueSets = groups.map((group) => new Set(
-      (group.issues ?? []).map((issue) => String(issue?.id ?? issue?.key ?? '')).filter(Boolean),
-    ));
-
-    for (let left = 0; left < issueSets.length; left += 1) {
-      for (let right = left + 1; right < issueSets.length; right += 1) {
-        const overlaps = [...issueSets[left]].some((issueId) => issueSets[right].has(issueId));
-        if (overlaps) {
-          union(left, right);
-        }
+  deduplicateProjectGroups(candidateGroups) {
+    const unique = new Map();
+    for (const group of Array.isArray(candidateGroups) ? candidateGroups : []) {
+      const signature = [...new Set((group.issues ?? [])
+        .map((issue) => String(issue?.id ?? issue?.key ?? ''))
+        .filter(Boolean))]
+        .sort()
+        .join('|');
+      if (signature && !unique.has(signature)) {
+        unique.set(signature, group);
       }
     }
-
-    const components = new Map();
-    groups.forEach((group, index) => {
-      const root = find(index);
-      const current = components.get(root) ?? [];
-      current.push(group);
-      components.set(root, current);
-    });
-
-    return [...components.values()].map((component) => {
-      const first = component[0];
-      const issues = new Map();
-      const members = new Map();
-      const relationships = new Map();
-
-      for (const group of component) {
-        for (const issue of group.issues ?? []) {
-          const issueId = String(issue?.id ?? issue?.key ?? '');
-          if (issueId && !issues.has(issueId)) {
-            issues.set(issueId, issue);
-          }
-        }
-
-        for (const member of group.members ?? []) {
-          const memberId = String(member?.id ?? '');
-          if (!memberId) {
-            continue;
-          }
-
-          const existing = members.get(memberId);
-          if (!existing || (member.depth ?? 0) < (existing.depth ?? 0)) {
-            members.set(memberId, { ...member, isRoot: false });
-          }
-        }
-
-        for (const relationship of group.relationships ?? []) {
-          const relationshipKey = [
-            relationship.fromIssueId,
-            relationship.toIssueId,
-            relationship.relationType,
-          ].join('|');
-          relationships.set(relationshipKey, relationship);
-        }
-      }
-
-      const rootIssueId = String(first.rootIssueId ?? first.rootIssueKey ?? '');
-      if (rootIssueId && members.has(rootIssueId)) {
-        members.set(rootIssueId, { ...members.get(rootIssueId), isRoot: true, depth: 0 });
-      }
-
-      return {
-        ...first,
-        issues: [...issues.values()],
-        members: [...members.values()],
-        relationships: [...relationships.values()],
-      };
-    });
+    return [...unique.values()];
   }
 
   async run({ signal } = {}) {
@@ -607,29 +532,39 @@ export class SyncService {
       });
 
       const candidateGroups = [];
+      const graphIssueCache = new Map();
       if (seedIssues.size > 0) {
         for (const seedIssue of seedIssues.values()) {
           throwIfCanceled();
           await this.logs.info('Loading ProjectGroup seed issue', { issueKey: seedIssue.key });
           const detailedSeedIssue = await this.jira.getIssue(seedIssue.key, { signal });
+          graphIssueCache.set(seedIssue.key, detailedSeedIssue);
           await this.logs.info('Traversing graph for ProjectGroup', { issueKey: seedIssue.key });
-          const projectGroup = await this.graph.buildProjectGroup(
+          if (!this.graph.isAllowedSeed(detailedSeedIssue)) {
+            await this.logs.warn('Seed issue skipped because its type is outside graph scope', {
+              issueKey: seedIssue.key,
+              issueType: detailedSeedIssue?.fields?.issuetype?.name ?? null,
+            });
+            continue;
+          }
+          const projectGroups = await this.graph.buildProjectGroups(
             detailedSeedIssue,
             async (issueKey) => this.jira.getIssue(issueKey, { signal }),
-            { signal },
+            { signal, issueCache: graphIssueCache },
           );
           await this.logs.info('Graph traversal completed', {
             issueKey: seedIssue.key,
-            issuesCount: projectGroup.issues.length,
-            relationshipsCount: projectGroup.relationships.length,
+            projectGroupsCount: projectGroups.length,
+            issuesCount: projectGroups.map((group) => group.issues.length),
+            relationshipsCount: projectGroups.map((group) => group.relationships.length),
           });
-          candidateGroups.push(projectGroup);
+          candidateGroups.push(...projectGroups);
         }
       } else {
         await this.logs.warn('No seed issue found for ProjectGroup build');
       }
 
-      const consolidatedGroups = this.consolidateProjectGroups(candidateGroups);
+      const consolidatedGroups = this.deduplicateProjectGroups(candidateGroups);
       await this.logs.info('ProjectGroup consolidation completed', {
         candidateGroups: candidateGroups.length,
         consolidatedGroups: consolidatedGroups.length,

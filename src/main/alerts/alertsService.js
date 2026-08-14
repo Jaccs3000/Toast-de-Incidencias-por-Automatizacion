@@ -35,7 +35,7 @@ export class AlertsService {
   async alertExists(ruleId, issueId) {
     const rows = await this.persistence.query(
       `
-      SELECT id, is_read
+      SELECT id, is_read, project_group_id
       FROM ALERTS
       WHERE rule_id = ? AND issue_id = ?
       LIMIT 1
@@ -122,10 +122,11 @@ export class AlertsService {
         UPDATE ALERTS
         SET
           updated = ?,
-          payload_json = ?
+          payload_json = ?,
+          project_group_id = ?
         WHERE id = ?
         `,
-        [now, payloadJson, existing.id],
+        [now, payloadJson, projectGroupId ?? existing.project_group_id ?? null, existing.id],
       );
 
       return { created: false, id: existing.id };

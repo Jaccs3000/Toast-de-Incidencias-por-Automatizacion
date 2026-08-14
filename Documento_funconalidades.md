@@ -44,7 +44,9 @@ Cada incidencia es solo un punto de partida.
 Desde ahi, la app recorre relaciones segun el grafo y arma el ProjectGroup completo.
 La JQL no define el alcance final del grupo. Solo define donde empezar.
 A partir de cualquier incidencia valida del grafo, la app debe recorrer todas las relaciones permitidas hasta completar el ProjectGroup entero.
-Si varios recorridos comparten incidencias, se consolidan en un solo ProjectGroup para evitar duplicados.
+Si una incidencia enlaza varias ramas `Testing`, cada rama se guarda como un ProjectGroup independiente. Las ramas pueden compartir incidencias, incluida la incidencia raiz, pero no se fusionan por tener incidencias en comun. Solo se elimina un duplicado cuando los grupos tienen exactamente el mismo conjunto de incidencias.
+Una semilla solo es valida si su tipo esta en `entryTypes` de `graph.json`; una subtarea solo puede iniciar recorrido cuando Jira la identifica como subtarea. Las incidencias externas no abren grafos.
+Las ramas conservan su `Testing` de referencia y no incorporan otro `Testing` ni otra instancia del tipo de la raiz. Las reglas `include: false` permiten continuar el recorrido cuando corresponde, pero excluyen la incidencia de la persistencia.
 
 Campos iniciales que se extraen de cada incidencia:
 
@@ -102,6 +104,7 @@ Puede incluir:
 Un ProjectGroup puede tener varias incidencias del mismo tipo.
 Una misma incidencia puede pertenecer a varios ProjectGroups.
 El recorrido del grafo debe completar el grupo con todas las incidencias que le correspondan, sin importar cual haya sido la incidencia raiz de la JQL.
+El recorrido se limita a los tipos declarados en `graph.json`. El comodin de subtareas permite incluir cualquier subtarea de una incidencia ya incluida, pero una subtarea no abre otro grafo. Las incidencias MDI se mantienen como excepcion para calcular el estado de produccion y no expanden sus propios enlaces.
 
 ### 6. Que guarda la base local
 

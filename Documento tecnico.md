@@ -58,7 +58,7 @@ La app obtiene datos desde Jira con endpoints REST y no almacena el JSON complet
 
 Cada sincronizacion parte de una o varias consultas JQL configuradas en `config/app.json`. La interfaz permite administrarlas por bloques, incluso si una consulta ocupa varias lineas. Se ejecutan mediante `POST /rest/api/3/search/jql` y sus resultados solo sirven como punto de entrada para construir los ProjectGroups.
 
-Los recorridos obtenidos desde distintas incidencias se consolidan cuando comparten incidencias. Asi, varias entradas del JQL que pertenecen al mismo desarrollo producen un solo ProjectGroup, sin duplicar incidencias ni relaciones.
+Si una incidencia enlaza varias ramas `Testing`, cada rama produce un ProjectGroup independiente. Las ramas pueden compartir incidencias, pero no se consolidan solo por tener incidencias en comun. Solo se elimina un duplicado cuando dos grupos tienen exactamente el mismo conjunto de incidencias.
 
 La JQL no define el alcance final del grupo. El recorrido del grafo debe completar cada ProjectGroup con todas las incidencias que le correspondan, aunque la incidencia de entrada sea distinta.
 
@@ -255,8 +255,16 @@ Cada relacion tiene:
 Regla del grafo:
 
 - el recorrido puede empezar desde cualquier incidencia valida;
+- una semilla valida debe pertenecer a `entryTypes`; una subtarea solo puede ser semilla si Jira la identifica como subtarea;
 - el motor sigue expandiendo hasta que no haya mas relaciones permitidas;
 - si una incidencia ya fue visitada, no se procesa otra vez;
+- cada rama mantiene su incidencia `Testing` de referencia y no incorpora otra instancia `Testing` ni otra instancia del tipo de la raiz;
+- `parent` e `issuelinks` solo incluyen tipos declarados en `graph.json`, salvo la excepcion MDI configurada;
+- `subtasks` puede incluir cualquier tipo de subtarea de una incidencia ya incluida, pero una subtarea no abre otro grafo;
+- una regla con `include: false` permite recorrer la incidencia si `expand` esta activo, pero no la persiste en el grupo;
+- la sincronizacion comparte la cache de incidencias entre las ramas y las semillas JQL del mismo ciclo;
+- una incidencia fuera del alcance se descarta y no se expande;
+- cada rama tiene un identificador propio para evitar colisiones cuando comparte incidencias con otro grupo;
 - el objetivo es reconstruir el `ProjectGroup` completo.
 
 Propuesta final de `projectgroup_rules.json`:

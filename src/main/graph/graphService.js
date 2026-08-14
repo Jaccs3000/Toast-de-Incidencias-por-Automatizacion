@@ -23,6 +23,10 @@ function getIssueProject(issue) {
   return normalizeComparable(issue?.fields?.project?.name);
 }
 
+function getIssueProjectKey(issue) {
+  return normalizeComparable(issue?.fields?.project?.key);
+}
+
 function getParentKey(issue) {
   return normalizeType(issue?.fields?.parent?.key);
 }
@@ -61,13 +65,17 @@ function getLinkedKeys(issue) {
   }).filter(Boolean);
 }
 
-function matchesTarget(rule, issue) {
-  if (!rule?.to || !Array.isArray(rule.to) || rule.to.includes('*')) {
-    if (!rule?.project) {
-      return true;
-    }
+function matchesTarget(rule, issue, graphIssueTypes) {
+  const projectMatches = !rule?.project || [getIssueProject(issue), getIssueProjectKey(issue)]
+    .includes(normalizeComparable(rule.project));
 
-    return getIssueProject(issue) === normalizeComparable(rule.project);
+  if (!projectMatches) {
+    return false;
+  }
+
+  if (!rule?.to || !Array.isArray(rule.to) || rule.to.includes('*')) {
+    // Wildcards are open only for subtasks. Other relations stay inside graph.json.
+    return Boolean(rule?.project) || rule?.relation === 'subtasks' || graphIssueTypes.has(getIssueType(issue));
   }
 
   const issueType = getIssueType(issue);
@@ -97,6 +105,27 @@ export class GraphService {
     return this.configuration?.graph ?? { version: 1, entryTypes: [], nodes: {} };
   }
 
+  getGraphIssueTypes() {
+    return new Set(Object.keys(this.getGraphConfig().nodes ?? {}).map(normalizeComparable));
+  }
+
+  getGraphEntryTypes() {
+    const configuredEntries = this.getGraphConfig().entryTypes;
+    if (Array.isArray(configuredEntries) && configuredEntries.length > 0) {
+      return new Set(configuredEntries.map(normalizeComparable));
+    }
+
+    return this.getGraphIssueTypes();
+  }
+
+  isAllowedSeed(issue) {
+    const issueType = getIssueType(issue);
+    // A seed must be a configured graph type. A Jira subtask is also valid,
+    // but an arbitrary issue with a parent must not open a new graph.
+    return this.getGraphEntryTypes().has(issueType)
+      || issue?.fields?.issuetype?.subtask === true;
+  }
+
   getRulesForIssue(issue) {
     const graph = this.getGraphConfig();
     const issueType = getIssueType(issue);
@@ -111,12 +140,18 @@ export class GraphService {
     return node.follow;
   }
 
-  async buildProjectGroup(seedIssue, issueLoader = null, { signal } = {}) {
+  async buildProjectGroup(seedIssue, issueLoader = null, {
+    signal,
+    anchorKey = null,
+    boundaryRootKey = null,
+    boundaryRootType = null,
+    issueCache = new Map(),
+  } = {}) {
     if (!seedIssue) {
       throw new Error('A seed issue is required to build a ProjectGroup.');
     }
 
-    const cache = new Map();
+    const cache = issueCache;
     const loadIssue = issueLoader ?? (async (issueKey) => this.jira.getIssue(issueKey));
     const queue = [{
       issue: seedIssue,
@@ -125,6 +160,7 @@ export class GraphService {
       isRoot: true,
     }];
     const visited = new Set();
+    const included = new Set();
     const issues = new Map();
     const relationships = [];
     const members = [];
@@ -143,15 +179,18 @@ export class GraphService {
       }
 
       visited.add(currentId);
-      issues.set(currentId, current);
-      members.push({
-        id: currentId,
-        key: normalizeType(current?.key),
-        isRoot: Boolean(currentEntry.isRoot),
-        depth: currentEntry.depth ?? 0,
-        relationType: currentEntry.relationType ?? null,
-        created: current?.fields?.created ?? null,
-      });
+      if (currentEntry.include !== false && !included.has(currentId)) {
+        included.add(currentId);
+        issues.set(currentId, current);
+        members.push({
+          id: currentId,
+          key: normalizeType(current?.key),
+          isRoot: Boolean(currentEntry.isRoot),
+          depth: currentEntry.depth ?? 0,
+          relationType: currentEntry.relationType ?? null,
+          created: current?.fields?.created ?? null,
+        });
+      }
 
       const currentRules = this.getRulesForIssue(current);
 
@@ -182,20 +221,31 @@ export class GraphService {
             continue;
           }
 
-          let relatedIssue = cache.get(key);
-          if (!relatedIssue) {
+          let relatedIssue;
+          if (cache.has(key)) {
+            relatedIssue = cache.get(key);
+          } else {
             if (signal?.aborted) {
               throw new DOMException('Synchronization canceled.', 'AbortError');
             }
             relatedIssue = await loadIssue(key);
-            if (relatedIssue) {
-              cache.set(key, relatedIssue);
-            }
+            cache.set(key, relatedIssue ?? null);
           }
 
           const relatedId = createIssueIdentity(relatedIssue);
 
-          if (!relatedId || !matchesTarget(rule, relatedIssue)) {
+          const relatedKey = normalizeType(relatedIssue?.key);
+          const isPeerAnchor = anchorKey
+            && getIssueType(relatedIssue) === normalizeComparable('Testing')
+            && relatedKey !== normalizeType(anchorKey);
+          const isPeerBoundaryRoot = boundaryRootKey
+            && getIssueType(relatedIssue) === normalizeComparable(boundaryRootType)
+            && relatedKey !== normalizeType(boundaryRootKey);
+          if (isPeerAnchor || isPeerBoundaryRoot) {
+            continue;
+          }
+
+          if (!relatedId || !matchesTarget(rule, relatedIssue, this.getGraphIssueTypes())) {
             continue;
           }
 
@@ -205,7 +255,8 @@ export class GraphService {
             relationType: rule.relation,
           });
 
-          if (shouldInclude(rule) && relatedId && !issues.has(relatedId)) {
+          if (shouldInclude(rule) && relatedId && !included.has(relatedId)) {
+            included.add(relatedId);
             issues.set(relatedId, relatedIssue);
             members.push({
               id: relatedId,
@@ -223,6 +274,7 @@ export class GraphService {
               depth: (currentEntry.depth ?? 0) + 1,
               relationType: rule.relation,
               isRoot: false,
+              include: shouldInclude(rule),
             });
           }
         }
@@ -246,5 +298,50 @@ export class GraphService {
       relationships,
       members,
     };
+  }
+
+  async buildProjectGroups(seedIssue, issueLoader = null, { signal, issueCache = new Map() } = {}) {
+    const discovery = await this.buildProjectGroup(seedIssue, issueLoader, { signal, issueCache });
+    const testingType = normalizeComparable('Testing');
+    const anchors = discovery.issues.filter((issue) => getIssueType(issue) === testingType);
+
+    if (anchors.length === 0) {
+      return [discovery];
+    }
+
+    const groups = [];
+    for (const anchor of anchors) {
+      const group = await this.buildProjectGroup(anchor, issueLoader, {
+        signal,
+        issueCache,
+        anchorKey: anchor.key,
+        boundaryRootKey: seedIssue.key,
+        boundaryRootType: seedIssue?.fields?.issuetype?.name,
+      });
+      const seedId = createIssueIdentity(seedIssue);
+      const seedIsTesting = getIssueType(seedIssue) === testingType;
+      if (!seedIsTesting && seedId && !group.issues.some((issue) => createIssueIdentity(issue) === seedId)) {
+        group.issues.push(seedIssue);
+        group.members.push({
+          id: seedId,
+          key: normalizeType(seedIssue.key),
+          isRoot: false,
+          depth: 0,
+          relationType: 'seed',
+          created: seedIssue?.fields?.created ?? null,
+        });
+      }
+      const groupRootId = seedIsTesting ? createIssueIdentity(anchor) : seedId;
+      const groupRootKey = seedIsTesting ? normalizeType(anchor.key) : normalizeType(seedIssue.key);
+      group.id = `project-group-${createIssueIdentity(anchor) || group.id}-${groupRootId || 'root'}`;
+      group.rootIssueId = groupRootId || group.rootIssueId;
+      group.rootIssueKey = groupRootKey || group.rootIssueKey;
+      group.anchorIssueId = createIssueIdentity(anchor);
+      group.anchorIssueKey = normalizeType(anchor.key);
+      group.members = group.members.map((member) => ({ ...member, isRoot: member.id === groupRootId }));
+      groups.push(group);
+    }
+
+    return groups;
   }
 }

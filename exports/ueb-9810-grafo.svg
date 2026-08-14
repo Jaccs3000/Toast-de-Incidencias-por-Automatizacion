@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2300" height="2514" viewBox="0 0 2300 2514">
+  <rect width="100%" height="100%" fill="#08101f"/>
+  <style>.title{font:700 28px Segoe UI,Arial;fill:#f0f4ff}.subtitle{font:16px Segoe UI,Arial;fill:#b8c3df}.level{font:700 15px Segoe UI,Arial;fill:#9daeff}.edge{fill:none;stroke:#58698f;stroke-width:1.2;opacity:.58}.key{font:700 13px Segoe UI,Arial}.type{font:10px Segoe UI,Arial}</style>
+  <text x="42" y="48" class="title">Recorrido del grafo desde UEB-9810</text>
+  <text x="42" y="78" class="subtitle">ProjectGroup 5086544 ? 123 incidencias ? 183 relaciones ? Estado: Definiendo Criterios</text>
+  <circle cx="48" cy="112" r="8" fill="#ffcf5a" stroke="#fff" stroke-width="2"/><text x="66" y="118" class="subtitle">Incidencia ra?z</text>
+  <text x="130" y="175" text-anchor="middle" class="level">Nivel 0</text>
+<text x="380" y="175" text-anchor="middle" class="level">Nivel 1</text>
+<text x="630" y="175" text-anchor="middle" class="level">Nivel 2</text>
+<text x="880" y="175" text-anchor="middle" class="level">Nivel 3</text>
+<text x="1130" y="175" text-anchor="middle" class="level">Nivel 4</text>
+<text x="1380" y="175" text-anchor="middle" class="level">Nivel 5</text>
+<text x="1630" y="175" text-anchor="middle" class="level">Nivel 6</text>
+<text x="1880" y="175" text-anchor="middle" class="level">Nivel 7</text>
+  <g><path d="M 224 210 C 255 210, 255 278, 286 278" class="edge" />
+<path d="M 224 210 C 255 210, 255 346, 286 346" class="edge" />
+<path d="M 224 210 C 255 210, 255 414, 286 414" class="edge" />
+<path d="M 224 210 C 255 210, 255 482, 286 482" class="edge" />
+<path d="M 224 210 C 255 210, 255 210, 286 210" class="edge" />
+<path d="M 474 210 C 505 210, 505 210, 536 210" class="edge" />
+<path d="M 474 210 C 255 210, 255 210, 36 210" class="edge" />
+<path d="M 474 210 C 505 210, 505 278, 536 278" class="edge" />
+<path d="M 724 278 C 755 278, 755 278, 786 278" class="edge" />
+<path d="M 724 278 C 755 278, 755 346, 786 346" class="edge" />
+<path d="M 724 278 C 755 278, 755 414, 786 414" class="edge" />
+<path d="M 724 278 C 755 278, 755 482, 786 482" class="edge" />
+<path d="M 724 278 C 755 278, 755 550, 786 550" class="edge" />
+<path d="M 724 278 C 755 278, 755 618, 786 618" class="edge" />
+<path d="M 724 278 C 755 278, 755 686, 786 686" class="edge" />
+<path d="M 724 278 C 755 278, 755 210, 786 210" class="edge" />
+<path d="M 724 278 C 505 278, 505 210, 286 210" class="edge" />
+<path d="M 974 278 C 1005 278, 1005 754, 1036 754" class="edge" />
+<path d="M 974 278 C 1005 278, 1005 822, 1036 822" class="edge" />
+<path d="M 974 278 C 755 278, 755 278, 536 278" class="edge" />
+<path d="M 974 346 C 1005 346, 1005 890, 1036 890" class="edge" />
+<path d="M 974 346 C 1005 346, 1005 958, 1036 958" class="edge" />
+<path d="M 974 346 C 755 346, 755 278, 536 278" class="edge" />
+<path d="M 974 414 C 1005 414, 1005 1026, 1036 1026" class="edge" />
+<path d="M 974 414 C 1005 414, 1005 1094, 1036 1094" class="edge" />
+<path d="M 974 414 C 1005 414, 1005 1162, 1036 1162" class="edge" />
+<path d="M 974 414 C 755 414, 755 278, 536 278" class="edge" />
+<path d="M 974 482 C 1005 482, 1005 1230, 1036 1230" class="edge" />
+<path d="M 974 482 C 1005 482, 1005 1298, 1036 1298" class="edge" />
+<path d="M 974 482 C 1005 482, 1005 1366, 1036 1366" class="edge" />
+<path d="M 974 482 C 1005 482, 1005 1434, 1036 1434" class="edge" />
+<path d="M 974 482 C 1005 482, 1005 1502, 1036 1502" class="edge" />
+<path d="M 974 482 C 755 482, 755 278, 536 278" class="edge" />
+<path d="M 974 550 C 1005 550, 1005 1570, 1036 1570" class="edge" />
+<path d="M 974 550 C 1005 550, 1005 1638, 1036 1638" class="edge" />
+<path d="M 974 550 C 1005 550, 1005 1706, 1036 1706" class="edge" />
+<path d="M 974 550 C 1005 550, 1005 1774, 1036 1774" class="edge" />
+<path d="M 974 550 C 1005 550, 1005 1842, 1036 1842" class="edge" />
+<path d="M 974 550 C 755 550, 755 278, 536 278" class="edge" />
+<path d="M 974 618 C 1005 618, 1005 1910, 1036 1910" class="edge" />
+<path d="M 974 618 C 1005 618, 1005 1978, 1036 1978" class="edge" />
+<path d="M 974 618 C 1005 618, 1005 2046, 1036 2046" class="edge" />
+<path d="M 974 618 C 755 618, 755 278, 536 278" class="edge" />
+<path d="M 974 686 C 1005 686, 1005 2114, 1036 2114" class="edge" />
+<path d="M 974 686 C 755 686, 755 278, 536 278" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 482, 1036 482" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 550, 1036 550" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 618, 1036 618" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 686, 1036 686" class="edge" />
+<path d="M 974 210 C 755 210, 755 278, 536 278" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 2182, 1036 2182" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 2250, 1036 2250" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 2318, 1036 2318" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 210, 1036 210" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 278, 1036 278" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 346, 1036 346" class="edge" />
+<path d="M 974 210 C 1005 210, 1005 414, 1036 414" class="edge" />
+<path d="M 1224 482 C 1255 482, 1255 546.969696969697, 1286 546.969696969697" class="edge" />
+<path d="M 1224 482 C 1255 482, 1255 614.3636363636364, 1286 614.3636363636364" class="edge" />
+<path d="M 1224 482 C 1255 482, 1255 681.7575757575758, 1286 681.7575757575758" class="edge" />
+<path d="M 1224 482 C 1255 482, 1255 749.1515151515151, 1286 749.1515151515151" class="edge" />
+<path d="M 1224 482 C 1005 482, 1005 210, 786 210" class="edge" />
+<path d="M 1224 482 C 1255 482, 1255 344.78787878787875, 1286 344.78787878787875" class="edge" />
+<path d="M 1224 550 C 1255 550, 1255 816.5454545454545, 1286 816.5454545454545" class="edge" />
+<path d="M 1224 550 C 1255 550, 1255 883.9393939393939, 1286 883.9393939393939" class="edge" />
+<path d="M 1224 550 C 1255 550, 1255 951.3333333333333, 1286 951.3333333333333" class="edge" />
+<path d="M 1224 550 C 1005 550, 1005 210, 786 210" class="edge" />
+<path d="M 1224 618 C 1255 618, 1255 1018.7272727272727, 1286 1018.7272727272727" class="edge" />
+<path d="M 1224 618 C 1255 618, 1255 1086.121212121212, 1286 1086.121212121212" class="edge" />
+<path d="M 1224 618 C 1255 618, 1255 1153.5151515151515, 1286 1153.5151515151515" class="edge" />
+<path d="M 1224 618 C 1255 618, 1255 1220.909090909091, 1286 1220.909090909091" class="edge" />
+<path d="M 1224 618 C 1255 618, 1255 1288.3030303030303, 1286 1288.3030303030303" class="edge" />
+<path d="M 1224 618 C 1005 618, 1005 210, 786 210" class="edge" />
+<path d="M 1224 618 C 1255 618, 1255 344.78787878787875, 1286 344.78787878787875" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1355.6969696969697, 1286 1355.6969696969697" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1423.090909090909, 1286 1423.090909090909" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1490.4848484848485, 1286 1490.4848484848485" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1557.8787878787878, 1286 1557.8787878787878" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1625.2727272727273, 1286 1625.2727272727273" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1692.6666666666665, 1286 1692.6666666666665" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1760.060606060606, 1286 1760.060606060606" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1827.4545454545455, 1286 1827.4545454545455" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1894.8484848484848, 1286 1894.8484848484848" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 1962.2424242424242, 1286 1962.2424242424242" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 2029.6363636363635, 1286 2029.6363636363635" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 2097.030303030303, 1286 2097.030303030303" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 2164.424242424242, 1286 2164.424242424242" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 2231.818181818182, 1286 2231.818181818182" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 2299.212121212121, 1286 2299.212121212121" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 2366.6060606060605, 1286 2366.6060606060605" class="edge" />
+<path d="M 1224 686 C 1005 686, 1005 210, 786 210" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 344.78787878787875, 1286 344.78787878787875" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 412.1818181818182, 1286 412.1818181818182" class="edge" />
+<path d="M 1224 686 C 1255 686, 1255 479.57575757575756, 1286 479.57575757575756" class="edge" />
+<path d="M 1224 2182 C 1005 2182, 1005 210, 786 210" class="edge" />
+<path d="M 1224 2182 C 1255 2182, 1255 344.78787878787875, 1286 344.78787878787875" class="edge" />
+<path d="M 1224 2250 C 1005 2250, 1005 210, 786 210" class="edge" />
+<path d="M 1224 2250 C 1255 2250, 1255 344.78787878787875, 1286 344.78787878787875" class="edge" />
+<path d="M 1224 2318 C 1005 2318, 1005 210, 786 210" class="edge" />
+<path d="M 1224 2318 C 1255 2318, 1255 344.78787878787875, 1286 344.78787878787875" class="edge" />
+<path d="M 1224 210 C 1255 210, 1255 210, 1286 210" class="edge" />
+<path d="M 1224 210 C 1255 210, 1255 277.3939393939394, 1286 277.3939393939394" class="edge" />
+<path d="M 1224 210 C 1005 210, 1005 210, 786 210" class="edge" />
+<path d="M 1224 278 C 1005 278, 1005 210, 786 210" class="edge" />
+<path d="M 1224 278 C 1255 278, 1255 1086.121212121212, 1286 1086.121212121212" class="edge" />
+<path d="M 1224 346 C 1005 346, 1005 210, 786 210" class="edge" />
+<path d="M 1224 414 C 1005 414, 1005 210, 786 210" class="edge" />
+<path d="M 1474 344.78787878787875 C 1255 344.78787878787875, 1255 618, 1036 618" class="edge" />
+<path d="M 1474 344.78787878787875 C 1255 344.78787878787875, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 344.78787878787875 C 1255 344.78787878787875, 1255 2182, 1036 2182" class="edge" />
+<path d="M 1474 344.78787878787875 C 1255 344.78787878787875, 1255 2250, 1036 2250" class="edge" />
+<path d="M 1474 344.78787878787875 C 1255 344.78787878787875, 1255 2318, 1036 2318" class="edge" />
+<path d="M 1474 344.78787878787875 C 1255 344.78787878787875, 1255 482, 1036 482" class="edge" />
+<path d="M 1474 344.78787878787875 C 1505 344.78787878787875, 1505 210, 1536 210" class="edge" />
+<path d="M 1474 1018.7272727272727 C 1505 1018.7272727272727, 1505 264.2439024390244, 1536 264.2439024390244" class="edge" />
+<path d="M 1474 1018.7272727272727 C 1505 1018.7272727272727, 1505 318.4878048780488, 1536 318.4878048780488" class="edge" />
+<path d="M 1474 1018.7272727272727 C 1505 1018.7272727272727, 1505 372.7317073170732, 1536 372.7317073170732" class="edge" />
+<path d="M 1474 1018.7272727272727 C 1505 1018.7272727272727, 1505 426.9756097560976, 1536 426.9756097560976" class="edge" />
+<path d="M 1474 1018.7272727272727 C 1505 1018.7272727272727, 1505 481.2195121951219, 1536 481.2195121951219" class="edge" />
+<path d="M 1474 1018.7272727272727 C 1255 1018.7272727272727, 1255 618, 1036 618" class="edge" />
+<path d="M 1474 1086.121212121212 C 1505 1086.121212121212, 1505 535.4634146341464, 1536 535.4634146341464" class="edge" />
+<path d="M 1474 1086.121212121212 C 1505 1086.121212121212, 1505 589.7073170731708, 1536 589.7073170731708" class="edge" />
+<path d="M 1474 1086.121212121212 C 1255 1086.121212121212, 1255 618, 1036 618" class="edge" />
+<path d="M 1474 1086.121212121212 C 1255 1086.121212121212, 1255 278, 1036 278" class="edge" />
+<path d="M 1474 1153.5151515151515 C 1505 1153.5151515151515, 1505 643.9512195121952, 1536 643.9512195121952" class="edge" />
+<path d="M 1474 1153.5151515151515 C 1505 1153.5151515151515, 1505 698.1951219512196, 1536 698.1951219512196" class="edge" />
+<path d="M 1474 1153.5151515151515 C 1255 1153.5151515151515, 1255 618, 1036 618" class="edge" />
+<path d="M 1474 1220.909090909091 C 1505 1220.909090909091, 1505 752.4390243902438, 1536 752.4390243902438" class="edge" />
+<path d="M 1474 1220.909090909091 C 1505 1220.909090909091, 1505 806.6829268292682, 1536 806.6829268292682" class="edge" />
+<path d="M 1474 1220.909090909091 C 1255 1220.909090909091, 1255 618, 1036 618" class="edge" />
+<path d="M 1474 1288.3030303030303 C 1505 1288.3030303030303, 1505 860.9268292682926, 1536 860.9268292682926" class="edge" />
+<path d="M 1474 1288.3030303030303 C 1505 1288.3030303030303, 1505 915.170731707317, 1536 915.170731707317" class="edge" />
+<path d="M 1474 1288.3030303030303 C 1255 1288.3030303030303, 1255 618, 1036 618" class="edge" />
+<path d="M 1474 1355.6969696969697 C 1505 1355.6969696969697, 1505 969.4146341463414, 1536 969.4146341463414" class="edge" />
+<path d="M 1474 1355.6969696969697 C 1505 1355.6969696969697, 1505 1023.6585365853658, 1536 1023.6585365853658" class="edge" />
+<path d="M 1474 1355.6969696969697 C 1505 1355.6969696969697, 1505 1077.9024390243903, 1536 1077.9024390243903" class="edge" />
+<path d="M 1474 1355.6969696969697 C 1255 1355.6969696969697, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1423.090909090909 C 1505 1423.090909090909, 1505 1132.1463414634145, 1536 1132.1463414634145" class="edge" />
+<path d="M 1474 1423.090909090909 C 1505 1423.090909090909, 1505 1186.3902439024391, 1536 1186.3902439024391" class="edge" />
+<path d="M 1474 1423.090909090909 C 1255 1423.090909090909, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1490.4848484848485 C 1505 1490.4848484848485, 1505 1240.6341463414633, 1536 1240.6341463414633" class="edge" />
+<path d="M 1474 1490.4848484848485 C 1505 1490.4848484848485, 1505 1294.8780487804877, 1536 1294.8780487804877" class="edge" />
+<path d="M 1474 1490.4848484848485 C 1255 1490.4848484848485, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1557.8787878787878 C 1505 1557.8787878787878, 1505 1349.121951219512, 1536 1349.121951219512" class="edge" />
+<path d="M 1474 1557.8787878787878 C 1505 1557.8787878787878, 1505 1403.3658536585365, 1536 1403.3658536585365" class="edge" />
+<path d="M 1474 1557.8787878787878 C 1255 1557.8787878787878, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1625.2727272727273 C 1505 1625.2727272727273, 1505 1457.6097560975609, 1536 1457.6097560975609" class="edge" />
+<path d="M 1474 1625.2727272727273 C 1505 1625.2727272727273, 1505 1511.8536585365853, 1536 1511.8536585365853" class="edge" />
+<path d="M 1474 1625.2727272727273 C 1255 1625.2727272727273, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1692.6666666666665 C 1505 1692.6666666666665, 1505 1566.0975609756097, 1536 1566.0975609756097" class="edge" />
+<path d="M 1474 1692.6666666666665 C 1505 1692.6666666666665, 1505 1620.341463414634, 1536 1620.341463414634" class="edge" />
+<path d="M 1474 1692.6666666666665 C 1255 1692.6666666666665, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1760.060606060606 C 1255 1760.060606060606, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1827.4545454545455 C 1505 1827.4545454545455, 1505 1674.5853658536585, 1536 1674.5853658536585" class="edge" />
+<path d="M 1474 1827.4545454545455 C 1505 1827.4545454545455, 1505 1728.8292682926829, 1536 1728.8292682926829" class="edge" />
+<path d="M 1474 1827.4545454545455 C 1255 1827.4545454545455, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1894.8484848484848 C 1505 1894.8484848484848, 1505 1783.0731707317073, 1536 1783.0731707317073" class="edge" />
+<path d="M 1474 1894.8484848484848 C 1255 1894.8484848484848, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 1962.2424242424242 C 1505 1962.2424242424242, 1505 1837.3170731707316, 1536 1837.3170731707316" class="edge" />
+<path d="M 1474 1962.2424242424242 C 1255 1962.2424242424242, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 2029.6363636363635 C 1505 2029.6363636363635, 1505 1891.560975609756, 1536 1891.560975609756" class="edge" />
+<path d="M 1474 2029.6363636363635 C 1255 2029.6363636363635, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 2097.030303030303 C 1505 2097.030303030303, 1505 1945.8048780487804, 1536 1945.8048780487804" class="edge" />
+<path d="M 1474 2097.030303030303 C 1255 2097.030303030303, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 2164.424242424242 C 1505 2164.424242424242, 1505 2000.0487804878048, 1536 2000.0487804878048" class="edge" />
+<path d="M 1474 2164.424242424242 C 1505 2164.424242424242, 1505 2054.292682926829, 1536 2054.292682926829" class="edge" />
+<path d="M 1474 2164.424242424242 C 1505 2164.424242424242, 1505 2108.5365853658536, 1536 2108.5365853658536" class="edge" />
+<path d="M 1474 2164.424242424242 C 1505 2164.424242424242, 1505 2162.7804878048782, 1536 2162.7804878048782" class="edge" />
+<path d="M 1474 2164.424242424242 C 1505 2164.424242424242, 1505 2217.0243902439024, 1536 2217.0243902439024" class="edge" />
+<path d="M 1474 2164.424242424242 C 1505 2164.424242424242, 1505 2271.2682926829266, 1536 2271.2682926829266" class="edge" />
+<path d="M 1474 2164.424242424242 C 1255 2164.424242424242, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 2231.818181818182 C 1255 2231.818181818182, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 2299.212121212121 C 1255 2299.212121212121, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 2366.6060606060605 C 1505 2366.6060606060605, 1505 2325.512195121951, 1536 2325.512195121951" class="edge" />
+<path d="M 1474 2366.6060606060605 C 1505 2366.6060606060605, 1505 2379.7560975609754, 1536 2379.7560975609754" class="edge" />
+<path d="M 1474 2366.6060606060605 C 1255 2366.6060606060605, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 412.1818181818182 C 1255 412.1818181818182, 1255 686, 1036 686" class="edge" />
+<path d="M 1474 479.57575757575756 C 1255 479.57575757575756, 1255 686, 1036 686" class="edge" />
+<path d="M 1724 210 C 1505 210, 1505 344.78787878787875, 1286 344.78787878787875" class="edge" />
+<path d="M 1724 210 C 1755 210, 1755 210, 1786 210" class="edge" />
+<path d="M 1974 210 C 1755 210, 1755 210, 1536 210" class="edge" />
+<path d="M 724 210 C 380 210, 380 210, 36 210" class="edge" />
+<path d="M 724 210 C 505 210, 505 210, 286 210" class="edge" /></g>
+  <g><g class="node"><rect x="36" y="190" width="188" height="40" rx="10" fill="#ffcf5a" stroke="#ffffff" stroke-width="4"/><text x="130" y="207" text-anchor="middle" fill="#16120a" class="key">UEB-9810</text><text x="130" y="222" text-anchor="middle" fill="#16120a" class="type">Documentar Criterios de Aceptación ? En Espera</text></g>
+<g class="node"><rect x="286" y="190" width="188" height="40" rx="10" fill="#f09ac7" /><text x="380" y="207" text-anchor="middle" fill="#08111f" class="key">UEB-10049</text><text x="380" y="222" text-anchor="middle" fill="#08111f" class="type">Testing ? Creado</text></g>
+<g class="node"><rect x="286" y="258" width="188" height="40" rx="10" fill="#a890ff" /><text x="380" y="275" text-anchor="middle" fill="#08111f" class="key">UEB-9811</text><text x="380" y="290" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="286" y="326" width="188" height="40" rx="10" fill="#a890ff" /><text x="380" y="343" text-anchor="middle" fill="#08111f" class="key">UEB-9812</text><text x="380" y="358" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Creado</text></g>
+<g class="node"><rect x="286" y="394" width="188" height="40" rx="10" fill="#a890ff" /><text x="380" y="411" text-anchor="middle" fill="#08111f" class="key">UEB-9813</text><text x="380" y="426" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Creado</text></g>
+<g class="node"><rect x="286" y="462" width="188" height="40" rx="10" fill="#a890ff" /><text x="380" y="479" text-anchor="middle" fill="#08111f" class="key">UEB-9814</text><text x="380" y="494" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Creado</text></g>
+<g class="node"><rect x="536" y="190" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="630" y="207" text-anchor="middle" fill="#08111f" class="key">UEB-9699</text><text x="630" y="222" text-anchor="middle" fill="#08111f" class="type">Épica ? Creado</text></g>
+<g class="node"><rect x="536" y="258" width="188" height="40" rx="10" fill="#56d8b5" /><text x="630" y="275" text-anchor="middle" fill="#08111f" class="key">UEB-9939</text><text x="630" y="290" text-anchor="middle" fill="#08111f" class="type">Testing de Criterios ? Creado</text></g>
+<g class="node"><rect x="786" y="190" width="188" height="40" rx="10" fill="#f09ac7" /><text x="880" y="207" text-anchor="middle" fill="#08111f" class="key">UEB-9828</text><text x="880" y="222" text-anchor="middle" fill="#08111f" class="type">Testing ? Cerrado</text></g>
+<g class="node"><rect x="786" y="258" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="880" y="275" text-anchor="middle" fill="#08111f" class="key">UEB-9940</text><text x="880" y="290" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="786" y="326" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="880" y="343" text-anchor="middle" fill="#08111f" class="key">UEB-9943</text><text x="880" y="358" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="786" y="394" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="880" y="411" text-anchor="middle" fill="#08111f" class="key">UEB-9946</text><text x="880" y="426" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="786" y="462" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="880" y="479" text-anchor="middle" fill="#08111f" class="key">UEB-9950</text><text x="880" y="494" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="786" y="530" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="880" y="547" text-anchor="middle" fill="#08111f" class="key">UEB-9956</text><text x="880" y="562" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="786" y="598" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="880" y="615" text-anchor="middle" fill="#08111f" class="key">UEB-9962</text><text x="880" y="630" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="786" y="666" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="880" y="683" text-anchor="middle" fill="#08111f" class="key">UEB-9966</text><text x="880" y="698" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="190" width="188" height="40" rx="10" fill="#8ea2ff" /><text x="1130" y="207" text-anchor="middle" fill="#08111f" class="key">UEB-10013</text><text x="1130" y="222" text-anchor="middle" fill="#08111f" class="type">Solicitud de Paso a TEST ? Cerrado</text></g>
+<g class="node"><rect x="1036" y="258" width="188" height="40" rx="10" fill="#e58a8a" /><text x="1130" y="275" text-anchor="middle" fill="#08111f" class="key">UEB-10017</text><text x="1130" y="290" text-anchor="middle" fill="#08111f" class="type">Correccion por Testing ? Cerrado</text></g>
+<g class="node"><rect x="1036" y="326" width="188" height="40" rx="10" fill="#e58a8a" /><text x="1130" y="343" text-anchor="middle" fill="#08111f" class="key">UEB-10018</text><text x="1130" y="358" text-anchor="middle" fill="#08111f" class="type">Correccion por Testing ? Cerrado</text></g>
+<g class="node"><rect x="1036" y="394" width="188" height="40" rx="10" fill="#e58a8a" /><text x="1130" y="411" text-anchor="middle" fill="#08111f" class="key">UEB-10022</text><text x="1130" y="426" text-anchor="middle" fill="#08111f" class="type">Correccion por Testing ? Cerrado</text></g>
+<g class="node"><rect x="1036" y="462" width="188" height="40" rx="10" fill="#a890ff" /><text x="1130" y="479" text-anchor="middle" fill="#08111f" class="key">UEB-9620</text><text x="1130" y="494" text-anchor="middle" fill="#08111f" class="type">Documentar Criterios de Aceptación ? Cerrado</text></g>
+<g class="node"><rect x="1036" y="530" width="188" height="40" rx="10" fill="#8ea2ff" /><text x="1130" y="547" text-anchor="middle" fill="#08111f" class="key">UEB-9846</text><text x="1130" y="562" text-anchor="middle" fill="#08111f" class="type">Solicitud de Paso a TEST ? Cerrado</text></g>
+<g class="node"><rect x="1036" y="598" width="188" height="40" rx="10" fill="#56d8b5" /><text x="1130" y="615" text-anchor="middle" fill="#08111f" class="key">UEB-9876</text><text x="1130" y="630" text-anchor="middle" fill="#08111f" class="type">Testing de Criterios ? En Espera</text></g>
+<g class="node"><rect x="1036" y="666" width="188" height="40" rx="10" fill="#56d8b5" /><text x="1130" y="683" text-anchor="middle" fill="#08111f" class="key">UEB-9895</text><text x="1130" y="698" text-anchor="middle" fill="#08111f" class="type">Testing de Criterios ? En Progreso</text></g>
+<g class="node"><rect x="1036" y="734" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="751" text-anchor="middle" fill="#08111f" class="key">UEB-9941</text><text x="1130" y="766" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="802" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="819" text-anchor="middle" fill="#08111f" class="key">UEB-9942</text><text x="1130" y="834" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="870" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="887" text-anchor="middle" fill="#08111f" class="key">UEB-9944</text><text x="1130" y="902" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="938" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="955" text-anchor="middle" fill="#08111f" class="key">UEB-9945</text><text x="1130" y="970" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1006" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1023" text-anchor="middle" fill="#08111f" class="key">UEB-9947</text><text x="1130" y="1038" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1074" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1091" text-anchor="middle" fill="#08111f" class="key">UEB-9948</text><text x="1130" y="1106" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1142" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1159" text-anchor="middle" fill="#08111f" class="key">UEB-9949</text><text x="1130" y="1174" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1210" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1227" text-anchor="middle" fill="#08111f" class="key">UEB-9951</text><text x="1130" y="1242" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1278" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1295" text-anchor="middle" fill="#08111f" class="key">UEB-9952</text><text x="1130" y="1310" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1346" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1363" text-anchor="middle" fill="#08111f" class="key">UEB-9953</text><text x="1130" y="1378" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1414" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1431" text-anchor="middle" fill="#08111f" class="key">UEB-9954</text><text x="1130" y="1446" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1482" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1499" text-anchor="middle" fill="#08111f" class="key">UEB-9955</text><text x="1130" y="1514" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1550" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1567" text-anchor="middle" fill="#08111f" class="key">UEB-9957</text><text x="1130" y="1582" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1618" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1635" text-anchor="middle" fill="#08111f" class="key">UEB-9958</text><text x="1130" y="1650" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1686" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1703" text-anchor="middle" fill="#08111f" class="key">UEB-9959</text><text x="1130" y="1718" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1754" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1771" text-anchor="middle" fill="#08111f" class="key">UEB-9960</text><text x="1130" y="1786" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1822" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1839" text-anchor="middle" fill="#08111f" class="key">UEB-9961</text><text x="1130" y="1854" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1890" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1907" text-anchor="middle" fill="#08111f" class="key">UEB-9963</text><text x="1130" y="1922" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="1958" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="1975" text-anchor="middle" fill="#08111f" class="key">UEB-9964</text><text x="1130" y="1990" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="2026" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="2043" text-anchor="middle" fill="#08111f" class="key">UEB-9965</text><text x="1130" y="2058" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="2094" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="2111" text-anchor="middle" fill="#08111f" class="key">UEB-9967</text><text x="1130" y="2126" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1036" y="2162" width="188" height="40" rx="10" fill="#e58a8a" /><text x="1130" y="2179" text-anchor="middle" fill="#08111f" class="key">UEB-9968</text><text x="1130" y="2194" text-anchor="middle" fill="#08111f" class="type">Criterios – Pruebas Automáticas ? Creado</text></g>
+<g class="node"><rect x="1036" y="2230" width="188" height="40" rx="10" fill="#e58a8a" /><text x="1130" y="2247" text-anchor="middle" fill="#08111f" class="key">UEB-9969</text><text x="1130" y="2262" text-anchor="middle" fill="#08111f" class="type">Implementación Q&amp;A ? Creado</text></g>
+<g class="node"><rect x="1036" y="2298" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1130" y="2315" text-anchor="middle" fill="#08111f" class="key">UEB-9971</text><text x="1130" y="2330" text-anchor="middle" fill="#08111f" class="type">Admon Pre-Produccion ? Creado</text></g>
+<g class="node"><rect x="1286" y="190" width="188" height="40" rx="10" fill="#a890ff" /><text x="1380" y="207" text-anchor="middle" fill="#08111f" class="key">UEB-10014</text><text x="1380" y="222" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="257.3939393939394" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1380" y="274.3939393939394" text-anchor="middle" fill="#08111f" class="key">UEB-10019</text><text x="1380" y="289.3939393939394" text-anchor="middle" fill="#08111f" class="type">TEST - Validación Montaje Dev ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="324.78787878787875" width="188" height="40" rx="10" fill="#f09ac7" /><text x="1380" y="341.78787878787875" text-anchor="middle" fill="#08111f" class="key">UEB-10050</text><text x="1380" y="356.78787878787875" text-anchor="middle" fill="#08111f" class="type">Testing ? En Progreso</text></g>
+<g class="node"><rect x="1286" y="392.1818181818182" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="409.1818181818182" text-anchor="middle" fill="#08111f" class="key">UEB-10051</text><text x="1380" y="424.1818181818182" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="459.57575757575756" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="476.57575757575756" text-anchor="middle" fill="#08111f" class="key">UEB-10052</text><text x="1380" y="491.57575757575756" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="526.969696969697" width="188" height="40" rx="10" fill="#a890ff" /><text x="1380" y="543.969696969697" text-anchor="middle" fill="#08111f" class="key">UEB-9621</text><text x="1380" y="558.969696969697" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="594.3636363636364" width="188" height="40" rx="10" fill="#a890ff" /><text x="1380" y="611.3636363636364" text-anchor="middle" fill="#08111f" class="key">UEB-9622</text><text x="1380" y="626.3636363636364" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="661.7575757575758" width="188" height="40" rx="10" fill="#a890ff" /><text x="1380" y="678.7575757575758" text-anchor="middle" fill="#08111f" class="key">UEB-9623</text><text x="1380" y="693.7575757575758" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="729.1515151515151" width="188" height="40" rx="10" fill="#a890ff" /><text x="1380" y="746.1515151515151" text-anchor="middle" fill="#08111f" class="key">UEB-9624</text><text x="1380" y="761.1515151515151" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="796.5454545454545" width="188" height="40" rx="10" fill="#a890ff" /><text x="1380" y="813.5454545454545" text-anchor="middle" fill="#08111f" class="key">UEB-9847</text><text x="1380" y="828.5454545454545" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="863.9393939393939" width="188" height="40" rx="10" fill="#a890ff" /><text x="1380" y="880.9393939393939" text-anchor="middle" fill="#08111f" class="key">UEB-9848</text><text x="1380" y="895.9393939393939" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="931.3333333333333" width="188" height="40" rx="10" fill="#a890ff" /><text x="1380" y="948.3333333333333" text-anchor="middle" fill="#08111f" class="key">UEB-9849</text><text x="1380" y="963.3333333333333" text-anchor="middle" fill="#08111f" class="type">Subtarea ? Cerrado</text></g>
+<g class="node"><rect x="1286" y="998.7272727272727" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1015.7272727272727" text-anchor="middle" fill="#08111f" class="key">UEB-9877</text><text x="1380" y="1030.7272727272727" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1286" y="1066.121212121212" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1083.121212121212" text-anchor="middle" fill="#08111f" class="key">UEB-9883</text><text x="1380" y="1098.121212121212" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1286" y="1133.5151515151515" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1150.5151515151515" text-anchor="middle" fill="#08111f" class="key">UEB-9886</text><text x="1380" y="1165.5151515151515" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1286" y="1200.909090909091" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1217.909090909091" text-anchor="middle" fill="#08111f" class="key">UEB-9889</text><text x="1380" y="1232.909090909091" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1268.3030303030303" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1285.3030303030303" text-anchor="middle" fill="#08111f" class="key">UEB-9892</text><text x="1380" y="1300.3030303030303" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1335.6969696969697" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1352.6969696969697" text-anchor="middle" fill="#08111f" class="key">UEB-9896</text><text x="1380" y="1367.6969696969697" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? En Progreso</text></g>
+<g class="node"><rect x="1286" y="1403.090909090909" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1420.090909090909" text-anchor="middle" fill="#08111f" class="key">UEB-9900</text><text x="1380" y="1435.090909090909" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1470.4848484848485" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1487.4848484848485" text-anchor="middle" fill="#08111f" class="key">UEB-9903</text><text x="1380" y="1502.4848484848485" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1537.8787878787878" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1554.8787878787878" text-anchor="middle" fill="#08111f" class="key">UEB-9906</text><text x="1380" y="1569.8787878787878" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1605.2727272727273" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1622.2727272727273" text-anchor="middle" fill="#08111f" class="key">UEB-9909</text><text x="1380" y="1637.2727272727273" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1672.6666666666665" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1689.6666666666665" text-anchor="middle" fill="#08111f" class="key">UEB-9912</text><text x="1380" y="1704.6666666666665" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1740.060606060606" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1757.060606060606" text-anchor="middle" fill="#08111f" class="key">UEB-9915</text><text x="1380" y="1772.060606060606" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1807.4545454545455" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1824.4545454545455" text-anchor="middle" fill="#08111f" class="key">UEB-9916</text><text x="1380" y="1839.4545454545455" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1874.8484848484848" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1891.8484848484848" text-anchor="middle" fill="#08111f" class="key">UEB-9919</text><text x="1380" y="1906.8484848484848" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="1942.2424242424242" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="1959.2424242424242" text-anchor="middle" fill="#08111f" class="key">UEB-9921</text><text x="1380" y="1974.2424242424242" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="2009.6363636363635" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="2026.6363636363635" text-anchor="middle" fill="#08111f" class="key">UEB-9923</text><text x="1380" y="2041.6363636363635" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="2077.030303030303" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="2094.030303030303" text-anchor="middle" fill="#08111f" class="key">UEB-9925</text><text x="1380" y="2109.030303030303" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="2144.424242424242" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="2161.424242424242" text-anchor="middle" fill="#08111f" class="key">UEB-9927</text><text x="1380" y="2176.424242424242" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="2211.818181818182" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="2228.818181818182" text-anchor="middle" fill="#08111f" class="key">UEB-9934</text><text x="1380" y="2243.818181818182" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="2279.212121212121" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="2296.212121212121" text-anchor="middle" fill="#08111f" class="key">UEB-9935</text><text x="1380" y="2311.212121212121" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1286" y="2346.6060606060605" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1380" y="2363.6060606060605" text-anchor="middle" fill="#08111f" class="key">UEB-9936</text><text x="1380" y="2378.6060606060605" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="190" width="188" height="40" rx="10" fill="#56d8b5" /><text x="1630" y="207" text-anchor="middle" fill="#08111f" class="key">UEB-10053</text><text x="1630" y="222" text-anchor="middle" fill="#08111f" class="type">Testing de Criterios ? Creado</text></g>
+<g class="node"><rect x="1536" y="244.2439024390244" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="261.2439024390244" text-anchor="middle" fill="#08111f" class="key">UEB-9878</text><text x="1630" y="276.2439024390244" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1536" y="298.4878048780488" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="315.4878048780488" text-anchor="middle" fill="#08111f" class="key">UEB-9879</text><text x="1630" y="330.4878048780488" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1536" y="352.7317073170732" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="369.7317073170732" text-anchor="middle" fill="#08111f" class="key">UEB-9880</text><text x="1630" y="384.7317073170732" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Cerrado</text></g>
+<g class="node"><rect x="1536" y="406.9756097560976" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="423.9756097560976" text-anchor="middle" fill="#08111f" class="key">UEB-9881</text><text x="1630" y="438.9756097560976" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Cerrado</text></g>
+<g class="node"><rect x="1536" y="461.2195121951219" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="478.2195121951219" text-anchor="middle" fill="#08111f" class="key">UEB-9882</text><text x="1630" y="493.2195121951219" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Cerrado</text></g>
+<g class="node"><rect x="1536" y="515.4634146341464" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="532.4634146341464" text-anchor="middle" fill="#08111f" class="key">UEB-9884</text><text x="1630" y="547.4634146341464" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1536" y="569.7073170731708" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="586.7073170731708" text-anchor="middle" fill="#08111f" class="key">UEB-9885</text><text x="1630" y="601.7073170731708" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1536" y="623.9512195121952" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="640.9512195121952" text-anchor="middle" fill="#08111f" class="key">UEB-9887</text><text x="1630" y="655.9512195121952" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1536" y="678.1951219512196" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="695.1951219512196" text-anchor="middle" fill="#08111f" class="key">UEB-9888</text><text x="1630" y="710.1951219512196" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? En Espera</text></g>
+<g class="node"><rect x="1536" y="732.4390243902438" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="749.4390243902438" text-anchor="middle" fill="#08111f" class="key">UEB-9890</text><text x="1630" y="764.4390243902438" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="786.6829268292682" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="803.6829268292682" text-anchor="middle" fill="#08111f" class="key">UEB-9891</text><text x="1630" y="818.6829268292682" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="840.9268292682926" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="857.9268292682926" text-anchor="middle" fill="#08111f" class="key">UEB-9893</text><text x="1630" y="872.9268292682926" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="895.170731707317" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="912.170731707317" text-anchor="middle" fill="#08111f" class="key">UEB-9894</text><text x="1630" y="927.170731707317" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="949.4146341463414" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="966.4146341463414" text-anchor="middle" fill="#08111f" class="key">UEB-9897</text><text x="1630" y="981.4146341463414" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Cerrado</text></g>
+<g class="node"><rect x="1536" y="1003.6585365853658" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1020.6585365853658" text-anchor="middle" fill="#08111f" class="key">UEB-9898</text><text x="1630" y="1035.6585365853657" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? En Progreso</text></g>
+<g class="node"><rect x="1536" y="1057.9024390243903" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1074.9024390243903" text-anchor="middle" fill="#08111f" class="key">UEB-9899</text><text x="1630" y="1089.9024390243903" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Cerrado</text></g>
+<g class="node"><rect x="1536" y="1112.1463414634145" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1129.1463414634145" text-anchor="middle" fill="#08111f" class="key">UEB-9901</text><text x="1630" y="1144.1463414634145" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1166.3902439024391" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1183.3902439024391" text-anchor="middle" fill="#08111f" class="key">UEB-9902</text><text x="1630" y="1198.3902439024391" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1220.6341463414633" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1237.6341463414633" text-anchor="middle" fill="#08111f" class="key">UEB-9904</text><text x="1630" y="1252.6341463414633" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1274.8780487804877" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1291.8780487804877" text-anchor="middle" fill="#08111f" class="key">UEB-9905</text><text x="1630" y="1306.8780487804877" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1329.121951219512" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1346.121951219512" text-anchor="middle" fill="#08111f" class="key">UEB-9907</text><text x="1630" y="1361.121951219512" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1383.3658536585365" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1400.3658536585365" text-anchor="middle" fill="#08111f" class="key">UEB-9908</text><text x="1630" y="1415.3658536585365" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1437.6097560975609" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1454.6097560975609" text-anchor="middle" fill="#08111f" class="key">UEB-9910</text><text x="1630" y="1469.6097560975609" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1491.8536585365853" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1508.8536585365853" text-anchor="middle" fill="#08111f" class="key">UEB-9911</text><text x="1630" y="1523.8536585365853" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1546.0975609756097" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1563.0975609756097" text-anchor="middle" fill="#08111f" class="key">UEB-9913</text><text x="1630" y="1578.0975609756097" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1600.341463414634" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1617.341463414634" text-anchor="middle" fill="#08111f" class="key">UEB-9914</text><text x="1630" y="1632.341463414634" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1654.5853658536585" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1671.5853658536585" text-anchor="middle" fill="#08111f" class="key">UEB-9917</text><text x="1630" y="1686.5853658536585" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1708.8292682926829" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1725.8292682926829" text-anchor="middle" fill="#08111f" class="key">UEB-9918</text><text x="1630" y="1740.8292682926829" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1763.0731707317073" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1780.0731707317073" text-anchor="middle" fill="#08111f" class="key">UEB-9920</text><text x="1630" y="1795.0731707317073" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1817.3170731707316" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1834.3170731707316" text-anchor="middle" fill="#08111f" class="key">UEB-9922</text><text x="1630" y="1849.3170731707316" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1871.560975609756" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1888.560975609756" text-anchor="middle" fill="#08111f" class="key">UEB-9924</text><text x="1630" y="1903.560975609756" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1925.8048780487804" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1942.8048780487804" text-anchor="middle" fill="#08111f" class="key">UEB-9926</text><text x="1630" y="1957.8048780487804" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="1980.0487804878048" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="1997.0487804878048" text-anchor="middle" fill="#08111f" class="key">UEB-9928</text><text x="1630" y="2012.0487804878048" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="2034.292682926829" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="2051.292682926829" text-anchor="middle" fill="#08111f" class="key">UEB-9929</text><text x="1630" y="2066.292682926829" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="2088.5365853658536" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="2105.5365853658536" text-anchor="middle" fill="#08111f" class="key">UEB-9930</text><text x="1630" y="2120.5365853658536" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="2142.7804878048782" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="2159.7804878048782" text-anchor="middle" fill="#08111f" class="key">UEB-9931</text><text x="1630" y="2174.7804878048782" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="2197.0243902439024" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="2214.0243902439024" text-anchor="middle" fill="#08111f" class="key">UEB-9932</text><text x="1630" y="2229.0243902439024" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="2251.2682926829266" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="2268.2682926829266" text-anchor="middle" fill="#08111f" class="key">UEB-9933</text><text x="1630" y="2283.2682926829266" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="2305.512195121951" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="2322.512195121951" text-anchor="middle" fill="#08111f" class="key">UEB-9937</text><text x="1630" y="2337.512195121951" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1536" y="2359.7560975609754" width="188" height="40" rx="10" fill="#f2c14e" /><text x="1630" y="2376.7560975609754" text-anchor="middle" fill="#08111f" class="key">UEB-9938</text><text x="1630" y="2391.7560975609754" text-anchor="middle" fill="#08111f" class="type">Test criterios de aceptación ? Creado</text></g>
+<g class="node"><rect x="1786" y="190" width="188" height="40" rx="10" fill="#6fc5e8" /><text x="1880" y="207" text-anchor="middle" fill="#08111f" class="key">UEB-10054</text><text x="1880" y="222" text-anchor="middle" fill="#08111f" class="type">Criterios de aceptación ? Creado</text></g></g>
+</svg>

@@ -13,7 +13,28 @@ export class ProjectGroupIssuesRepository {
       [projectGroupId],
     );
 
-    for (const issue of issues) {
+    const uniqueIssues = new Map();
+    for (const issue of Array.isArray(issues) ? issues : []) {
+      const issueId = String(issue?.id ?? '').trim();
+      if (!issueId) {
+        continue;
+      }
+
+      const existing = uniqueIssues.get(issueId);
+      if (!existing) {
+        uniqueIssues.set(issueId, { ...issue, id: issueId });
+        continue;
+      }
+
+      uniqueIssues.set(issueId, {
+        ...existing,
+        isRoot: Boolean(existing.isRoot || issue.isRoot),
+        depth: Math.min(Number(existing.depth ?? 0), Number(issue.depth ?? 0)),
+        relationType: existing.relationType ?? issue.relationType ?? null,
+      });
+    }
+
+    for (const issue of uniqueIssues.values()) {
       await this.persistence.exec(
         `
         INSERT INTO JIRA_PROJECT_GROUP_ISSUES (
@@ -32,7 +53,7 @@ export class ProjectGroupIssuesRepository {
     }
 
     return {
-      issuesCount: issues.length,
+      issuesCount: uniqueIssues.size,
       relationshipsCount: relationships.length,
     };
   }
