@@ -21,6 +21,79 @@ function log(message, details = '') {
   console.log(`[backend ${new Date().toISOString()}] ${message}${suffix}`);
 }
 
+function gridText(value) {
+  return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function gridFieldValue(issue, field) {
+  const values = {
+    key: issue.key,
+    project: issue.project,
+    issuetype: issue.issuetype,
+    summary: issue.summary,
+    description: issue.description,
+    status: issue.status,
+    reporter: issue.reporter,
+    assignee: issue.assignee,
+    created: issue.created,
+    updated: issue.updated,
+    resolutiondate: issue.resolutiondate,
+    parent: issue.parent,
+    timeestimate: issue.timeestimate,
+    timespent: issue.timespent,
+    timeremaining: issue.timeremaining,
+  };
+  return values[field] ?? null;
+}
+
+function gridConditionMatches(value, operator, expected) {
+  if (operator === 'IS NULL') return value === null || value === '';
+  if (operator === 'IS NOT NULL') return value !== null && value !== '';
+  if (value === null || value === undefined) return false;
+
+  if (['>', '<', '>=', '<='].includes(operator)) {
+    const left = Number(value);
+    const right = Number(expected);
+    if (Number.isFinite(left) && Number.isFinite(right)) {
+      return operator === '>' ? left > right
+        : operator === '<' ? left < right
+          : operator === '>=' ? left >= right : left <= right;
+    }
+    const leftDate = new Date(value).getTime();
+    const rightDate = new Date(expected).getTime();
+    if (!Number.isFinite(leftDate) || !Number.isFinite(rightDate)) return false;
+    return operator === '>' ? leftDate > rightDate
+      : operator === '<' ? leftDate < rightDate
+        : operator === '>=' ? leftDate >= rightDate : leftDate <= rightDate;
+  }
+
+  const left = gridText(value);
+  const right = gridText(expected);
+  return operator === 'LIKE' ? left.includes(right) : operator === '<>' ? left !== right : left === right;
+}
+
+function parseGridRow(row) {
+  return {
+    id: row.id,
+    estadoGeneral: row.estado_general,
+    issues: Array.isArray(row.issues_json)
+      ? row.issues_json
+      : row.issues_json ? JSON.parse(row.issues_json) : [],
+  };
+}
+
+function parseGridDefinition(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    pageSize: Number(row.page_size) || 25,
+    columns: JSON.parse(row.columns_json ?? '[]'),
+    conditions: JSON.parse(row.conditions_json ?? '[]'),
+    created: row.created,
+    updated: row.updated,
+  };
+}
+
 function json(res, statusCode, payload) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -485,6 +558,157 @@ async function handleDatabaseSql(req, res) {
   json(res, 200, { ok: true, type: 'write', message: 'Consulta ejecutada correctamente.' });
 }
 
+async function handleGrids(res) {
+  const rows = await state.runtime.persistence.grids.list();
+  json(res, 200, { grids: rows.map(parseGridDefinition) });
+}
+
+function validateGridPayload(body) {
+  const name = String(body?.name ?? '').trim();
+  const pageSize = Number(body?.pageSize ?? 25);
+  const columns = Array.isArray(body?.columns) ? body.columns : [];
+  const conditions = Array.isArray(body?.conditions) ? body.conditions : [];
+  const graphTypes = new Set(Object.keys(state.runtime.configuration?.graph?.nodes ?? {}));
+  const allowedFields = new Set([
+    'key', 'project', 'issuetype', 'summary', 'description', 'status', 'reporter',
+    'assignee', 'created', 'updated', 'resolutiondate', 'parent', 'timeestimate',
+    'timespent', 'timeremaining', 'estadoGeneral',
+  ]);
+  const allowedOperators = new Set(['=', '<>', 'LIKE', '>', '<', '>=', '<=', 'IS NULL', 'IS NOT NULL']);
+
+  if (!name) throw new Error('El grid requiere un nombre.');
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
+    throw new Error('La cantidad de registros por pagina debe estar entre 1 y 200.');
+  }
+  if (columns.length === 0 || columns.length > 50) throw new Error('El grid debe tener entre 1 y 50 campos.');
+  if (columns.some((column) => !column?.field || !allowedFields.has(column.field)
+    || (column.field !== 'projectGroupId' && column.field !== 'estadoGeneral' && !graphTypes.has(column.issueType)))) {
+    throw new Error('Uno de los campos seleccionados no es valido para el grafo actual.');
+  }
+  if (conditions.some((condition) => !condition?.field || !allowedFields.has(condition.field)
+    || !allowedOperators.has(condition.operator)
+    || (condition.field !== 'estadoGeneral' && !graphTypes.has(condition.issueType)))) {
+    throw new Error('Una de las condiciones del grid no es valida.');
+  }
+
+  return {
+    name,
+    pageSize,
+    columns: columns.map((column) => ({
+      issueType: column.issueType ?? null,
+      field: column.field,
+      label: String(column.label ?? '').trim() || `${column.issueType ?? 'ProjectGroup'} - ${column.field}`,
+    })),
+    conditions: conditions.map((condition, index) => ({
+      issueType: condition.issueType ?? null,
+      field: condition.field,
+      operator: condition.operator,
+      value: String(condition.value ?? '').trim(),
+      connector: index === 0 ? undefined : (condition.connector === 'OR' ? 'OR' : 'AND'),
+    })),
+  };
+}
+
+async function handleGridSave(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede cambiar un grid durante una sincronizacion.' });
+    return;
+  }
+  const body = await readBody(req);
+  const payload = validateGridPayload(body);
+  const id = String(body?.id ?? crypto.randomUUID());
+  const existing = await state.runtime.persistence.grids.get(id);
+  const duplicate = await state.runtime.persistence.query(
+    'SELECT id FROM GRID_DEFINITIONS WHERE lower(name) = lower(?) AND id <> ? LIMIT 1',
+    [payload.name, id],
+  );
+  if (duplicate.length > 0) {
+    json(res, 409, { ok: false, error: 'Ya existe un grid con ese nombre.' });
+    return;
+  }
+  const now = new Date().toISOString();
+  await state.runtime.persistence.grids.save({
+    ...payload,
+    id,
+    created: existing?.created ?? now,
+    updated: now,
+  });
+  log('grid saved', `id=${id} name=${payload.name}`);
+  await handleGrids(res);
+}
+
+async function handleGridDelete(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede eliminar un grid durante una sincronizacion.' });
+    return;
+  }
+  const body = await readBody(req);
+  const id = String(body?.id ?? '');
+  if (!id) {
+    json(res, 400, { ok: false, error: 'Falta el identificador del grid.' });
+    return;
+  }
+  await state.runtime.persistence.grids.remove(id);
+  log('grid deleted', `id=${id}`);
+  await handleGrids(res);
+}
+
+async function handleGridData(req, res, id) {
+  const gridRow = await state.runtime.persistence.grids.get(id);
+  if (!gridRow) {
+    json(res, 404, { ok: false, error: 'Grid no encontrado.' });
+    return;
+  }
+  const grid = parseGridDefinition(gridRow);
+  const rows = await state.runtime.persistence.query(`
+    SELECT
+      p.id,
+      p.estado_general,
+      COALESCE(
+        list(
+          struct_pack(
+            key := i.key, project := i.project, issuetype := i.issuetype,
+            summary := i.summary, description := i.description, status := i.status,
+            reporter := i.reporter, assignee := i.assignee, created := i.created,
+            updated := i.updated, resolutiondate := i.resolutiondate, parent := i.parent,
+            timeestimate := i.timeestimate, timespent := i.timespent, timeremaining := i.timeremaining
+          )
+        ) FILTER (WHERE i.id IS NOT NULL), []
+      ) AS issues_json
+    FROM JIRA_PROJECT_GROUPS p
+    LEFT JOIN JIRA_PROJECT_GROUP_ISSUES pgi ON pgi.project_group_id = p.id
+    LEFT JOIN JIRA_ISSUES i ON i.id = pgi.issue_id
+    GROUP BY p.id, p.estado_general
+    ORDER BY p.id
+  `);
+  const projectGroups = rows.map(parseGridRow).filter((group) => {
+    const matches = grid.conditions.map((condition) => {
+      if (condition.field === 'estadoGeneral') return gridConditionMatches(group.estadoGeneral, condition.operator, condition.value);
+      return group.issues.some((issue) => issue.issuetype === condition.issueType
+        && gridConditionMatches(gridFieldValue(issue, condition.field), condition.operator, condition.value));
+    });
+    if (matches.length === 0) return true;
+    return matches.reduce((result, match, index) => (
+      index === 0 ? match : (grid.conditions[index].connector === 'OR' ? result || match : result && match)
+    ), false);
+  });
+  const page = Math.max(1, Number(new URL(req.url, 'http://127.0.0.1').searchParams.get('page') ?? 1));
+  const pageSize = grid.pageSize;
+  const data = projectGroups.slice((page - 1) * pageSize, page * pageSize).map((group) => {
+    const result = { projectGroupId: group.id, estadoGeneral: group.estadoGeneral };
+    for (const column of grid.columns) {
+      if (column.field === 'estadoGeneral') continue;
+      const values = group.issues
+        .filter((issue) => issue.issuetype === column.issueType)
+        .map((issue) => gridFieldValue(issue, column.field))
+        .filter((value) => value !== null && value !== undefined && value !== '');
+      result[`${column.issueType}::${column.field}`] = [...new Set(values.map(String))].join(' | ');
+    }
+    return result;
+  });
+  json(res, 200, { grid, rows: data, total: projectGroups.length, page, pageSize });
+}
+
 async function handleAlertsSummary(res) {
   const unreadAlerts = await state.runtime.persistence.alerts.listUnread(20);
   const unreadCount = await state.runtime.persistence.alerts.getUnreadCount();
@@ -726,6 +950,27 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/database/sql') {
       await handleDatabaseSql(req, res);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/grids') {
+      await handleGrids(res);
+      return;
+    }
+
+    if (req.method === 'PUT' && url.pathname === '/api/grids') {
+      await handleGridSave(req, res);
+      return;
+    }
+
+    if (req.method === 'DELETE' && url.pathname === '/api/grids') {
+      await handleGridDelete(req, res);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname.startsWith('/api/grids/') && url.pathname.endsWith('/data')) {
+      const gridId = decodeURIComponent(url.pathname.slice('/api/grids/'.length, -'/data'.length));
+      await handleGridData(req, res, gridId);
       return;
     }
 

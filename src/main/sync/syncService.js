@@ -50,6 +50,44 @@ export class SyncService {
     return String(issue?.fields?.project?.name ?? issue?.fields?.project?.key ?? '').trim();
   }
 
+  getIssueProjectKey(issue) {
+    return String(issue?.fields?.project?.key ?? '').trim();
+  }
+
+  getLinkedIssues(issue, allIssues = []) {
+    const links = Array.isArray(issue?.fields?.issuelinks) ? issue.fields.issuelinks : [];
+    const linkedKeys = links.flatMap((link) => [link?.outwardIssue?.key, link?.inwardIssue?.key]).filter(Boolean);
+    const linkedByKey = new Map((allIssues ?? []).map((item) => [String(item?.key ?? ''), item]));
+
+    return linkedKeys.map((key) => linkedByKey.get(String(key)) ?? {
+      key,
+      fields: {
+        project: { key: String(key).split('-')[0] },
+      },
+    });
+  }
+
+  projectMatches(issue, expectedProject) {
+    const expected = String(expectedProject ?? '').trim().toLocaleLowerCase('es-CO');
+    if (!expected) return false;
+    return [this.getIssueProjectName(issue), this.getIssueProjectKey(issue)]
+      .some((value) => String(value).trim().toLocaleLowerCase('es-CO') === expected);
+  }
+
+  linkedProjectExists(issue, allIssues, expectedProject) {
+    return this.getLinkedIssues(issue, allIssues).some((linkedIssue) => this.projectMatches(linkedIssue, expectedProject));
+  }
+
+  subtaskExists(parentIssue, allIssues, condition) {
+    const parentKey = String(parentIssue?.key ?? '').trim();
+    return (allIssues ?? []).some((subtask) => (
+      String(subtask?.fields?.parent?.key ?? '').trim() === parentKey
+      && (!condition.subtaskIssueType || String(subtask?.fields?.issuetype?.name ?? '').trim() === condition.subtaskIssueType)
+      && (!condition.subtaskStatus || this.getIssueStatus(subtask) === condition.subtaskStatus)
+      && (!condition.subtaskStatusNot || this.getIssueStatus(subtask) !== condition.subtaskStatusNot)
+    ));
+  }
+
   issueExists(issuesByType, typeName, predicate = null) {
     const issues = issuesByType.get(typeName) ?? [];
 
@@ -110,6 +148,19 @@ export class SyncService {
 
         return true;
       }),
+      subtaskExists: (condition) => this.issueExists(issuesByType, condition.issueType, (issue) => (
+        this.subtaskExists(issue, projectGroup.issues ?? [], condition)
+      )),
+      linkedProject: (condition) => this.issueExists(issuesByType, condition.issueType, (issue) => (
+        (!condition.status || this.getIssueStatus(issue) === condition.status)
+        && (!condition.statusNot || this.getIssueStatus(issue) !== condition.statusNot)
+        && this.linkedProjectExists(issue, projectGroup.issues ?? [], condition.project)
+      )),
+      linkedProjectNot: (condition) => this.issueExists(issuesByType, condition.issueType, (issue) => (
+        (!condition.status || this.getIssueStatus(issue) === condition.status)
+        && (!condition.statusNot || this.getIssueStatus(issue) !== condition.statusNot)
+        && !this.linkedProjectExists(issue, projectGroup.issues ?? [], condition.project)
+      )),
     };
 
     const evaluateNode = (node) => {
@@ -131,6 +182,18 @@ export class SyncService {
 
       if (node.match === 'exists' && node.issueType) {
         return conditions.exists(node);
+      }
+
+      if (node.match === 'subtaskExists' && node.issueType) {
+        return conditions.subtaskExists(node);
+      }
+
+      if (node.match === 'linkedProject' && node.issueType) {
+        return conditions.linkedProject(node);
+      }
+
+      if (node.match === 'linkedProjectNot' && node.issueType) {
+        return conditions.linkedProjectNot(node);
       }
 
       if (node.issueType && node.status && node.statusNot) {

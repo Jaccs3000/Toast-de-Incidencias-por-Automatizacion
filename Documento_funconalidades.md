@@ -234,6 +234,8 @@ Si la pagina se refresca, la app vuelve a leer la informacion en la base local y
 
 La aplicacion se ejecuta en local y la interfaz permanece abierta en una pestaña de Google Chrome.
 
+Si un arranque anterior dejo procesos propios registrados pero sin servicios disponibles, el siguiente arranque intenta recuperarlos automaticamente. Solo se revisan y detienen los PID guardados por la aplicacion; no se detienen procesos generales ni de otras aplicaciones.
+
 La interfaz incluye un boton para detener backend y frontend. Primero se detiene el backend y despues el frontend, dejando libres los puertos `3000` y `5174`. La app deja de consultar los servicios e intenta cerrar la pestaña; si Chrome bloquea ese cierre, informa al usuario que puede cerrarla manualmente.
 
 Las fechas de inicio y fin se muestran como `dd-mm-yyyy hh:mm:ss` con la hora de Bogota. Mientras se prueba la sincronizacion, el log registra sus etapas principales sin guardar cookies ni credenciales.
@@ -273,21 +275,40 @@ El usuario puede cambiar sin tocar el codigo:
 
 La configuracion de tiempos se expresa en minutos para la sincronizacion automatica y en segundos para los tiempos internos de consulta.
 
+### Grids
+
+La vista actual se conserva dentro de la pestaña `Configuracion`. En ella se incluye la seccion `Grids configurados`, desde donde el usuario puede crear, editar o eliminar grids.
+
+Cada grid:
+
+- exige un nombre unico;
+- crea una pestaña propia con ese nombre;
+- muestra una fila por ProjectGroup;
+- permite seleccionar, en orden, campos del ProjectGroup y atributos de tipos de incidencia definidos en `graph.json`;
+- permite agregar condiciones visuales con `AND` u `OR`;
+- permite configurar entre 1 y 200 registros por pagina;
+- se actualiza despues de una sincronizacion exitosa o mediante el boton `Actualizar`.
+
+Los grids se guardan en la BD local. Al eliminar uno, se elimina tambien su definicion. La configuracion de un grid no modifica alertas, JQL, sesion ni el proceso de sincronizacion. Durante una sincronizacion se pueden consultar los grids, pero no modificar su configuracion.
+
 ### 17. Estado General
 
 El campo `Estado General` del ProjectGroup se calcula por prioridad.
 La primera regla que cumpla define el valor.
-Si ninguna regla aplica, el valor es `Creado`.
+Si ninguna regla aplica, el valor es `No definido`.
 
 Reglas actuales:
 
-- `Solicitado montaje Test` si existe una incidencia de tipo `Solicitud de Paso a TEST` y no esta en estado `Cerrado`.
-- `Probando Test` si existe una incidencia de tipo `Testing de Criterios` en estado `En Progreso`.
-- `Solicitado montaje Pre-Prod` si existe una incidencia de tipo `Solicitud Paso a Pre-Produccion` y no esta en estado `Cerrado`.
-- `Probando Pre-Prod` si existe una incidencia de tipo `Testing de Criterios` en estado `Cerrado` y una de tipo `Testing Pre-Produccion` en estado `En Progreso`.
-- `Pruebas finalizadas` si existen cerradas las incidencias de tipo `Testing de Criterios` y `Testing Pre-Produccion` y no existe una incidencia de tipo `Solicitud montaje a Produccion`.
-- `Solicitado montaje Produccion` si existe una incidencia de tipo `Solicitud Paso a Produccion` no cerrada y no tiene vinculada una incidencia del proyecto `Intervencion de infraestructura (MDI)`.
-- `Montado en Produccion` si existe una incidencia de tipo `Solicitud Paso a Produccion` y tiene vinculada una incidencia de cualquier tipo del proyecto `Intervencion de infraestructura (MDI)`.
+- `Definiendo Criterios` si existe una incidencia de tipo `Documentar Criterios de Aceptación` distinta de `Cerrado`.
+- `Espera Jira Testing` si existe una incidencia `Documentar Criterios de Aceptación` en estado `Cerrado` y no existe una incidencia tipo `Testing`.
+- `Probando en TEST` si existe una incidencia de tipo `Testing` en estado `En Progreso`.
+- `En Espera` si existe una incidencia `Testing` o `Testing Pre-Producción` en estado `En Espera`.
+- `Pedir Montaje PRE` si una incidencia `Testing` tiene una subtarea `Test Tarea` distinta de `Cerrado`.
+- `Solicitado montaje Pre-Prod` si existe una incidencia de tipo `Solicitud Paso a Pre-Producción` distinta de `Cerrado`.
+- `Probando en PRE` si existe una incidencia de tipo `Testing Pre-Producción` en estado `En Progreso`.
+- `Pedir Montaje PROD` si existen incidencias `Testing de Criterios` y `Testing Pre-Producción` cerradas y no existe una incidencia de tipo `Solicitud montaje a Produccion`.
+- `Solicitado Montaje PROD` si existe una incidencia `Solicitud Paso a Producción` distinta de `Cerrado` sin enlace a una incidencia del proyecto `MDI`.
+- `En Producción` si existe una incidencia `Solicitud Paso a Producción` con enlace a una incidencia del proyecto `MDI`, sin importar su estado.
 
 ### 18. Sesion local
 

@@ -173,6 +173,16 @@ Archivos JSON iniciales:
 
 La validacion de estos archivos corresponde al modulo de Configuracion.
 
+### 8.1 Grids configurables
+
+Las definiciones de grids se persisten en la tabla `GRID_DEFINITIONS` de DuckDB. Cada registro guarda el nombre unico, el limite por pagina, los campos seleccionados y las condiciones visuales en JSON.
+
+La pestaña `Configuracion` conserva toda la interfaz existente y agrega la seccion `Grids configurados`. El backend expone endpoints independientes para listar, guardar, eliminar y consultar los datos de cada grid. El usuario no escribe SQL: el backend genera la consulta de lectura a partir de la definicion validada.
+
+Cada fila del resultado representa un ProjectGroup. Los valores de varias incidencias del mismo tipo y campo se muestran en una sola celda separados por ` | `. Si no existe la incidencia solicitada, la celda queda vacia. Las condiciones se evalúan sobre el conjunto de incidencias del ProjectGroup y admiten `AND` y `OR`.
+
+Las pestañas de grids se muestran junto a `Configuracion`. Cada una se actualiza de forma independiente, con paginacion configurable. Un error al consultar un grid no afecta a los demas ni a las funciones existentes. Los cambios de grids se bloquean mientras hay una sincronizacion activa.
+
 Propuesta de forma para `graph.json`:
 
 - un nodo por tipo de incidencia;
@@ -190,7 +200,7 @@ Propuesta de forma para `projectgroup_rules.json`:
 - lista ordenada de reglas;
 - cada regla tiene prioridad;
 - la primera regla que cumpla define el valor calculado;
-- si ninguna aplica, el valor por defecto es `Creado`;
+- si ninguna aplica, el valor por defecto es `No definido`;
 - inicialmente se usa para `Estado General`, pero debe poder crecer para otros campos calculados.
 
 Propuesta de uso:
@@ -212,6 +222,8 @@ Propuesta de `app.json`:
 - `autoSyncEnabled`: activa o apaga la sincronizacion automatica. La sincronizacion manual sigue disponible.
 
 La interfaz incluye un boton para detener backend y frontend. Primero se detiene el backend y luego el coordinador detiene Vite, dejando libres los puertos `3000` y `5174`. La interfaz deja de consultar el backend e intenta cerrar la pestaña; si Chrome bloquea ese cierre, muestra un mensaje para cerrarla manualmente.
+
+Al iniciar, `scripts/dev.mjs` revisa `data/runtime-services.json`. Si encuentra un estado propio anterior y los servicios no estan completamente disponibles, valida los PID registrados como procesos `node`, detiene solo esos procesos, elimina el estado obsoleto y vuelve a iniciar backend y frontend. Si hay un servicio parcial sin registro propio, no se detiene automaticamente para evitar afectar otra aplicacion.
 
 Las fechas de inicio y fin se muestran como `dd-mm-yyyy hh:mm:ss` usando la zona horaria `America/Bogota`. Durante la sincronizacion se registran temporalmente las etapas de validacion, ejecucion de JQL, recorrido del grafo, persistencia y errores, sin registrar cookies ni credenciales.
 
@@ -269,11 +281,14 @@ Condiciones posibles dentro de `when`:
 - `all`: todas las condiciones deben cumplirse.
 - `any`: al menos una condicion debe cumplirse.
 - `none`: ninguna condicion debe cumplirse.
+- `subtaskExists`: existe una subtarea del tipo y estado configurados bajo una incidencia padre.
+- `linkedProject`: existe un enlace hacia una incidencia del proyecto indicado.
+- `linkedProjectNot`: no existe un enlace hacia una incidencia del proyecto indicado.
 
 Regla del motor:
 
 - la primera regla que cumpla define el resultado;
-- si ninguna aplica, el valor es `Creado`.
+- si ninguna aplica, el valor es `No definido`.
 
 ### 9. Sincronizacion
 

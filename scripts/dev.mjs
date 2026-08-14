@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
@@ -57,15 +57,36 @@ async function isJiraNotificationsRunning() {
 
 function stopKnownServices() {
   if (!existsSync(servicePidPath)) {
-    throw new Error('No hay procesos propios registrados para liberar el estado parcial.');
+    return false;
   }
 
-  const stored = JSON.parse(readFileSync(servicePidPath, 'utf8'));
+  const stored = JSON.parse(readFileSync(servicePidPath, 'utf8').replace(/^\uFEFF/, ''));
+  if (stored.root && path.resolve(stored.root) !== projectRoot) {
+    throw new Error('El archivo de servicios no pertenece a este proyecto.');
+  }
+
   const pids = new Set([stored.backendPid, stored.vitePid]
     .map(Number)
     .filter((pid) => pid > 0 && pid !== process.pid));
 
   for (const pid of pids) {
+    let processList = '';
+    try {
+      processList = execFileSync('tasklist.exe', [
+        '/FI', `PID eq ${pid}`,
+        '/FO', 'CSV',
+        '/NH',
+      ], { encoding: 'utf8', windowsHide: true });
+    } catch {
+      processList = '';
+    }
+
+    // Only terminate node processes whose PID was registered by this app.
+    if (!/"node\.exe"/i.test(processList)) {
+      log('registered service PID is no longer a Node process', `pid=${pid}`);
+      continue;
+    }
+
     log('stopping known local service', `pid=${pid}`);
     try {
       process.kill(pid);
@@ -75,6 +96,7 @@ function stopKnownServices() {
   }
 
   unlinkSync(servicePidPath);
+  return true;
 }
 
 async function waitFor(url, timeoutMs = 15000) {
@@ -97,9 +119,13 @@ if (await isJiraNotificationsRunning()) {
   process.exit(0);
 }
 
-if (frontendReady || backendReady) {
+const hasRegisteredServices = existsSync(servicePidPath);
+if (hasRegisteredServices || frontendReady || backendReady) {
   log('partial local service state detected; restarting required-port processes');
-  stopKnownServices();
+  const stopped = stopKnownServices();
+  if (!stopped && (frontendReady || backendReady)) {
+    throw new Error('Hay un servicio parcial sin registro propio; no se detiene automaticamente.');
+  }
 }
 
 const backend = spawn(process.execPath, [backendEntry], {
@@ -121,7 +147,12 @@ const vite = spawn(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port'
   shell: false,
 });
 mkdirSync(path.dirname(servicePidPath), { recursive: true });
-writeFileSync(servicePidPath, JSON.stringify({ backendPid: backend.pid, vitePid: vite.pid }), 'utf8');
+writeFileSync(servicePidPath, JSON.stringify({
+  root: projectRoot,
+  backendPid: backend.pid,
+  vitePid: vite.pid,
+  createdAt: new Date().toISOString(),
+}), 'utf8');
 vite.on('error', (error) => log('vite process error', error.message));
 vite.on('spawn', () => log('vite process spawned'));
 vite.on('exit', (code, signal) => log('vite process exited', `code=${code} signal=${signal ?? 'none'}`));

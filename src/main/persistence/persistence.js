@@ -9,6 +9,7 @@ import { ProjectGroupsRepository } from './repositories/projectGroupsRepository.
 import { ProjectGroupIssuesRepository } from './repositories/projectGroupIssuesRepository.js';
 import { RelationshipsRepository } from './repositories/relationshipsRepository.js';
 import { AlertsRepository } from './repositories/alertsRepository.js';
+import { GridsRepository } from './repositories/gridsRepository.js';
 
 const require = createRequire(import.meta.url);
 const duckdb = require('duckdb');
@@ -25,6 +26,7 @@ export class Persistence {
     this.projectGroupIssues = new ProjectGroupIssuesRepository(this);
     this.relationships = new RelationshipsRepository(this);
     this.alerts = new AlertsRepository(this);
+    this.grids = new GridsRepository(this);
   }
 
   async initialize() {
@@ -42,6 +44,17 @@ export class Persistence {
     } catch {
       // The column already exists in databases initialized after the schema update.
     }
+    await this.exec(`
+      CREATE TABLE IF NOT EXISTS GRID_DEFINITIONS (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        page_size INTEGER NOT NULL DEFAULT 25,
+        columns_json TEXT NOT NULL,
+        conditions_json TEXT NOT NULL,
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL
+      )
+    `);
     try {
       await this.exec('ALTER TABLE JIRA_ISSUES ADD COLUMN issuetype_icon_url TEXT');
     } catch {

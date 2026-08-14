@@ -65,6 +65,34 @@ function formatCountdown(nextSyncAt, now = Date.now()) {
   return parts.join(' ');
 }
 
+function compactPersonName(value) {
+  const words = String(value ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 2) return words.join(' ');
+
+  const logicalWords = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const current = words[index];
+    const normalized = current.toLocaleLowerCase('es-CO');
+    if (normalized === 'del' && words[index + 1]) {
+      logicalWords.push(`${current} ${words[index + 1]}`);
+      index += 1;
+    } else if (normalized === 'de' && ['la', 'las', 'los'].includes(words[index + 1]?.toLocaleLowerCase('es-CO')) && words[index + 2]) {
+      logicalWords.push(`${current} ${words[index + 1]} ${words[index + 2]}`);
+      index += 2;
+    } else {
+      logicalWords.push(current);
+    }
+  }
+
+  if (logicalWords.length === 3) return `${logicalWords[0]} ${logicalWords[1]}`;
+  if (logicalWords.length >= 4) return `${logicalWords[0]} ${logicalWords[2]}`;
+  return logicalWords.join(' ');
+}
+
+function compactGridPersonValues(value) {
+  return String(value ?? '').split(' | ').map(compactPersonName).join(' | ');
+}
+
 function formatAlertRetryCountdown(alert, now = Date.now()) {
   const retryMinutes = Number(alert?.retry_minutes ?? 0);
   if (!alert?.last_notified_at || retryMinutes <= 0) {
@@ -349,6 +377,23 @@ export default function App() {
   const syncIntervalDirtyRef = useRef(false);
   const autoSyncDirtyRef = useRef(false);
   const alertRetryDirtyRef = useRef(false);
+  const [activeTab, setActiveTab] = useState('config');
+  const [grids, setGrids] = useState([]);
+  const [gridFormOpen, setGridFormOpen] = useState(false);
+  const [gridForm, setGridForm] = useState({
+    id: null,
+    name: '',
+    pageSize: 25,
+    columns: [{ issueType: '', field: '' }],
+    conditions: [],
+  });
+  const [gridData, setGridData] = useState(null);
+  const [gridLoading, setGridLoading] = useState(false);
+  const [gridPage, setGridPage] = useState(1);
+  const [draggedGridColumnIndex, setDraggedGridColumnIndex] = useState(null);
+  const [gridValidationShown, setGridValidationShown] = useState(false);
+  const [openGridAttributeGroup, setOpenGridAttributeGroup] = useState(null);
+  const [draggedGridAttribute, setDraggedGridAttribute] = useState(null);
 
   const syncStatus = bootstrapContext?.syncStatus ?? null;
   const session = bootstrapContext?.session ?? null;
@@ -376,6 +421,177 @@ export default function App() {
     fields: conditionFields,
     operators: conditionOperators,
   });
+
+  const gridFieldOptions = [
+    { field: 'estadoGeneral', label: 'Estado General', projectGroup: true },
+    ...conditionFields.map((field) => ({ field: field.field, label: field.label })),
+  ];
+
+  const gridFieldLabel = (field) => gridFieldOptions.find((item) => item.field === field)?.label ?? field;
+  const gridIssueTypes = graphIssueTypes.length > 0 ? graphIssueTypes : (jiraCatalog.issueTypes ?? []).map((item) => item.name ?? item);
+  const gridColumnGroupKey = (column) => column.field === 'estadoGeneral' ? '__other' : (column.issueType || '__empty');
+  const gridColumnGroups = [...gridForm.columns.reduce((groups, column) => {
+    const key = gridColumnGroupKey(column);
+    const current = groups.get(key) ?? [];
+    current.push(column);
+    groups.set(key, current);
+    return groups;
+  }, new Map()).entries()];
+
+  const updateGridGroupType = (groupKey, type) => {
+    setGridForm((current) => {
+      const columns = current.columns.map((column) => {
+        if (gridColumnGroupKey(column) !== groupKey) return column;
+        if (type === '__projectGroup') return { ...column, issueType: null, field: 'estadoGeneral' };
+        return { ...column, issueType: type, field: type ? (column.field === 'estadoGeneral' ? '' : column.field) : '' };
+      });
+      return { ...current, columns };
+    });
+    setOpenGridAttributeGroup(null);
+  };
+
+  const toggleGridGroupAttribute = (groupKey, field) => {
+    setGridForm((current) => {
+      const groupColumns = current.columns.filter((column) => gridColumnGroupKey(column) === groupKey);
+      const selected = groupColumns.some((column) => column.field === field);
+      if (selected) {
+        const remaining = current.columns.filter((column) => gridColumnGroupKey(column) !== groupKey || column.field !== field);
+        const groupStillExists = remaining.some((column) => gridColumnGroupKey(column) === groupKey);
+        if (!groupStillExists && groupColumns[0]) {
+          const placeholder = groupKey === '__other'
+            ? { issueType: null, field: 'estadoGeneral' }
+            : { issueType: groupColumns[0].issueType ?? '', field: '' };
+          remaining.push(placeholder);
+        }
+        return { ...current, columns: remaining };
+      }
+      const base = groupColumns[0] ?? { issueType: groupKey === '__other' ? null : groupKey, field: '' };
+      const withoutPlaceholder = current.columns.filter((column) => !(gridColumnGroupKey(column) === groupKey && !column.field));
+      return { ...current, columns: [...withoutPlaceholder, { ...base, field }] };
+    });
+  };
+
+  const reorderGridGroupAttribute = (groupKey, fromField, toField) => {
+    if (fromField === toField) return;
+    setGridForm((current) => {
+      const groupColumns = current.columns.filter((column) => gridColumnGroupKey(column) === groupKey);
+      const fromIndex = groupColumns.findIndex((column) => column.field === fromField);
+      const toIndex = groupColumns.findIndex((column) => column.field === toField);
+      if (fromIndex < 0 || toIndex < 0) return current;
+      const [moved] = groupColumns.splice(fromIndex, 1);
+      groupColumns.splice(toIndex, 0, moved);
+      const firstIndex = current.columns.findIndex((column) => gridColumnGroupKey(column) === groupKey);
+      const columnsWithoutGroup = current.columns.filter((column) => gridColumnGroupKey(column) !== groupKey);
+      const insertIndex = current.columns.slice(0, firstIndex)
+        .filter((column) => gridColumnGroupKey(column) !== groupKey).length;
+      return {
+        ...current,
+        columns: [
+          ...columnsWithoutGroup.slice(0, insertIndex),
+          ...groupColumns,
+          ...columnsWithoutGroup.slice(insertIndex),
+        ],
+      };
+    });
+  };
+
+  const gridConditionCatalogOptions = (field) => {
+    const catalogKey = field === 'project' ? 'projects' : field === 'issuetype' ? 'issueTypes' : field === 'status' ? 'statuses' : null;
+    if (!catalogKey) return [];
+    return (jiraCatalog?.[catalogKey] ?? []).map((item) => typeof item === 'string' ? { value: item, label: item } : item);
+  };
+  const gridValidationErrors = [
+    !gridForm.name.trim() ? 'Debes indicar un nombre para la pestaña.' : null,
+    gridForm.columns.length === 0 ? 'Debes agregar al menos un campo para mostrar.' : null,
+    ...gridForm.columns.flatMap((column, index) => {
+      const errors = [];
+      if (!column.issueType && column.field !== 'estadoGeneral') errors.push(`Campo ${index + 1}: debes seleccionar un tipo de incidencia.`);
+      if (!column.field) errors.push(`Campo ${index + 1}: debes seleccionar un atributo.`);
+      return errors;
+    }),
+    ...gridForm.conditions.flatMap((condition, index) => {
+      const errors = [];
+      if (!condition.issueType && condition.field !== 'estadoGeneral') errors.push(`Condicion ${index + 1}: debes seleccionar un tipo de incidencia.`);
+      if (!condition.field) errors.push(`Condicion ${index + 1}: debes seleccionar un atributo.`);
+      if (!['IS NULL', 'IS NOT NULL'].includes(condition.operator) && !String(condition.value ?? '').trim()) errors.push(`Condicion ${index + 1}: debes indicar un valor.`);
+      return errors;
+    }),
+    !Number.isInteger(Number(gridForm.pageSize)) || Number(gridForm.pageSize) < 1 || Number(gridForm.pageSize) > 200
+      ? 'Los registros por pagina deben estar entre 1 y 200.' : null,
+  ].filter(Boolean);
+
+  const refreshGrids = async () => {
+    const result = await api('/api/grids');
+    setGrids(result.grids ?? []);
+    return result.grids ?? [];
+  };
+
+  const refreshGridData = async (id = activeTab, page = gridPage) => {
+    if (!id || id === 'config') return;
+    setGridLoading(true);
+    try {
+      const result = await api(`/api/grids/${encodeURIComponent(id)}/data?page=${page}`);
+      setGridData(result);
+    } catch (error) {
+      showUiToast(`No se pudo cargar el grid: ${error.message}`, 'error');
+    } finally {
+      setGridLoading(false);
+    }
+  };
+
+  const resetGridForm = () => setGridForm({
+    id: null,
+    name: '',
+    pageSize: 25,
+    columns: [{ issueType: '', field: '' }],
+    conditions: [],
+  });
+
+  const handleNewGrid = () => {
+    resetGridForm();
+    setGridValidationShown(false);
+    setGridFormOpen(true);
+  };
+
+  const handleEditGrid = (grid) => {
+    setGridForm({ ...grid, columns: grid.columns ?? [], conditions: grid.conditions ?? [] });
+    setGridValidationShown(false);
+    setGridFormOpen(true);
+  };
+
+  const handleSaveGrid = async () => {
+    setGridValidationShown(true);
+    if (gridValidationErrors.length > 0) {
+      showUiToast('Corrige los campos pendientes del grid.', 'error');
+      return;
+    }
+    try {
+      const result = await api('/api/grids', {
+        method: 'PUT',
+        body: JSON.stringify(gridForm),
+      });
+      setGrids(result.grids ?? []);
+      setGridFormOpen(false);
+      const saved = (result.grids ?? []).find((grid) => grid.name === gridForm.name.trim());
+      if (saved) setActiveTab(saved.id);
+      showUiToast('Grid guardado correctamente.');
+    } catch (error) {
+      showUiToast(`No se pudo guardar el grid: ${error.message}`, 'error');
+    }
+  };
+
+  const handleDeleteGrid = async (id) => {
+    if (!window.confirm('El grid y su configuración serán eliminados. ¿Desea continuar?')) return;
+    try {
+      const result = await api('/api/grids', { method: 'DELETE', body: JSON.stringify({ id }) });
+      setGrids(result.grids ?? []);
+      if (activeTab === id) setActiveTab('config');
+      if (gridForm.id === id) setGridFormOpen(false);
+      showUiToast('Grid eliminado correctamente.');
+    } catch (error) {
+      showUiToast(`No se pudo eliminar el grid: ${error.message}`, 'error');
+    }
+  };
 
   const renderConditionValueControl = (condition, index) => {
     const definition = conditionFields.find((item) => item.field === condition.field);
@@ -697,6 +913,7 @@ export default function App() {
           await refreshBootstrapContext();
           await refreshAlerts();
           await refreshAlertRules();
+          await refreshGrids();
           initialized = true;
           break;
         } catch (error) {
@@ -722,6 +939,7 @@ export default function App() {
       refreshBootstrapContext().catch(() => {});
       refreshAlerts().catch(() => {});
       refreshAlertRules().catch(() => {});
+      refreshGrids().catch(() => {});
     }, 1000);
 
     return () => {
@@ -741,9 +959,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (activeTab !== 'config') {
+      refreshGridData(activeTab, gridPage);
+    }
+  }, [activeTab, gridPage, bootstrapContext?.syncStatus?.last_success_at]);
+
+  useEffect(() => {
     const countdownHandle = setInterval(() => setCountdownNow(Date.now()), 1000);
     return () => clearInterval(countdownHandle);
   }, []);
+
+  useEffect(() => {
+    if (openGridAttributeGroup === null) return undefined;
+
+    const closeOnOutsideClick = (event) => {
+      if (!event.target.closest('.grid-attribute-picker')) {
+        setOpenGridAttributeGroup(null);
+      }
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        setOpenGridAttributeGroup(null);
+      }
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [openGridAttributeGroup]);
 
   const handleLogin = async () => {
     if (loginInProgress) {
@@ -1410,6 +1656,199 @@ export default function App() {
     window.setTimeout(() => window.close(), 300);
   };
 
+  const renderGridConfiguration = () => (
+    <div className="settings-card dashboard-card dashboard-grids">
+      <div className="section-heading">
+        <div>
+          <h2>{gridFormOpen ? 'Crear grid' : 'Grids configurados'}</h2>
+          <p className="copy">Crea pestañas con una fila por ProjectGroup y los campos que necesites consultar.</p>
+        </div>
+        <button type="button" className="primary-button" onClick={handleNewGrid} disabled={syncInProgress}>
+          Nuevo grid
+        </button>
+      </div>
+      {gridFormOpen ? (
+        <div className="grid-builder-form">
+          <div className="grid-builder-title">
+            <h3>{gridForm.id ? 'Editar grid' : 'Nuevo grid'}</h3>
+            <button type="button" className="secondary-button" onClick={() => setGridFormOpen(false)}>Cancelar</button>
+          </div>
+          {gridValidationShown && gridValidationErrors.length > 0 ? (
+            <div className="alert-validation-errors grid-validation-errors" role="alert">
+              {gridValidationErrors.map((error) => <div key={error}>{error}</div>)}
+            </div>
+          ) : null}
+          <label>
+            Nombre de la pestaña
+            <input value={gridForm.name} onChange={(event) => setGridForm((current) => ({ ...current, name: event.target.value }))} placeholder="Seguimiento QA" />
+          </label>
+          <div className="grid-builder-section grid-fields-section">
+            <h3>Campos a mostrar</h3>
+            {gridColumnGroups.map(([groupKey, groupColumns], index) => {
+              const groupType = groupKey === '__other' ? '__projectGroup' : groupKey;
+              const selectedFields = groupColumns.filter((column) => column.field).map((column) => column.field);
+              const attributeOptions = groupKey === '__other'
+                ? [{ field: 'estadoGeneral', label: 'Estado General' }]
+                : conditionFields;
+              return (
+                <div
+                  className={`grid-builder-row grid-column-group${draggedGridColumnIndex === index ? ' is-dragging' : ''}`}
+                  key={`grid-column-group-${groupKey}`}
+                  draggable
+                  onDragStart={() => setDraggedGridColumnIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (draggedGridColumnIndex === null || draggedGridColumnIndex === index) return;
+                    const reordered = [...gridColumnGroups];
+                    const [moved] = reordered.splice(draggedGridColumnIndex, 1);
+                    reordered.splice(index, 0, moved);
+                    setGridForm((current) => ({ ...current, columns: reordered.flatMap(([, columns]) => columns) }));
+                    setDraggedGridColumnIndex(null);
+                  }}
+                  onDragEnd={() => setDraggedGridColumnIndex(null)}
+                >
+                  <span className="grid-row-number">{index + 1}</span>
+                  <select value={groupType} onChange={(event) => updateGridGroupType(groupKey, event.target.value)}>
+                    <option value="">Seleccione Tipo de Incidencia</option>
+                    {gridIssueTypes.map((type) => <option value={type} key={type}>{type}</option>)}
+                    <option value="__projectGroup">Otros</option>
+                  </select>
+                  <div className="grid-attribute-picker">
+                    <button type="button" className="grid-attribute-trigger" disabled={!groupType || groupType === ''} onClick={() => setOpenGridAttributeGroup((current) => current === groupKey ? null : groupKey)}>
+                      {selectedFields.length > 0 ? (
+                        <span className="grid-selected-attributes">
+                          {selectedFields.map((field) => (
+                            <span
+                              className="grid-selected-attribute"
+                              key={field}
+                              draggable
+                              onDragStart={(event) => {
+                                event.stopPropagation();
+                                setDraggedGridAttribute({ groupKey, field });
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                if (draggedGridAttribute?.groupKey === groupKey) {
+                                  reorderGridGroupAttribute(groupKey, draggedGridAttribute.field, field);
+                                }
+                                setDraggedGridAttribute(null);
+                              }}
+                              onDragEnd={() => setDraggedGridAttribute(null)}
+                            >
+                              {gridFieldLabel(field)}
+                            </span>
+                          ))}
+                        </span>
+                      ) : 'Seleccione atributos'}
+                      <span aria-hidden="true">&#9662;</span>
+                    </button>
+                    {openGridAttributeGroup === groupKey ? (
+                      <div className="grid-attribute-menu">
+                        {[...attributeOptions].sort((left, right) => Number(selectedFields.includes(right.field)) - Number(selectedFields.includes(left.field))).map((field) => {
+                          const selected = selectedFields.includes(field.field);
+                          return (
+                            <label
+                              key={field.field}
+                              className={selected ? 'is-selected' : ''}
+                              draggable={selected}
+                              onDragStart={() => selected && setDraggedGridAttribute({ groupKey, field: field.field })}
+                              onDragOver={(event) => selected && event.preventDefault()}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                if (draggedGridAttribute?.groupKey === groupKey) {
+                                  reorderGridGroupAttribute(groupKey, draggedGridAttribute.field, field.field);
+                                }
+                                setDraggedGridAttribute(null);
+                              }}
+                              onDragEnd={() => setDraggedGridAttribute(null)}
+                            >
+                              <input type="checkbox" checked={selected} onChange={() => toggleGridGroupAttribute(groupKey, field.field)} />
+                              <span>{field.label}</span>
+                              {selected ? <span className="grid-attribute-drag-handle" title="Arrastrar para ordenar">&#8942;</span> : null}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                  <span className="grid-column-drag-handle" title="Arrastrar para mover" aria-label="Arrastrar para mover">&#8942;</span>
+                  <button type="button" className="jql-delete" disabled={gridColumnGroups.length === 1} onClick={() => setGridForm((current) => ({ ...current, columns: current.columns.filter((column) => gridColumnGroupKey(column) !== groupKey) }))} aria-label="Eliminar tipo de incidencia">&#128465;</button>
+                </div>
+              );
+            })}
+            <button type="button" className="jql-add" onClick={() => setGridForm((current) => ({ ...current, columns: [...current.columns, { issueType: '', field: '' }] }))}>+ Agregar tipo de incidencia</button>
+          </div>
+          <div className="grid-builder-section grid-conditions-section">
+            <h3>Condiciones</h3>
+            {gridForm.conditions.map((condition, index) => (
+              <div className={`grid-builder-row${index > 0 ? ' has-connector' : ''}`} key={`grid-condition-${index}`}>
+                <select value={condition.issueType ?? ''} disabled={condition.field === 'estadoGeneral'} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, issueType: event.target.value } : item) }))}>
+                  {gridIssueTypes.map((type) => <option value={type} key={type}>{type}</option>)}
+                  <option value="">Otros</option>
+                </select>
+                <select value={condition.field} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, field: event.target.value, issueType: event.target.value === 'estadoGeneral' ? null : item.issueType } : item) }))}>
+                  {gridFieldOptions.map((field) => <option value={field.field} key={field.field}>{field.label}</option>)}
+                </select>
+                {index > 0 ? <select value={condition.connector ?? 'AND'} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, connector: event.target.value } : item) }))}><option value="AND">AND</option><option value="OR">OR</option></select> : null}
+                <select value={condition.operator} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, operator: event.target.value } : item) }))}>
+                  {conditionOperators.map((operator) => <option value={operator.value} key={operator.value}>{operator.label}</option>)}
+                </select>
+                {gridConditionCatalogOptions(condition.field).length > 0 ? (
+                  <select value={condition.value ?? ''} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))}>
+                    <option value="">Seleccione valor</option>
+                    {gridConditionCatalogOptions(condition.field).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+                  </select>
+                ) : (
+                  <input value={condition.value ?? ''} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))} placeholder="Valor" />
+                )}
+                <button type="button" className="jql-delete" onClick={() => setGridForm((current) => ({ ...current, conditions: current.conditions.filter((_, itemIndex) => itemIndex !== index) }))} aria-label="Eliminar condicion">&#128465;</button>
+              </div>
+            ))}
+            <button type="button" className="jql-add" onClick={() => setGridForm((current) => ({ ...current, conditions: [...current.conditions, { issueType: gridIssueTypes[0] ?? '', field: 'status', operator: '=', value: '', connector: current.conditions.length ? 'AND' : undefined }] }))}>+ Agregar condicion</button>
+          </div>
+          <label className="grid-page-size">Registros por pagina
+            <input type="number" min="1" max="200" value={gridForm.pageSize} onChange={(event) => setGridForm((current) => ({ ...current, pageSize: event.target.value }))} />
+          </label>
+          <div className="settings-actions"><button type="button" onClick={handleSaveGrid}>Guardar {gridForm.id ? 'cambios' : 'grid'}</button></div>
+        </div>
+      ) : null}
+      <div className="grid-configured-list">
+        <h3>Grids configurados</h3>
+        {grids.length === 0 ? <p className="copy">No hay grids configurados.</p> : grids.map((grid) => (
+          <div className="grid-configured-row" key={grid.id}>
+            <button type="button" className="grid-configured-name" onClick={() => handleEditGrid(grid)}>{grid.name}</button>
+            <button type="button" className="secondary-button" onClick={() => handleEditGrid(grid)}>Editar</button>
+            <button type="button" className="danger-button" onClick={() => handleDeleteGrid(grid.id)}>Eliminar</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderGridTab = () => {
+    const columns = gridData?.grid?.columns ?? [];
+    const columnGroups = columns.reduce((groups, column) => {
+      const groupKey = column.issueType || `__other::${column.field}`;
+      const current = groups.get(groupKey) ?? [];
+      current.push(column);
+      groups.set(groupKey, current);
+      return groups;
+    }, new Map());
+    const totalPages = Math.max(1, Math.ceil((gridData?.total ?? 0) / (gridData?.pageSize ?? 25)));
+    return (
+      <section className="grid-tab-view">
+        <div className="grid-tab-heading"><div><p className="eyebrow">Jira Notifications</p><h1>{gridData?.grid?.name ?? grids.find((grid) => grid.id === activeTab)?.name}</h1><p className="copy">Información agrupada por ProjectGroup.</p></div><button type="button" onClick={() => refreshGridData(activeTab, gridPage)} disabled={gridLoading}>Actualizar</button></div>
+        {gridLoading ? <p className="copy">Actualizando grid...</p> : null}
+        <div className="grid-table-wrap"><table className="project-grid"><thead><tr>{[...columnGroups.entries()].map(([groupKey, groupColumns]) => <th key={groupKey}>{groupKey.startsWith('__other::') ? gridFieldLabel(groupColumns[0].field) : groupKey}</th>)}</tr></thead><tbody>{(gridData?.rows ?? []).map((row) => <tr key={row.projectGroupId}>{[...columnGroups.entries()].map(([groupKey, groupColumns]) => <td className="grid-group-cell" key={`${row.projectGroupId}-${groupKey}`}>{groupKey.startsWith('__other::') ? groupColumns.map((column) => <div className="grid-group-value" key={`${column.issueType}-${column.field}`}>{column.field === 'estadoGeneral' ? row.estadoGeneral : ''}</div>) : groupColumns.map((column) => { const rawValue = row[`${column.issueType}::${column.field}`] ?? ''; const value = ['reporter', 'assignee'].includes(column.field) ? compactGridPersonValues(rawValue) : rawValue; return <div className="grid-group-value" key={`${column.issueType}-${column.field}`}><strong>{gridFieldLabel(column.field)}:</strong> {value}</div>; })}</td>)}</tr>)}</tbody></table></div>
+        {!gridLoading && (gridData?.rows ?? []).length === 0 ? <p className="copy">No hay ProjectGroups que cumplan las condiciones.</p> : null}
+        <div className="grid-pagination"><button type="button" disabled={gridPage <= 1} onClick={() => setGridPage((page) => page - 1)}>Anterior</button><span>Pagina {gridPage} de {totalPages}</span><button type="button" disabled={gridPage >= totalPages} onClick={() => setGridPage((page) => page + 1)}>Siguiente</button></div>
+      </section>
+    );
+  };
+
   if (isLoading) {
     return (
       <main className="app-shell">
@@ -1468,7 +1907,11 @@ export default function App() {
   return (
     <main className="app-shell">
       <section className="hero">
-        <div className="dashboard-grid">
+        <nav className="app-tabs" aria-label="Navegacion de la aplicacion">
+          <button type="button" className={activeTab === 'config' ? 'app-tab is-active' : 'app-tab'} onClick={() => setActiveTab('config')}>Configuracion</button>
+          {grids.map((grid) => <button type="button" className={activeTab === grid.id ? 'app-tab is-active' : 'app-tab'} onClick={() => { setActiveTab(grid.id); setGridPage(1); }} key={grid.id}>{grid.name}</button>)}
+        </nav>
+        {activeTab === 'config' ? <div className="dashboard-grid">
         <fieldset disabled={syncInProgress} className="dashboard-editable-panels">
         <div className="settings-card dashboard-card dashboard-alert">
           <div className="section-heading">
@@ -1765,6 +2208,7 @@ export default function App() {
             </button>
           </div>
         </div>
+        {renderGridConfiguration()}
         </fieldset>
 
         <div className="settings-card dashboard-card dashboard-sql">
@@ -1970,7 +2414,7 @@ export default function App() {
           </div>
 
         </div>
-        </div>
+        </div> : renderGridTab()}
       </section>
     </main>
   );

@@ -50,6 +50,113 @@ body {
   align-items: start;
 }
 
+.app-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border, #27304e);
+  padding-bottom: 10px;
+}
+
+.app-tab {
+  border: 1px solid var(--border, #27304e);
+  background: transparent;
+  color: inherit;
+  border-radius: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.app-tab.is-active { background: #26366b; border-color: #8797ff; color: #fff; }
+.dashboard-grids {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 2.15fr) minmax(280px, .85fr);
+  gap: 20px;
+}
+.dashboard-grids > .section-heading { grid-column: 1 / -1; }
+.grid-builder-form {
+  grid-column: 1;
+  display: grid;
+  gap: 18px;
+  margin-top: 0;
+  padding: 24px;
+  border: 1px solid rgba(142, 162, 255, 0.22);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(31, 55, 91, .52), rgba(15, 24, 47, .42));
+}
+.grid-builder-title, .grid-configured-row, .grid-builder-row, .grid-pagination, .grid-tab-heading { display: flex; align-items: center; gap: 10px; }
+.grid-builder-title { justify-content: space-between; }
+.grid-builder-section { display: grid; gap: 10px; }
+.grid-builder-form > label,
+.grid-page-size { display: grid; gap: 7px; color: #e1e7ff; font-weight: 700; }
+.grid-builder-form > label input,
+.grid-page-size input,
+.grid-builder-row select,
+.grid-builder-row input {
+  min-width: 0;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid rgba(142, 162, 255, 0.28);
+  border-radius: 9px;
+  background: rgba(4, 10, 25, .58);
+  color: #f2f5ff;
+  font: inherit;
+  color-scheme: dark;
+}
+.grid-builder-form > label input { max-width: 480px; }
+.grid-builder-row { display: grid; align-items: center; }
+.grid-fields-section .grid-builder-row { grid-template-columns: 44px minmax(180px, 1fr) minmax(180px, 1fr) 30px 42px; cursor: grab; }
+.grid-column-group { position: relative; }
+.grid-fields-section .grid-builder-row.is-dragging { opacity: .45; outline: 2px dashed #8ea2ff; outline-offset: 3px; }
+.grid-column-drag-handle { display: grid; place-items: center; color: #dfe6ff; font-size: 1.6rem; line-height: 1; cursor: grab; user-select: none; }
+.grid-column-drag-handle:active { cursor: grabbing; }
+.grid-attribute-picker { position: relative; min-width: 0; }
+.grid-attribute-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 42px; padding: 11px 13px; border: 1px solid rgba(142, 162, 255, .28); border-radius: 9px; background: rgba(4, 10, 25, .58); color: #f2f5ff; font: inherit; text-align: left; cursor: pointer; }
+.grid-attribute-trigger:disabled { opacity: .55; cursor: not-allowed; }
+.grid-selected-attributes { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.grid-selected-attribute { display: inline-flex; align-items: center; max-width: 170px; padding: 4px 8px; overflow: hidden; border: 1px solid rgba(142, 162, 255, .25); border-radius: 999px; background: rgba(142, 162, 255, .12); color: #e7ecff; font-size: .82rem; white-space: nowrap; text-overflow: ellipsis; cursor: grab; user-select: none; }
+.grid-selected-attribute:active { cursor: grabbing; }
+.grid-attribute-menu { position: absolute; z-index: 8; top: calc(100% + 6px); left: 0; right: 0; max-height: 260px; overflow-y: auto; padding: 8px; border: 1px solid rgba(142, 162, 255, .42); border-radius: 10px; background: #121b34; box-shadow: 0 16px 30px rgba(0, 0, 0, .35); }
+.grid-attribute-menu label { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 7px; color: #e7ecff; font-weight: 500; cursor: pointer; }
+.grid-attribute-menu label:hover { background: rgba(142, 162, 255, .14); }
+.grid-attribute-menu input { width: 16px; height: 16px; accent-color: #8ea2ff; }
+.grid-conditions-section .grid-builder-row { grid-template-columns: minmax(135px, 1fr) minmax(135px, 1fr) minmax(125px, 1fr) minmax(130px, 1fr) 42px; }
+.grid-conditions-section .grid-builder-row.has-connector { grid-template-columns: minmax(135px, 1fr) minmax(135px, 1fr) minmax(100px, .8fr) minmax(125px, 1fr) minmax(130px, 1fr) 42px; }
+.grid-row-number { display: grid; place-items: center; min-height: 40px; border-radius: 8px; background: rgba(61, 91, 160, .28); color: #aebaff; font-weight: 800; }
+.grid-builder-form h3 { margin: 0; color: #e1e7ff; font-size: 1rem; }
+.grid-validation-errors { margin: 0; }
+.grid-builder-form .jql-delete { height: 40px; }
+.grid-page-size { max-width: 240px; }
+.grid-configured-list { grid-column: 2; display: grid; align-content: start; gap: 12px; margin-top: 0; padding: 24px; border: 1px solid rgba(142, 162, 255, 0.22); border-radius: 14px; background: linear-gradient(135deg, rgba(31, 55, 91, .52), rgba(15, 24, 47, .42)); }
+.grid-configured-list h3 { margin: 0 0 6px; color: #e1e7ff; font-size: 1rem; text-transform: uppercase; letter-spacing: .06em; }
+.grid-configured-row { padding: 14px 16px; background: rgba(7, 14, 30, .55); border: 1px solid rgba(142, 162, 255, .18); border-radius: 10px; }
+.grid-configured-name { flex: 1; text-align: left; background: transparent; border: 0; color: inherit; font-weight: 700; cursor: pointer; }
+.grid-configured-row .secondary-button, .grid-configured-row .danger-button { padding: 7px 9px; border-radius: 8px; font-size: .78rem; }
+.grid-tab-view { display: grid; gap: 20px; padding: 24px; border: 1px solid var(--border, #27304e); border-radius: 16px; background: rgba(10, 15, 30, .55); }
+.grid-tab-heading { justify-content: space-between; }
+.grid-table-wrap { overflow-x: auto; border: 1px solid var(--border, #27304e); border-radius: 12px; }
+.project-grid { width: 100%; border-collapse: collapse; min-width: 760px; }
+.project-grid th, .project-grid td { padding: 13px 15px; border-bottom: 1px solid var(--border, #27304e); text-align: left; white-space: nowrap; }
+.project-grid th { color: #aab6ff; background: rgba(40, 55, 100, .35); }
+.project-grid th span { display: block; }
+.project-grid th .grid-column-issue-type { margin-top: 3px; color: #e7ecff; font-size: .86em; font-weight: 500; }
+.project-grid .grid-group-cell { white-space: normal; min-width: 220px; vertical-align: top; }
+.grid-group-value + .grid-group-value { margin-top: 7px; }
+.grid-group-value strong { color: #aab6ff; }
+.project-grid tr:last-child td { border-bottom: 0; }
+.grid-pagination { justify-content: center; }
+
+@media (max-width: 800px) {
+  .dashboard-grids { grid-template-columns: 1fr; }
+  .grid-builder-form, .grid-configured-list { grid-column: 1; }
+  .grid-fields-section .grid-builder-row, .grid-conditions-section .grid-builder-row { grid-template-columns: 1fr; }
+  .grid-row-number { min-height: 32px; }
+  .grid-tab-heading { align-items: flex-start; flex-direction: column; }
+  .grid-builder-row > * { width: 100%; }
+}
+
 .dashboard-card {
   min-width: 0;
   margin-top: 0;

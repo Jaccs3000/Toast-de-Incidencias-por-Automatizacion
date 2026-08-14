@@ -1,15 +1,107 @@
 {
-  "version": 1,
-  "defaultValue": "Creado",
+  "version": 2,
+  "defaultValue": "No definido",
   "rules": [
     {
       "priority": 1,
       "enabled": true,
-      "output": "Solicitado montaje Test",
+      "output": "Definiendo Criterios",
       "when": {
-        "issueType": "Solicitud de Paso a TEST",
+        "issueType": "Documentar Criterios de Aceptación",
+        "statusNot": "Cerrado"
+      }
+    },
+    {
+      "priority": 2,
+      "enabled": true,
+      "output": "Espera Jira Testing",
+      "when": {
+        "all": [
+          { "issueType": "Documentar Criterios de Aceptación", "status": "Cerrado" },
+          { "none": [{ "issueType": "Testing" }] }
+        ]
+      }
+    },
+    {
+      "priority": 3,
+      "enabled": true,
+      "output": "Probando en TEST",
+      "when": {
+        "issueType": "Testing",
+        "status": "En Progreso"
+      }
+    },
+    {
+      "priority": 4,
+      "enabled": true,
+      "output": "En Espera",
+      "when": {
+        "any": [
+          { "issueType": "Testing", "status": "En Espera" },
+          { "issueType": "Testing Pre-Producción", "status": "En Espera" }
+        ]
+      }
+    },
+    {
+      "priority": 5,
+      "enabled": true,
+      "output": "Pedir Montaje PRE",
+      "when": {
+        "match": "subtaskExists",
+        "issueType": "Testing",
+        "subtaskIssueType": "Test Tarea",
+        "subtaskStatusNot": "Cerrado"
+      }
+    },
+    {
+      "priority": 6,
+      "enabled": true,
+      "output": "Solicitado montaje Pre-Prod",
+      "when": {
+        "issueType": "Solicitud Paso a Pre-Producción",
+        "statusNot": "Cerrado"
+      }
+    },
+    {
+      "priority": 7,
+      "enabled": true,
+      "output": "Probando en PRE",
+      "when": {
+        "issueType": "Testing Pre-Producción",
+        "status": "En Progreso"
+      }
+    },
+    {
+      "priority": 8,
+      "enabled": true,
+      "output": "Pedir Montaje PROD",
+      "when": {
+        "all": [
+          { "issueType": "Testing de Criterios", "status": "Cerrado" },
+          { "issueType": "Testing Pre-Producción", "status": "Cerrado" },
+          { "none": [{ "issueType": "Solicitud montaje a Produccion" }] }
+        ]
+      }
+    },
+    {
+      "priority": 9,
+      "enabled": true,
+      "output": "Solicitado Montaje PROD",
+      "when": {
+        "match": "linkedProjectNot",
+        "issueType": "Solicitud Paso a Producción",
         "statusNot": "Cerrado",
-        "match": "exists"
+        "project": "MDI"
+      }
+    },
+    {
+      "priority": 10,
+      "enabled": true,
+      "output": "En Producción",
+      "when": {
+        "match": "linkedProject",
+        "issueType": "Solicitud Paso a Producción",
+        "project": "MDI"
       }
     }
   ]
