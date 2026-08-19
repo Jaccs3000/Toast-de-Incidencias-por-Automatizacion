@@ -35,6 +35,12 @@ export async function bootstrapApp() {
     jira,
     logs,
   });
+  const graphConfigErrors = graph.validateGraphConfig();
+  if (graphConfigErrors.length > 0) {
+    await logs.warn('Graph configuration has validation errors', { errors: graphConfigErrors });
+  } else {
+    await logs.info('Graph configuration validated');
+  }
   const toast = new ToastService({
     enabled: configuration.app.enableToasts,
     logs,

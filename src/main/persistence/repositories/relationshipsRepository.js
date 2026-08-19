@@ -27,16 +27,25 @@ export class RelationshipsRepository {
       created: relationship.created ?? new Date().toISOString(),
     }));
 
-    for (const relationship of normalized) {
-      if (!relationship.fromIssueId || !relationship.toIssueId) {
-        continue;
-      }
-
+    const validRelationships = normalized.filter((relationship) => (
+      relationship.fromIssueId && relationship.toIssueId
+    ));
+    if (validRelationships.length > 0) {
+      const placeholders = validRelationships.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(',\n');
+      const params = validRelationships.flatMap((relationship) => [
+        relationship.id,
+        projectGroupId,
+        relationship.fromIssueId,
+        relationship.toIssueId,
+        relationship.relationType,
+        relationship.linkType,
+        relationship.created,
+      ]);
       await this.persistence.exec(
         `
         INSERT INTO JIRA_RELATIONSHIPS (
           id, project_group_id, from_issue_id, to_issue_id, relation_type, link_type, created
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ) VALUES ${placeholders}
         ON CONFLICT(id) DO UPDATE SET
           project_group_id = excluded.project_group_id,
           from_issue_id = excluded.from_issue_id,
@@ -45,18 +54,10 @@ export class RelationshipsRepository {
           link_type = excluded.link_type,
           created = excluded.created
         `,
-        [
-          relationship.id,
-          projectGroupId,
-          relationship.fromIssueId,
-          relationship.toIssueId,
-          relationship.relationType,
-          relationship.linkType,
-          relationship.created,
-        ],
+        params,
       );
     }
 
-    return { relationshipsCount: normalized.length };
+    return { relationshipsCount: validRelationships.length };
   }
 }

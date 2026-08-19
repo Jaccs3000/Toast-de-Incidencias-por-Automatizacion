@@ -1,3 +1,5 @@
+import { JiraBatchLoader } from '../jira/jiraBatchLoader.js';
+
 function secondsToMinutes(value) {
   const seconds = Number(value ?? 0);
   return Number.isFinite(seconds) ? Math.round(seconds / 60) : 0;
@@ -228,7 +230,7 @@ export class SyncService {
     return defaultValue;
   }
 
-  async persistProjectGroup(projectGroup, detailedSeedIssue, startedAt) {
+  async persistProjectGroup(projectGroup, detailedSeedIssue, startedAt, { persistIssues = true } = {}) {
     await this.persistence.projectGroups.upsert({
       id: projectGroup.id,
       rootIssueId: projectGroup.rootIssueId,
@@ -238,8 +240,8 @@ export class SyncService {
       updated: new Date().toISOString(),
     });
 
-    for (const issue of projectGroup.issues) {
-      await this.persistence.issues.upsert(issue);
+    if (persistIssues) {
+      await this.persistence.issues.upsertMany(projectGroup.issues);
     }
     await this.persistence.projectGroupIssues.replaceForGroup(
       projectGroup.id,
@@ -496,6 +498,13 @@ export class SyncService {
       }
 
       this.jira.setSession(session);
+      this.jira.resetMetrics?.();
+      const phaseTimings = {};
+      const graphMetrics = {
+        seedReuses: 0,
+        issueLoads: 0,
+        cacheHits: 0,
+      };
 
       await this.logs.info('Synchronization cycle started', {
         startedAt,
@@ -512,6 +521,7 @@ export class SyncService {
       }
 
       const seedIssues = new Map();
+      const jqlStartedAt = Date.now();
       for (const jql of jqlQueries) {
         throwIfCanceled();
         await this.logs.info('Executing configured JQL', { jql });
@@ -526,31 +536,48 @@ export class SyncService {
           }
         }
       }
+      phaseTimings.jqlMs = Date.now() - jqlStartedAt;
 
       await this.logs.info('JQL phase completed', {
         uniqueSeedIssues: seedIssues.size,
+        durationMs: phaseTimings.jqlMs,
+      });
+
+      await this.logs.info('Full configured graph traversal planned', {
+        graphIssueTypes: [...this.graph.getGraphIssueTypes()],
       });
 
       const candidateGroups = [];
-      const graphIssueCache = new Map();
+      const graphIssueCache = new Map([...seedIssues.entries()]);
+      const batchLoader = new JiraBatchLoader({
+        jira: this.jira,
+        signal,
+        batchSize: 100,
+        concurrency: 2,
+      });
+      const graphStartedAt = Date.now();
       if (seedIssues.size > 0) {
-        for (const seedIssue of seedIssues.values()) {
+        const groupsBySeed = await Promise.all([...seedIssues.values()].map(async (seedIssue) => {
           throwIfCanceled();
-          await this.logs.info('Loading ProjectGroup seed issue', { issueKey: seedIssue.key });
-          const detailedSeedIssue = await this.jira.getIssue(seedIssue.key, { signal });
-          graphIssueCache.set(seedIssue.key, detailedSeedIssue);
+          await this.logs.info('Reusing ProjectGroup seed issue from JQL', { issueKey: seedIssue.key });
+          const detailedSeedIssue = seedIssue;
+          graphMetrics.seedReuses += 1;
           await this.logs.info('Traversing graph for ProjectGroup', { issueKey: seedIssue.key });
           if (!this.graph.isAllowedSeed(detailedSeedIssue)) {
             await this.logs.warn('Seed issue skipped because its type is outside graph scope', {
               issueKey: seedIssue.key,
               issueType: detailedSeedIssue?.fields?.issuetype?.name ?? null,
             });
-            continue;
+            return [];
           }
           const projectGroups = await this.graph.buildProjectGroups(
             detailedSeedIssue,
-            async (issueKey) => this.jira.getIssue(issueKey, { signal }),
-            { signal, issueCache: graphIssueCache },
+            async (issueKey) => batchLoader.load(issueKey),
+            {
+              signal,
+              issueCache: graphIssueCache,
+              metrics: graphMetrics,
+            },
           );
           await this.logs.info('Graph traversal completed', {
             issueKey: seedIssue.key,
@@ -558,16 +585,21 @@ export class SyncService {
             issuesCount: projectGroups.map((group) => group.issues.length),
             relationshipsCount: projectGroups.map((group) => group.relationships.length),
           });
-          candidateGroups.push(...projectGroups);
-        }
+          return projectGroups;
+        }));
+        candidateGroups.push(...groupsBySeed.flat());
       } else {
         await this.logs.warn('No seed issue found for ProjectGroup build');
       }
+      phaseTimings.graphMs = Date.now() - graphStartedAt;
 
       const consolidatedGroups = this.deduplicateProjectGroups(candidateGroups);
       await this.logs.info('ProjectGroup consolidation completed', {
         candidateGroups: candidateGroups.length,
         consolidatedGroups: consolidatedGroups.length,
+        durationMs: phaseTimings.graphMs,
+        graphMetrics,
+        batchMetrics: batchLoader.getStats(),
       });
 
       const previousSnapshot = await this.getExistingSnapshot();
@@ -583,6 +615,7 @@ export class SyncService {
         removed: changes.filter((change) => change.change_type === 'removed').length,
       });
 
+      const persistenceStartedAt = Date.now();
       await this.persistence.transaction(async () => {
         throwIfCanceled();
         await this.persistence.exec('DELETE FROM JIRA_RELATIONSHIPS');
@@ -590,17 +623,29 @@ export class SyncService {
         await this.persistence.exec('DELETE FROM JIRA_PROJECT_GROUPS');
         await this.persistence.exec('DELETE FROM JIRA_ISSUES');
 
+        const allIssues = new Map();
+        for (const projectGroup of consolidatedGroups) {
+          for (const issue of projectGroup.issues ?? []) {
+            const issueId = String(issue?.id ?? '').trim();
+            if (issueId && !allIssues.has(issueId)) {
+              allIssues.set(issueId, issue);
+            }
+          }
+        }
+        await this.persistence.issues.upsertMany([...allIssues.values()]);
+
         for (const projectGroup of consolidatedGroups) {
           throwIfCanceled();
           const detailedSeedIssue = projectGroup.issues.find((issue) => String(issue?.id) === String(projectGroup.rootIssueId))
             ?? projectGroup.issues[0];
-          await this.persistProjectGroup(projectGroup, detailedSeedIssue, startedAt);
+          await this.persistProjectGroup(projectGroup, detailedSeedIssue, startedAt, { persistIssues: false });
         }
 
         await this.persistChanges(syncId, changes);
         throwIfCanceled();
         alertResult = await this.alerts.evaluate({ notify: false });
       });
+      phaseTimings.persistenceMs = Date.now() - persistenceStartedAt;
 
       throwIfCanceled();
       await this.alerts.notifyCreated(alertResult.createdAlerts);
@@ -615,6 +660,9 @@ export class SyncService {
 
       await this.logs.info('Alerts evaluated after commit', {
         createdAlertsCount: alertResult.createdAlertsCount,
+        phaseTimings,
+        batchMetrics: batchLoader.getStats(),
+        jiraMetrics: this.jira.getMetrics?.() ?? null,
       });
 
       await this.logs.info('Synchronization cycle finished', {
@@ -641,6 +689,7 @@ export class SyncService {
       const canceled = error?.name === 'AbortError';
       await this.logs[canceled ? 'warn' : 'error'](canceled ? 'Synchronization cycle canceled' : 'Synchronization cycle failed', {
         message: error.message,
+        jiraMetrics: this.jira.getMetrics?.() ?? null,
       });
 
       await this.persistence.syncStatus.updateStatus({

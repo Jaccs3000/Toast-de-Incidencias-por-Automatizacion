@@ -79,7 +79,7 @@
         "all": [
           { "issueType": "Testing de Criterios", "status": "Cerrado" },
           { "issueType": "Testing Pre-Producción", "status": "Cerrado" },
-          { "none": [{ "issueType": "Solicitud montaje a Produccion" }] }
+          { "none": [{ "issueType": "Solicitud Paso a Producción" }] }
         ]
       }
     },

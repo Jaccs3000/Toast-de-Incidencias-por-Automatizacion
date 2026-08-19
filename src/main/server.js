@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { bootstrapApp } from './app/bootstrap.js';
 import { saveAppConfig } from './config/configLoader.js';
 import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
+import { gridConditionMatches } from '../shared/grids/gridCondition.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
@@ -19,10 +20,6 @@ const ALERT_IMAGE_TYPES = {
 function log(message, details = '') {
   const suffix = details ? ` ${details}` : '';
   console.log(`[backend ${new Date().toISOString()}] ${message}${suffix}`);
-}
-
-function gridText(value) {
-  return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
 function gridFieldValue(issue, field) {
@@ -46,32 +43,6 @@ function gridFieldValue(issue, field) {
   return values[field] ?? null;
 }
 
-function gridConditionMatches(value, operator, expected) {
-  if (operator === 'IS NULL') return value === null || value === '';
-  if (operator === 'IS NOT NULL') return value !== null && value !== '';
-  if (value === null || value === undefined) return false;
-
-  if (['>', '<', '>=', '<='].includes(operator)) {
-    const left = Number(value);
-    const right = Number(expected);
-    if (Number.isFinite(left) && Number.isFinite(right)) {
-      return operator === '>' ? left > right
-        : operator === '<' ? left < right
-          : operator === '>=' ? left >= right : left <= right;
-    }
-    const leftDate = new Date(value).getTime();
-    const rightDate = new Date(expected).getTime();
-    if (!Number.isFinite(leftDate) || !Number.isFinite(rightDate)) return false;
-    return operator === '>' ? leftDate > rightDate
-      : operator === '<' ? leftDate < rightDate
-        : operator === '>=' ? leftDate >= rightDate : leftDate <= rightDate;
-  }
-
-  const left = gridText(value);
-  const right = gridText(expected);
-  return operator === 'LIKE' ? left.includes(right) : operator === '<>' ? left !== right : left === right;
-}
-
 function parseGridRow(row) {
   return {
     id: row.id,
@@ -86,7 +57,7 @@ function parseGridDefinition(row) {
   return {
     id: row.id,
     name: row.name,
-    pageSize: Number(row.page_size) || 25,
+    pageSize: Number(row.page_size) || 10,
     columns: JSON.parse(row.columns_json ?? '[]'),
     conditions: JSON.parse(row.conditions_json ?? '[]'),
     created: row.created,
@@ -565,7 +536,7 @@ async function handleGrids(res) {
 
 function validateGridPayload(body) {
   const name = String(body?.name ?? '').trim();
-  const pageSize = Number(body?.pageSize ?? 25);
+  const pageSize = Number(body?.pageSize ?? 10);
   const columns = Array.isArray(body?.columns) ? body.columns : [];
   const conditions = Array.isArray(body?.conditions) ? body.conditions : [];
   const graphTypes = new Set(Object.keys(state.runtime.configuration?.graph?.nodes ?? {}));
@@ -683,17 +654,28 @@ async function handleGridData(req, res, id) {
   `);
   const projectGroups = rows.map(parseGridRow).filter((group) => {
     const matches = grid.conditions.map((condition) => {
-      if (condition.field === 'estadoGeneral') return gridConditionMatches(group.estadoGeneral, condition.operator, condition.value);
+      if (condition.field === 'estadoGeneral') {
+        return gridConditionMatches(group.estadoGeneral, condition.operator, condition.value, condition.field);
+      }
       return group.issues.some((issue) => issue.issuetype === condition.issueType
-        && gridConditionMatches(gridFieldValue(issue, condition.field), condition.operator, condition.value));
+        && gridConditionMatches(
+          gridFieldValue(issue, condition.field),
+          condition.operator,
+          condition.value,
+          condition.field,
+        ));
     });
     if (matches.length === 0) return true;
     return matches.reduce((result, match, index) => (
       index === 0 ? match : (grid.conditions[index].connector === 'OR' ? result || match : result && match)
     ), false);
   });
-  const page = Math.max(1, Number(new URL(req.url, 'http://127.0.0.1').searchParams.get('page') ?? 1));
-  const pageSize = grid.pageSize;
+  const searchParams = new URL(req.url, 'http://127.0.0.1').searchParams;
+  const page = Math.max(1, Number(searchParams.get('page') ?? 1));
+  const requestedPageSize = Number(searchParams.get('pageSize'));
+  const pageSize = Number.isInteger(requestedPageSize) && requestedPageSize > 0
+    ? Math.min(requestedPageSize, grid.pageSize)
+    : grid.pageSize;
   const data = projectGroups.slice((page - 1) * pageSize, page * pageSize).map((group) => {
     const result = { projectGroupId: group.id, estadoGeneral: group.estadoGeneral };
     for (const column of grid.columns) {

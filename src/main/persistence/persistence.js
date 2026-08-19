@@ -48,7 +48,7 @@ export class Persistence {
       CREATE TABLE IF NOT EXISTS GRID_DEFINITIONS (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
-        page_size INTEGER NOT NULL DEFAULT 25,
+        page_size INTEGER NOT NULL DEFAULT 10,
         columns_json TEXT NOT NULL,
         conditions_json TEXT NOT NULL,
         created TEXT NOT NULL,

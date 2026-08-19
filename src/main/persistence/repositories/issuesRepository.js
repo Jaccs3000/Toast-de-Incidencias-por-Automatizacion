@@ -48,11 +48,28 @@ export class IssuesRepository {
   }
 
   async upsert(issue) {
-    const normalized = normalizeIssue(issue);
+    const rows = await this.upsertMany([issue]);
+    return rows[0] ?? null;
+  }
 
-    if (!normalized.id) {
-      throw new Error('Issue id is required.');
+  async upsertMany(issues) {
+    const normalizedIssues = [...new Map((Array.isArray(issues) ? issues : [])
+      .map((issue) => normalizeIssue(issue))
+      .filter((issue) => issue.id)
+      .map((issue) => [issue.id, issue])).values()];
+
+    if (normalizedIssues.length === 0) {
+      return [];
     }
+
+    const columns = 18;
+    const placeholders = normalizedIssues.map(() => `(${Array(columns).fill('?').join(', ')})`).join(',\n');
+    const params = normalizedIssues.flatMap((normalized) => [
+      normalized.id, normalized.key, normalized.project, normalized.issuetype, normalized.issuetype_icon_url,
+      normalized.summary, normalized.description, normalized.status, normalized.reporter, normalized.assignee,
+      normalized.created, normalized.updated, normalized.resolutiondate, normalized.parent, normalized.timeestimate,
+      normalized.timespent, normalized.timeremaining, normalized.issuelinks,
+    ]);
 
     await this.persistence.exec(
       `
@@ -60,7 +77,7 @@ export class IssuesRepository {
         id, key, project, issuetype, issuetype_icon_url, summary, description, status,
         reporter, assignee, created, updated, resolutiondate, parent, timeestimate,
         timespent, timeremaining, issuelinks
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES ${placeholders}
       ON CONFLICT(id) DO UPDATE SET
         key = excluded.key,
         project = excluded.project,
@@ -80,28 +97,9 @@ export class IssuesRepository {
         timeremaining = excluded.timeremaining,
         issuelinks = excluded.issuelinks
       `,
-      [
-        normalized.id,
-        normalized.key,
-        normalized.project,
-        normalized.issuetype,
-        normalized.issuetype_icon_url,
-        normalized.summary,
-        normalized.description,
-        normalized.status,
-        normalized.reporter,
-        normalized.assignee,
-        normalized.created,
-        normalized.updated,
-        normalized.resolutiondate,
-        normalized.parent,
-        normalized.timeestimate,
-        normalized.timespent,
-        normalized.timeremaining,
-        normalized.issuelinks,
-      ],
+      params,
     );
 
-    return normalized;
+    return normalizedIssues;
   }
 }

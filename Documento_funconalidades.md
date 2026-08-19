@@ -35,15 +35,14 @@ La aplicacion lee:
 
 ### 4. Como obtiene datos de Jira
 
-La aplicacion consulta Jira por REST usando endpoints como `issue/{key}` y `POST /rest/api/3/search/jql`.
+La aplicacion consulta Jira por REST usando `POST /rest/api/3/search/jql` y lotes de incidencias con `POST /rest/api/3/issue/bulkfetch`.
 
 El usuario puede configurar uno o varios JQL desde la interfaz. Cada consulta puede ocupar varias lineas; las consultas se separan en bloques. Se guardan en `config/app.json` y se ejecutan en cada sincronizacion.
 Las consultas JQL devuelven incidencias iniciales.
 Cada incidencia es solo un punto de partida.
 
-Desde ahi, la app recorre relaciones segun el grafo y arma el ProjectGroup completo.
-La JQL no define el alcance final del grupo. Solo define donde empezar.
-A partir de cualquier incidencia valida del grafo, la app debe recorrer todas las relaciones permitidas hasta completar el ProjectGroup entero.
+Desde ahi, la app recorre en paralelo todos los ProjectGroups hasta completar las relaciones permitidas por el grafo. Las claves de distintos grupos se deduplican y consultan en lotes de hasta 100.
+La JQL define donde empezar y `graph.json` define por donde se puede continuar y donde debe detenerse cada rama.
 Si una incidencia enlaza varias ramas `Testing`, cada rama se guarda como un ProjectGroup independiente. Las ramas pueden compartir incidencias, incluida la incidencia raiz, pero no se fusionan por tener incidencias en comun. Solo se elimina un duplicado cuando los grupos tienen exactamente el mismo conjunto de incidencias.
 Una semilla solo es valida si su tipo esta en `entryTypes` de `graph.json`; una subtarea solo puede iniciar recorrido cuando Jira la identifica como subtarea. Las incidencias externas no abren grafos.
 Las ramas conservan su `Testing` de referencia y no incorporan otro `Testing` ni otra instancia del tipo de la raiz. Las reglas `include: false` permiten continuar el recorrido cuando corresponde, pero excluyen la incidencia de la persistencia.
@@ -103,14 +102,14 @@ Puede incluir:
 
 Un ProjectGroup puede tener varias incidencias del mismo tipo.
 Una misma incidencia puede pertenecer a varios ProjectGroups.
-El recorrido del grafo debe completar el grupo con todas las incidencias que le correspondan, sin importar cual haya sido la incidencia raiz de la JQL.
+El recorrido debe completar el grafo permitido del grupo, sin importar cual haya sido la incidencia raiz de la JQL.
 El recorrido se limita a los tipos declarados en `graph.json`. El comodin de subtareas permite incluir cualquier subtarea de una incidencia ya incluida, pero una subtarea no abre otro grafo. Las incidencias MDI se mantienen como excepcion para calcular el estado de produccion y no expanden sus propios enlaces.
 
 ### 6. Que guarda la base local
 
-La base de datos mantiene un espejo de lo que existe en Jira al finalizar la ultima sincronizacion completa.
+La base de datos mantiene el resultado completo del grafo configurado al finalizar la ultima sincronizacion correcta.
 
-Cuando una sincronizacion termina correctamente, se reemplazan las incidencias, ProjectGroups y relaciones anteriores por el resultado recibido y recorrido desde Jira. Todo lo que no se reciba en esa sincronizacion se elimina de esas tablas.
+Cuando una sincronizacion termina correctamente, se reemplazan las incidencias, ProjectGroups y relaciones anteriores por el resultado recorrido desde Jira. Todo lo que no pertenezca al nuevo resultado se elimina de esas tablas.
 
 No guarda historico.
 Si una incidencia ya existia en la base y no se recibe en la nueva sincronizacion, deja de existir en la base.
@@ -165,7 +164,7 @@ Si el Toast informa inicio de sesion requerido y el usuario hace clic:
 
 ### 10. Sincronizacion
 
-La app compara el resultado nuevo contra el anterior y clasifica los cambios como incidencia nueva, actualizada o eliminada. Una eliminacion solo se confirma cuando el ProjectGroup fue reconstruido completo. Las alertas se evaluan antes del `COMMIT`, pero sus Toast se muestran solo despues de confirmarlo.
+La app compara el resultado nuevo contra el anterior y clasifica los cambios como incidencia nueva, actualizada o eliminada. Una eliminacion solo se confirma cuando el grafo completo fue recorrido correctamente. Las alertas se evaluan antes del `COMMIT`, pero sus Toast se muestran solo despues de confirmarlo.
 
 La sincronizacion puede ser automatica o manual.
 
@@ -179,6 +178,8 @@ Cada sincronizacion:
 6. actualiza la base local;
 7. ejecuta reglas SQL;
 8. genera alertas y Toasts.
+
+Los ProjectGroups avanzan en paralelo. Las incidencias pendientes se agrupan globalmente, se consultan una sola vez y se devuelven a todos los grupos que las solicitaron. Cada rama mantiene sus limites para no abrir otro grafo relacionado.
 
 Si la sesion no es valida, la sincronizacion termina despues del primer paso y no abre el navegador de login.
 

@@ -34,26 +34,29 @@ export class ProjectGroupIssuesRepository {
       });
     }
 
-    for (const issue of uniqueIssues.values()) {
+    const uniqueIssueList = [...uniqueIssues.values()];
+    if (uniqueIssueList.length > 0) {
+      const placeholders = uniqueIssueList.map(() => '(?, ?, ?, ?, ?, ?)').join(',\n');
+      const params = uniqueIssueList.flatMap((issue) => [
+        projectGroupId,
+        issue.id,
+        issue.isRoot ? 1 : 0,
+        issue.depth ?? 0,
+        issue.relationType ?? null,
+        issue.created ?? null,
+      ]);
       await this.persistence.exec(
         `
         INSERT INTO JIRA_PROJECT_GROUP_ISSUES (
           project_group_id, issue_id, is_root, depth, relation_type, created
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        ) VALUES ${placeholders}
         `,
-        [
-          projectGroupId,
-          issue.id,
-          issue.isRoot ? 1 : 0,
-          issue.depth ?? 0,
-          issue.relationType ?? null,
-          issue.created ?? null,
-        ],
+        params,
       );
     }
 
     return {
-      issuesCount: uniqueIssues.size,
+      issuesCount: uniqueIssueList.length,
       relationshipsCount: relationships.length,
     };
   }

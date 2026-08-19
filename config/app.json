@@ -9,9 +9,8 @@
   "startMinimized": true,
   "enableToasts": true,
   "autoSyncEnabled": false,
-  "alertRetryEnabled": true,
+  "alertRetryEnabled": false,
   "jqlQueries": [
-    "type = \"Documentar Criterios de Aceptación\" AND assignee = currentUser() AND status != Cerrado",
-    "created >= -60d AND reporter = 712020:e0f54237-99d1-4264-9fd6-0ee5f330380f AND status = Cerrado AND type = \"Implementación Q&A\""
+    "type = \"Implementación Q&A\" AND assignee = currentUser() AND status != Cerrado AND issuekey != \"ONL-7689\""
   ]
 }

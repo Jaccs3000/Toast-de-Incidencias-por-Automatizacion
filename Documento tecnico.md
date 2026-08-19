@@ -60,9 +60,9 @@ Cada sincronizacion parte de una o varias consultas JQL configuradas en `config/
 
 Si una incidencia enlaza varias ramas `Testing`, cada rama produce un ProjectGroup independiente. Las ramas pueden compartir incidencias, pero no se consolidan solo por tener incidencias en comun. Solo se elimina un duplicado cuando dos grupos tienen exactamente el mismo conjunto de incidencias.
 
-La JQL no define el alcance final del grupo. El recorrido del grafo debe completar cada ProjectGroup con todas las incidencias que le correspondan, aunque la incidencia de entrada sea distinta.
+La JQL define las incidencias raiz. A partir de ellas, la app recorre en paralelo todos los ProjectGroups hasta completar las relaciones permitidas por `graph.json`.
 
-A partir de cualquier incidencia valida del grafo, la app debe poder recorrer el conjunto completo de relaciones permitidas para reconstruir el ProjectGroup entero.
+Las claves descubiertas se deduplican globalmente y se consultan con `POST /rest/api/3/issue/bulkfetch` en lotes de hasta 100. Cada respuesta conserva su incidencia origen, relacion y ProjectGroups solicitantes.
 
 Campos iniciales a extraer de cada incidencia:
 
@@ -117,8 +117,8 @@ Caracteristicas:
 - tiene un `id` propio;
 - no tiene nombre;
 - no existe en Jira;
-- se construye recorriendo relaciones definidas en `graph.json` hasta completar el grupo;
-- el recorrido debe poder comenzar desde cualquier incidencia valida del grafo y aun asi llegar al ProjectGroup completo;
+- se construye recorriendo las relaciones permitidas por `graph.json` hasta completar el grafo;
+- el recorrido puede comenzar desde cualquier incidencia valida y mantiene los limites del ProjectGroup de origen;
 - puede tener varias incidencias del mismo tipo;
 - una incidencia puede pertenecer a varios ProjectGroups;
 - se guarda una sola copia fisica de cada incidencia;
@@ -126,8 +126,8 @@ Caracteristicas:
 
 ### 7. Base de datos
 
-DuckDB mantiene un espejo del estado actual de Jira obtenido en la ultima sincronizacion completa.
-En cada sincronizacion exitosa se reemplazan las tablas de incidencias, ProjectGroups y relaciones por lo recibido y recorrido desde Jira. Lo que ya no venga en esa sincronizacion se elimina de esas tablas.
+DuckDB mantiene el estado actual del grafo configurado obtenido en la ultima sincronizacion completa.
+En cada sincronizacion exitosa se reemplazan las tablas de incidencias, ProjectGroups y relaciones por el resultado completo recorrido desde Jira. Lo que ya no pertenezca a ese resultado se elimina de esas tablas.
 
 Tablas principales:
 
@@ -263,9 +263,23 @@ Regla del grafo:
 - `subtasks` puede incluir cualquier tipo de subtarea de una incidencia ya incluida, pero una subtarea no abre otro grafo;
 - una regla con `include: false` permite recorrer la incidencia si `expand` esta activo, pero no la persiste en el grupo;
 - la sincronizacion comparte la cache de incidencias entre las ramas y las semillas JQL del mismo ciclo;
-- una incidencia fuera del alcance se descarta y no se expande;
+- una incidencia cuyo tipo no esta permitido por el grafo se descarta y no se expande, salvo subtareas y la excepcion MDI configurada;
 - cada rama tiene un identificador propio para evitar colisiones cuando comparte incidencias con otro grupo;
-- el objetivo es reconstruir el `ProjectGroup` completo.
+- el objetivo es reconstruir el `ProjectGroup` completo sin abrir ramas ajenas.
+
+### 16. Recorrido global de sincronizacion
+
+El recorrido de los ProjectGroups se coordina de forma global:
+
+- las incidencias devueltas por las JQL se reutilizan como raices;
+- los ProjectGroups y sus ramas avanzan en paralelo;
+- las claves pendientes de diferentes grupos se deduplican y agrupan en lotes de hasta 100;
+- se mantienen como maximo dos peticiones de lote simultaneas;
+- una misma incidencia se consulta una vez y puede asociarse a varios grupos;
+- las subtareas conservan su padre y ProjectGroups, sin limitar su cantidad;
+- cada rama conserva sus limites y no expande otro grafo encontrado durante el recorrido.
+
+Si Jira responde `429`, el lote respeta `Retry-After` y se reintenta de forma limitada. Un error definitivo o una cancelacion detiene el ciclo completo y conserva la BD anterior.
 
 Propuesta final de `projectgroup_rules.json`:
 
@@ -307,8 +321,8 @@ Los Toast de alertas se muestran solo despues del `COMMIT`.
 La sincronizacion sigue este orden:
 
 1. Validar sesion.
-2. Obtener datos desde Jira.
-3. Construir ProjectGroups.
+2. Ejecutar las JQL y consolidar sus incidencias raiz.
+3. Recorrer en paralelo los ProjectGroups mediante lotes REST globales.
 4. Calcular campos derivados.
 5. Comparar con lo persistido.
 6. Actualizar DuckDB dentro de una transaccion.
@@ -319,6 +333,7 @@ Si la sesion no es valida, el proceso termina con error controlado despues del p
 Durante el proceso:
 
 - no hay sincronizaciones concurrentes;
+- dentro de un mismo ciclo, los ProjectGroups y sus ramas se recorren en paralelo con concurrencia REST controlada;
 - todo se trabaja en memoria hasta el final;
 - si ocurre un error o cancelacion, no se aplica ningun cambio parcial;
 - el estado anterior se conserva intacto.

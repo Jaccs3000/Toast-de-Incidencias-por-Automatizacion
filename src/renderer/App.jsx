@@ -213,6 +213,58 @@ function formatDateMask(value) {
   }).join('');
 }
 
+function ClampedGridText({ children, tooltipText, className = '' }) {
+  const contentRef = useRef(null);
+  const [truncated, setTruncated] = useState(false);
+
+  useEffect(() => {
+    const element = contentRef.current;
+    if (!element) return undefined;
+
+    const updateTruncation = () => {
+      setTruncated(element.scrollHeight > element.clientHeight + 1
+        || element.scrollWidth > element.clientWidth + 1);
+    };
+    updateTruncation();
+    const observer = new ResizeObserver(updateTruncation);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [tooltipText]);
+
+  return (
+    <div
+      className={`grid-clamped-text ${className}`.trim()}
+      ref={contentRef}
+      title={truncated ? tooltipText : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
+function getGridColumnMetrics(groupKey, columns) {
+  const fields = columns.map((column) => column.field);
+  const hasLongText = fields.some((field) => ['summary', 'description'].includes(field));
+  const isCompact = groupKey.startsWith('__other::')
+    || fields.every((field) => ['key', 'status', 'timeestimate', 'timespent', 'timeremaining'].includes(field));
+  return {
+    minimum: hasLongText ? 250 : isCompact ? 150 : fields.length >= 4 ? 220 : 180,
+    weight: hasLongText ? 1.8 : isCompact ? 0.75 : 1 + Math.max(0, fields.length - 1) * 0.18,
+  };
+}
+
+function calculateGridColumnWidths(columnGroups, availableWidth) {
+  const groups = [...columnGroups.entries()];
+  if (groups.length === 0) return [];
+  const metrics = groups.map(([groupKey, columns]) => getGridColumnMetrics(groupKey, columns));
+  const minimumWidth = metrics.reduce((total, metric) => total + metric.minimum, 0);
+  const distributableWidth = Math.max(0, availableWidth - minimumWidth);
+  const totalWeight = metrics.reduce((total, metric) => total + metric.weight, 0);
+  return metrics.map((metric) => Math.round(
+    metric.minimum + distributableWidth * (metric.weight / totalWeight),
+  ));
+}
+
 function buildAlertSql(alertForm) {
   const eventExpression = `c.change_type = ${sqlText(alertForm.event)}`;
   const conditionExpressions = [];
@@ -383,13 +435,17 @@ export default function App() {
   const [gridForm, setGridForm] = useState({
     id: null,
     name: '',
-    pageSize: 25,
+    pageSize: 10,
     columns: [{ issueType: '', field: '' }],
     conditions: [],
   });
   const [gridData, setGridData] = useState(null);
   const [gridLoading, setGridLoading] = useState(false);
   const [gridPage, setGridPage] = useState(1);
+  const [gridVisiblePageSize, setGridVisiblePageSize] = useState(10);
+  const gridTableWrapRef = useRef(null);
+  const gridPaginationRef = useRef(null);
+  const [gridTableAvailableWidth, setGridTableAvailableWidth] = useState(0);
   const [draggedGridColumnIndex, setDraggedGridColumnIndex] = useState(null);
   const [gridValidationShown, setGridValidationShown] = useState(false);
   const [openGridAttributeGroup, setOpenGridAttributeGroup] = useState(null);
@@ -513,6 +569,7 @@ export default function App() {
       const errors = [];
       if (!condition.issueType && condition.field !== 'estadoGeneral') errors.push(`Condicion ${index + 1}: debes seleccionar un tipo de incidencia.`);
       if (!condition.field) errors.push(`Condicion ${index + 1}: debes seleccionar un atributo.`);
+      if (!condition.operator) errors.push(`Condicion ${index + 1}: debes seleccionar un operador.`);
       if (!['IS NULL', 'IS NOT NULL'].includes(condition.operator) && !String(condition.value ?? '').trim()) errors.push(`Condicion ${index + 1}: debes indicar un valor.`);
       return errors;
     }),
@@ -526,11 +583,11 @@ export default function App() {
     return result.grids ?? [];
   };
 
-  const refreshGridData = async (id = activeTab, page = gridPage) => {
+  const refreshGridData = async (id = activeTab, page = gridPage, pageSize = gridVisiblePageSize) => {
     if (!id || id === 'config') return;
     setGridLoading(true);
     try {
-      const result = await api(`/api/grids/${encodeURIComponent(id)}/data?page=${page}`);
+      const result = await api(`/api/grids/${encodeURIComponent(id)}/data?page=${page}&pageSize=${pageSize}`);
       setGridData(result);
     } catch (error) {
       showUiToast(`No se pudo cargar el grid: ${error.message}`, 'error');
@@ -542,7 +599,7 @@ export default function App() {
   const resetGridForm = () => setGridForm({
     id: null,
     name: '',
-    pageSize: 25,
+    pageSize: 10,
     columns: [{ issueType: '', field: '' }],
     conditions: [],
   });
@@ -960,9 +1017,67 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab !== 'config') {
-      refreshGridData(activeTab, gridPage);
+      refreshGridData(activeTab, gridPage, gridVisiblePageSize);
     }
-  }, [activeTab, gridPage, bootstrapContext?.syncStatus?.last_success_at]);
+  }, [activeTab, gridPage, gridVisiblePageSize, bootstrapContext?.syncStatus?.last_success_at]);
+
+  useEffect(() => {
+    if (activeTab === 'config' || !gridData || gridLoading) return undefined;
+
+    const calculateVisibleRows = () => {
+      const tableWrap = gridTableWrapRef.current;
+      const pagination = gridPaginationRef.current;
+      if (!tableWrap || !pagination) return;
+
+      const headerHeight = tableWrap.querySelector('thead')?.getBoundingClientRect().height ?? 48;
+      const fieldsByGroup = (gridData.grid?.columns ?? []).reduce((groups, column) => {
+        const key = column.issueType || `__other::${column.field}`;
+        const current = groups.get(key) ?? [];
+        current.push(column.field);
+        groups.set(key, current);
+        return groups;
+      }, new Map());
+      const lineBudget = Math.max(1, ...[...fieldsByGroup.values()].map((fields) => (
+        fields.reduce((total, field) => total + (['summary', 'description'].includes(field) ? 2 : 1), 0)
+      )));
+      const rowHeight = Math.max(56, 26 + lineBudget * 20 + Math.max(0, lineBudget - 1) * 7);
+      const availableHeight = window.innerHeight
+        - tableWrap.getBoundingClientRect().top
+        - pagination.getBoundingClientRect().height
+        - 54;
+      const configuredMaximum = Number(gridData.grid?.pageSize) || 10;
+      const nextPageSize = Math.max(1, Math.min(
+        configuredMaximum,
+        Math.floor((availableHeight - headerHeight) / rowHeight),
+      ));
+
+      setGridVisiblePageSize((current) => {
+        if (current === nextPageSize) return current;
+        const nextTotalPages = Math.max(1, Math.ceil((gridData.total ?? 0) / nextPageSize));
+        setGridPage((page) => Math.min(page, nextTotalPages));
+        return nextPageSize;
+      });
+    };
+
+    const frame = window.requestAnimationFrame(calculateVisibleRows);
+    window.addEventListener('resize', calculateVisibleRows);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', calculateVisibleRows);
+    };
+  }, [activeTab, gridData, gridLoading]);
+
+  useEffect(() => {
+    if (activeTab === 'config') return undefined;
+    const tableWrap = gridTableWrapRef.current;
+    if (!tableWrap) return undefined;
+
+    const updateAvailableWidth = () => setGridTableAvailableWidth(tableWrap.clientWidth);
+    updateAvailableWidth();
+    const observer = new ResizeObserver(updateAvailableWidth);
+    observer.observe(tableWrap);
+    return () => observer.disconnect();
+  }, [activeTab, gridData?.grid?.id]);
 
   useEffect(() => {
     const countdownHandle = setInterval(() => setCountdownNow(Date.now()), 1000);
@@ -1783,17 +1898,34 @@ export default function App() {
           </div>
           <div className="grid-builder-section grid-conditions-section">
             <h3>Condiciones</h3>
-            {gridForm.conditions.map((condition, index) => (
-              <div className={`grid-builder-row${index > 0 ? ' has-connector' : ''}`} key={`grid-condition-${index}`}>
+            {gridForm.conditions.flatMap((condition, index) => [
+              index > 0 ? (
+                <select
+                  className="grid-condition-connector"
+                  key={`grid-condition-connector-${index}`}
+                  value={condition.connector ?? 'AND'}
+                  onChange={(event) => setGridForm((current) => ({
+                    ...current,
+                    conditions: current.conditions.map((item, itemIndex) => itemIndex === index
+                      ? { ...item, connector: event.target.value }
+                      : item),
+                  }))}
+                >
+                  <option value="AND">AND</option>
+                  <option value="OR">OR</option>
+                </select>
+              ) : null,
+              <div className="grid-builder-row" key={`grid-condition-${index}`}>
                 <select value={condition.issueType ?? ''} disabled={condition.field === 'estadoGeneral'} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, issueType: event.target.value } : item) }))}>
+                  <option value="">Seleccione tipo de incidencia</option>
                   {gridIssueTypes.map((type) => <option value={type} key={type}>{type}</option>)}
-                  <option value="">Otros</option>
                 </select>
                 <select value={condition.field} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, field: event.target.value, issueType: event.target.value === 'estadoGeneral' ? null : item.issueType } : item) }))}>
+                  <option value="">Seleccione atributo</option>
                   {gridFieldOptions.map((field) => <option value={field.field} key={field.field}>{field.label}</option>)}
                 </select>
-                {index > 0 ? <select value={condition.connector ?? 'AND'} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, connector: event.target.value } : item) }))}><option value="AND">AND</option><option value="OR">OR</option></select> : null}
                 <select value={condition.operator} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, operator: event.target.value } : item) }))}>
+                  <option value="">Seleccione operador</option>
                   {conditionOperators.map((operator) => <option value={operator.value} key={operator.value}>{operator.label}</option>)}
                 </select>
                 {gridConditionCatalogOptions(condition.field).length > 0 ? (
@@ -1806,10 +1938,10 @@ export default function App() {
                 )}
                 <button type="button" className="jql-delete" onClick={() => setGridForm((current) => ({ ...current, conditions: current.conditions.filter((_, itemIndex) => itemIndex !== index) }))} aria-label="Eliminar condicion">&#128465;</button>
               </div>
-            ))}
-            <button type="button" className="jql-add" onClick={() => setGridForm((current) => ({ ...current, conditions: [...current.conditions, { issueType: gridIssueTypes[0] ?? '', field: 'status', operator: '=', value: '', connector: current.conditions.length ? 'AND' : undefined }] }))}>+ Agregar condicion</button>
+            ])}
+            <button type="button" className="jql-add" onClick={() => setGridForm((current) => ({ ...current, conditions: [...current.conditions, { issueType: '', field: '', operator: '', value: '', connector: current.conditions.length ? 'AND' : undefined }] }))}>+ Agregar condicion</button>
           </div>
-          <label className="grid-page-size">Registros por pagina
+          <label className="grid-page-size">Máximo de registros por página
             <input type="number" min="1" max="200" value={gridForm.pageSize} onChange={(event) => setGridForm((current) => ({ ...current, pageSize: event.target.value }))} />
           </label>
           <div className="settings-actions"><button type="button" onClick={handleSaveGrid}>Guardar {gridForm.id ? 'cambios' : 'grid'}</button></div>
@@ -1837,14 +1969,65 @@ export default function App() {
       groups.set(groupKey, current);
       return groups;
     }, new Map());
-    const totalPages = Math.max(1, Math.ceil((gridData?.total ?? 0) / (gridData?.pageSize ?? 25)));
+    const columnWidths = calculateGridColumnWidths(columnGroups, gridTableAvailableWidth);
+    const tableMinimumWidth = columnWidths.reduce((total, width) => total + width, 0);
+    const horizontalScrollRequired = gridTableAvailableWidth > 0
+      && tableMinimumWidth > gridTableAvailableWidth + 1;
+    const totalPages = Math.max(1, Math.ceil((gridData?.total ?? 0) / (gridData?.pageSize ?? 10)));
     return (
       <section className="grid-tab-view">
-        <div className="grid-tab-heading"><div><p className="eyebrow">Jira Notifications</p><h1>{gridData?.grid?.name ?? grids.find((grid) => grid.id === activeTab)?.name}</h1><p className="copy">Información agrupada por ProjectGroup.</p></div><button type="button" onClick={() => refreshGridData(activeTab, gridPage)} disabled={gridLoading}>Actualizar</button></div>
-        {gridLoading ? <p className="copy">Actualizando grid...</p> : null}
-        <div className="grid-table-wrap"><table className="project-grid"><thead><tr>{[...columnGroups.entries()].map(([groupKey, groupColumns]) => <th key={groupKey}>{groupKey.startsWith('__other::') ? gridFieldLabel(groupColumns[0].field) : groupKey}</th>)}</tr></thead><tbody>{(gridData?.rows ?? []).map((row) => <tr key={row.projectGroupId}>{[...columnGroups.entries()].map(([groupKey, groupColumns]) => <td className="grid-group-cell" key={`${row.projectGroupId}-${groupKey}`}>{groupKey.startsWith('__other::') ? groupColumns.map((column) => <div className="grid-group-value" key={`${column.issueType}-${column.field}`}>{column.field === 'estadoGeneral' ? row.estadoGeneral : ''}</div>) : groupColumns.map((column) => { const rawValue = row[`${column.issueType}::${column.field}`] ?? ''; const value = ['reporter', 'assignee'].includes(column.field) ? compactGridPersonValues(rawValue) : rawValue; return <div className="grid-group-value" key={`${column.issueType}-${column.field}`}><strong>{gridFieldLabel(column.field)}:</strong> {value}</div>; })}</td>)}</tr>)}</tbody></table></div>
+        <div className="grid-tab-heading"><div><p className="eyebrow">Jira Notifications</p><h1>{gridData?.grid?.name ?? grids.find((grid) => grid.id === activeTab)?.name}</h1><p className="copy">Información agrupada por ProjectGroup.</p></div><button type="button" onClick={() => refreshGridData(activeTab, gridPage, gridVisiblePageSize)} disabled={gridLoading}>Actualizar</button></div>
+        <div className={`grid-table-wrap${gridLoading ? ' is-loading' : ''}${horizontalScrollRequired ? ' has-horizontal-overflow' : ''}`} ref={gridTableWrapRef} aria-busy={gridLoading}>
+          <table className="project-grid" style={{ minWidth: `${tableMinimumWidth}px` }}>
+            <colgroup>
+              {columnWidths.map((width, index) => <col style={{ width: `${width}px` }} key={`grid-column-${index}`} />)}
+            </colgroup>
+            <thead>
+              <tr>
+                {[...columnGroups.entries()].map(([groupKey, groupColumns]) => {
+                  const heading = groupKey.startsWith('__other::')
+                    ? gridFieldLabel(groupColumns[0].field)
+                    : groupKey;
+                  return <th key={groupKey}><ClampedGridText tooltipText={heading} className="grid-column-heading">{heading}</ClampedGridText></th>;
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {(gridData?.rows ?? []).map((row) => (
+                <tr key={row.projectGroupId}>
+                  {[...columnGroups.entries()].map(([groupKey, groupColumns]) => (
+                    <td className="grid-group-cell" key={`${row.projectGroupId}-${groupKey}`}>
+                      {groupKey.startsWith('__other::')
+                        ? groupColumns.map((column) => {
+                          const value = column.field === 'estadoGeneral' ? row.estadoGeneral : '';
+                          return <ClampedGridText tooltipText={String(value ?? '')} className="grid-group-value" key={`${column.issueType}-${column.field}`}>{value}</ClampedGridText>;
+                        })
+                        : groupColumns.map((column) => {
+                          const rawValue = row[`${column.issueType}::${column.field}`] ?? '';
+                          const value = ['reporter', 'assignee'].includes(column.field)
+                            ? compactGridPersonValues(rawValue)
+                            : rawValue;
+                          const label = gridFieldLabel(column.field);
+                          const tooltipText = `${label}: ${value}`;
+                          return (
+                            <ClampedGridText
+                              tooltipText={tooltipText}
+                              className="grid-group-value"
+                              key={`${column.issueType}-${column.field}`}
+                            >
+                              <strong>{label}:</strong> {value}
+                            </ClampedGridText>
+                          );
+                        })}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {!gridLoading && (gridData?.rows ?? []).length === 0 ? <p className="copy">No hay ProjectGroups que cumplan las condiciones.</p> : null}
-        <div className="grid-pagination"><button type="button" disabled={gridPage <= 1} onClick={() => setGridPage((page) => page - 1)}>Anterior</button><span>Pagina {gridPage} de {totalPages}</span><button type="button" disabled={gridPage >= totalPages} onClick={() => setGridPage((page) => page + 1)}>Siguiente</button></div>
+        <div className="grid-pagination" ref={gridPaginationRef}><button type="button" disabled={gridLoading || gridPage <= 1} onClick={() => setGridPage((page) => page - 1)}>Anterior</button><span>Pagina {gridPage} de {totalPages}</span><button type="button" disabled={gridLoading || gridPage >= totalPages} onClick={() => setGridPage((page) => page + 1)}>Siguiente</button></div>
       </section>
     );
   };
@@ -1909,7 +2092,7 @@ export default function App() {
       <section className="hero">
         <nav className="app-tabs" aria-label="Navegacion de la aplicacion">
           <button type="button" className={activeTab === 'config' ? 'app-tab is-active' : 'app-tab'} onClick={() => setActiveTab('config')}>Configuracion</button>
-          {grids.map((grid) => <button type="button" className={activeTab === grid.id ? 'app-tab is-active' : 'app-tab'} onClick={() => { setActiveTab(grid.id); setGridPage(1); }} key={grid.id}>{grid.name}</button>)}
+          {grids.map((grid) => <button type="button" className={activeTab === grid.id ? 'app-tab is-active' : 'app-tab'} onClick={() => { setGridVisiblePageSize(Number(grid.pageSize) || 10); setActiveTab(grid.id); setGridPage(1); }} key={grid.id}>{grid.name}</button>)}
         </nav>
         {activeTab === 'config' ? <div className="dashboard-grid">
         <fieldset disabled={syncInProgress} className="dashboard-editable-panels">
