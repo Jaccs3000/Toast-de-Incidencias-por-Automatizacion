@@ -261,6 +261,37 @@ export class AlertsService {
     return this.persistence.alerts.resumeUnreadRetries({ lockedAt, unlockedAt });
   }
 
+  async scheduleUnreadRetriesFromNow() {
+    const rules = await this.persistence.query(
+      `
+      SELECT id, retry_minutes
+      FROM ALERT_RULES
+      WHERE is_active = 1 AND retry_minutes > 0
+      `,
+    );
+    const now = new Date();
+    let updated = 0;
+
+    for (const rule of rules) {
+      const retryMinutes = Number(rule.retry_minutes);
+      if (!Number.isFinite(retryMinutes) || retryMinutes <= 0) continue;
+
+      const nextRetryAt = new Date(now.getTime() + retryMinutes * 60000).toISOString();
+      await this.persistence.exec(
+        `
+        UPDATE ALERTS
+        SET next_retry_at = ?, updated = ?
+        WHERE rule_id = ? AND is_read = 0
+        `,
+        [nextRetryAt, now.toISOString(), rule.id],
+      );
+      updated += 1;
+    }
+
+    await this.logs?.info?.('Unread alert retries scheduled after enabling retry service', { updated });
+    return updated;
+  }
+
   async evaluate({ projectGroup = null, notify = false } = {}) {
     if (!this.persistence) {
       throw new Error('AlertsService dependencies are not fully configured.');
@@ -332,25 +363,6 @@ export class AlertsService {
   async notifyCreated(createdAlerts = []) {
     for (const alert of createdAlerts) {
       try {
-        const retryMinutes = Math.max(Number(alert.rule?.retry_minutes ?? 0) || 0, 0);
-        if (retryMinutes > 0 && !alert.isRetry && alert.alertId) {
-          const rows = await this.persistence.query(
-            'SELECT next_retry_at, is_read FROM ALERTS WHERE id = ? LIMIT 1',
-            [alert.alertId],
-          );
-          const storedAlert = rows[0];
-          const retryAt = new Date(storedAlert?.next_retry_at ?? '').getTime();
-          if (storedAlert?.is_read === 0 && Number.isFinite(retryAt) && Date.now() < retryAt) {
-            await this.logs?.info?.('Toast postponed until alert retry is due', {
-              alertId: alert.alertId,
-              ruleId: alert.rule?.id,
-              issueId: alert.issueId,
-              retryAt: storedAlert.next_retry_at,
-            });
-            continue;
-          }
-        }
-
         if (!this.toast?.show) {
           await this.logs?.warn?.('Toast skipped: toast service unavailable', {
             alertId: alert.alertId,

@@ -13,12 +13,13 @@ import { WindowsSessionTask } from '../windowsSession/windowsSessionTask.js';
 export async function bootstrapApp() {
   const configuration = await loadConfiguration();
   const persistence = new Persistence();
-  const auth = new AuthService(configuration);
   const logs = new LogService({
     retentionDays: configuration.app.logRetentionDays,
   });
 
   await logs.initialize();
+
+  const auth = new AuthService(configuration, { logs });
 
   const windowsSession = new WindowsSessionTask({ logs });
   await windowsSession.initialize();

@@ -8,8 +8,8 @@
   "logRetentionDays": 7,
   "startMinimized": true,
   "enableToasts": true,
-  "autoSyncEnabled": false,
-  "alertRetryEnabled": false,
+  "autoSyncEnabled": true,
+  "alertRetryEnabled": true,
   "jqlQueries": [
     "type = \"Implementación Q&A\" AND assignee = currentUser() AND status != Cerrado AND issuekey != \"ONL-7689\""
   ]

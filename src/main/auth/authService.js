@@ -75,11 +75,25 @@ async function writeStorageState(storageState) {
 }
 
 export class AuthService {
-  constructor(configuration = {}) {
+  constructor(configuration = {}, { logs = null } = {}) {
     this.configuration = configuration;
+    this.logs = logs;
     this.browser = null;
     this.context = null;
     this.page = null;
+  }
+
+  async trace(level, message, meta = null) {
+    const details = meta ? JSON.stringify(meta) : '';
+    log(message, details);
+
+    try {
+      if (typeof this.logs?.[level] === 'function') {
+        await this.logs[level](`Auth: ${message}`, meta);
+      }
+    } catch (error) {
+      log('authentication trace could not be persisted', error.message);
+    }
   }
 
   getAppConfig() {
@@ -189,6 +203,86 @@ export class AuthService {
       reason: storedSession.reason ?? 'Jira session is not valid.',
       details: storedSession.details ?? null,
     };
+  }
+
+  async tryHeadlessContinue({ timeoutMs = 15000, intervalMs = 1000, signal = null } = {}) {
+    const baseUrl = this.getBaseUrl();
+    if (!baseUrl) return null;
+
+    const throwIfCanceled = () => {
+      if (signal?.aborted) {
+        throw new DOMException('Headless login continuation canceled.', 'AbortError');
+      }
+    };
+
+    let browser = null;
+    let context = null;
+    let page = null;
+
+    try {
+      const storageState = await readStorageState();
+      await this.trace('info', 'Headless login attempt started', {
+        storageStatePresent: Boolean(storageState),
+      });
+      throwIfCanceled();
+      browser = await chromium.launch({ headless: true });
+      await this.trace('info', 'Headless browser launched');
+      context = await browser.newContext(storageState ? { storageState } : {});
+      page = await context.newPage();
+      await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+      throwIfCanceled();
+
+      const continueButton = page.getByRole('button', { name: /^continuar$/i }).first();
+      if (await continueButton.count() === 0) {
+        await this.trace('info', 'Headless continuation button not found; using visible login');
+        return null;
+      }
+
+      await this.trace('info', 'Headless continuation button found; clicking');
+      await continueButton.click({ timeout: 5000 });
+      const startedAt = Date.now();
+
+      while (Date.now() - startedAt < timeoutMs) {
+        throwIfCanceled();
+        const cookies = await context.cookies(baseUrl);
+        const validated = await this.validateWithCookies(baseUrl, cookies);
+
+        if (validated.ok) {
+          await writeStorageState(await context.storageState());
+          await this.trace('info', 'Headless Jira login validated and storage state saved');
+          return validated;
+        }
+
+        await sleep(intervalMs);
+      }
+
+      await this.trace('warn', 'Headless Jira continuation did not produce a valid session');
+      return null;
+    } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
+      await this.trace('warn', 'Headless Jira continuation failed; using visible login', {
+        message: error.message,
+      });
+      return null;
+    } finally {
+      try {
+        if (page && !page.isClosed()) await page.close();
+      } catch {
+        // ignore cleanup errors
+      }
+      try {
+        if (context) await context.close();
+      } catch {
+        // ignore cleanup errors
+      }
+      try {
+        if (browser) await browser.close();
+      } catch {
+        // ignore cleanup errors
+      }
+    }
   }
 
   async openLoginWindow() {
@@ -327,15 +421,27 @@ export class AuthService {
   }
 
   async loginAndValidate() {
+    await this.trace('info', 'Login flow started');
+    const headlessSession = await this.tryHeadlessContinue();
+    if (headlessSession?.ok) {
+      await this.trace('info', 'Login completed through headless continuation');
+      return headlessSession;
+    }
+
+    await this.trace('info', 'Opening visible login fallback');
     await this.openLoginWindow();
     const session = await this.waitForValidSession();
 
     if (session.ok && this.context) {
       await writeStorageState(await this.context.storageState());
       await this.closeLoginWindow();
+      await this.trace('info', 'Login completed through visible browser');
       return session;
     }
 
+    await this.trace('warn', 'Login flow finished without a valid session', {
+      reason: session.reason ?? 'unknown',
+    });
     return session;
   }
 }

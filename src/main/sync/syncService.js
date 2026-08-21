@@ -1,4 +1,5 @@
 import { JiraBatchLoader } from '../jira/jiraBatchLoader.js';
+import { jiraDescriptionToText } from '../../shared/jira/descriptionText.js';
 
 function secondsToMinutes(value) {
   const seconds = Number(value ?? 0);
@@ -327,7 +328,7 @@ export class SyncService {
           issuetype: issue.fields?.issuetype?.name ?? null,
           issuetype_icon_url: issue.fields?.issuetype?.iconUrl ?? null,
           summary: issue.fields?.summary ?? null,
-          description: issue.fields?.description ?? null,
+          description: jiraDescriptionToText(issue.fields?.description),
           status: issue.fields?.status?.name ?? null,
           reporter: issue.fields?.reporter?.displayName ?? issue.fields?.reporter?.name ?? null,
           assignee: issue.fields?.assignee?.displayName ?? issue.fields?.assignee?.name ?? null,
@@ -482,15 +483,24 @@ export class SyncService {
       throwIfCanceled();
 
       if (!session.ok) {
-        await this.logs.warn('Synchronization stopped: Jira session invalid');
-        await this.persistence.syncStatus.updateStatus({
-          last_status: 'Requiere inicio de sesión en Jira.',
-          is_running: false,
-          is_canceling: false,
-        });
+        await this.logs.info('Jira session invalid; trying headless account continuation');
+        const recoveredSession = await this.auth.tryHeadlessContinue({ signal });
+        throwIfCanceled();
 
-        await this.logs.warn('Jira session is missing or invalid; login requires explicit user action');
-        throw new Error(session.reason ?? 'Jira login is required.');
+        if (recoveredSession?.ok) {
+          session = recoveredSession;
+          await this.logs.info('Jira session recovered automatically through headless continuation');
+        } else {
+          await this.logs.warn('Synchronization stopped: Jira session invalid');
+          await this.persistence.syncStatus.updateStatus({
+            last_status: 'Requiere inicio de sesión en Jira.',
+            is_running: false,
+            is_canceling: false,
+          });
+
+          await this.logs.warn('Jira session is missing or invalid; visible login requires explicit user action');
+          throw new Error(session.reason ?? 'Jira login is required.');
+        }
       }
 
       if (!session.ok) {

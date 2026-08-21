@@ -66,6 +66,13 @@ export class Persistence {
       // The column already exists in databases initialized after the schema update.
     }
     try {
+      // DuckDB cannot add a column with NOT NULL/DEFAULT to an existing table.
+      await this.exec('ALTER TABLE GRID_DEFINITIONS ADD COLUMN is_visible INTEGER');
+    } catch {
+      // The column already exists in databases initialized after the schema update.
+    }
+    await this.exec('UPDATE GRID_DEFINITIONS SET is_visible = 1 WHERE is_visible IS NULL');
+    try {
       await this.exec('ALTER TABLE JIRA_ISSUES ADD COLUMN timeremaining INTEGER DEFAULT 0');
       await this.exec('UPDATE JIRA_ISSUES SET timeremaining = 0 WHERE timeremaining IS NULL');
     } catch {

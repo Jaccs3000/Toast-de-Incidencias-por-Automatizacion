@@ -6,6 +6,11 @@ import { bootstrapApp } from './app/bootstrap.js';
 import { saveAppConfig } from './config/configLoader.js';
 import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
 import { gridConditionMatches } from '../shared/grids/gridCondition.js';
+import {
+  SUBTASK_COUNT_FIELDS,
+  SUBTASK_COUNT_ISSUE_TYPES,
+  getSubtaskCountEntries,
+} from '../shared/grids/subtaskCounts.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
@@ -53,11 +58,51 @@ function parseGridRow(row) {
   };
 }
 
+function getGridSortValue(row, column) {
+  const rawValue = column.field === 'estadoGeneral'
+    ? row.estadoGeneral
+    : row[`${column.issueType}::${column.field}`];
+
+  if (Array.isArray(rawValue)) {
+    return rawValue.reduce((total, item) => total + (Number(item?.count) || 0), 0);
+  }
+
+  const value = String(rawValue ?? '').trim();
+  if (!value) return null;
+  if (['timeestimate', 'timespent', 'timeremaining'].includes(column.field)) {
+    const number = Number(value.split('|')[0].trim());
+    return Number.isFinite(number) ? number : null;
+  }
+  if (['created', 'updated', 'resolutiondate'].includes(column.field)) {
+    const timestamp = new Date(value.split('|')[0].trim()).getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+  return value;
+}
+
+function compareGridRows(left, right, column, direction) {
+  const leftValue = getGridSortValue(left, column);
+  const rightValue = getGridSortValue(right, column);
+  const leftIsEmpty = leftValue === null || leftValue === '';
+  const rightIsEmpty = rightValue === null || rightValue === '';
+  if (leftIsEmpty || rightIsEmpty) {
+    if (leftIsEmpty && rightIsEmpty) return String(left.projectGroupId).localeCompare(String(right.projectGroupId));
+    return leftIsEmpty ? 1 : -1;
+  }
+
+  const comparison = typeof leftValue === 'number' && typeof rightValue === 'number'
+    ? leftValue - rightValue
+    : String(leftValue).localeCompare(String(rightValue), 'es', { numeric: true, sensitivity: 'base' });
+  if (comparison === 0) return String(left.projectGroupId).localeCompare(String(right.projectGroupId));
+  return direction === 'desc' ? -comparison : comparison;
+}
+
 function parseGridDefinition(row) {
   return {
     id: row.id,
     name: row.name,
     pageSize: Number(row.page_size) || 10,
+    visible: Number(row.is_visible ?? 1) !== 0,
     columns: JSON.parse(row.columns_json ?? '[]'),
     conditions: JSON.parse(row.conditions_json ?? '[]'),
     created: row.created,
@@ -324,6 +369,7 @@ async function handleBootstrapContext(res) {
     appState: state.appState,
     session: toPublicSession(state.session),
     syncStatus: state.syncStatus,
+    jiraBaseUrl: state.runtime.configuration?.app?.jiraBaseUrl ?? '',
     syncIntervalSeconds: Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 300),
     syncIntervalMinutes: Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 300) / 60,
     jqlQueries: state.runtime.configuration?.app?.jqlQueries ?? [],
@@ -347,6 +393,7 @@ async function handleSettings(req, res) {
     return;
   }
   const body = await readBody(req);
+  const alertRetryWasEnabled = Boolean(state.runtime.configuration?.app?.alertRetryEnabled);
   const requestedJqlQueries = Array.isArray(body?.jqlQueries)
     ? [...new Set(body.jqlQueries
       .filter((query) => typeof query === 'string')
@@ -371,8 +418,8 @@ async function handleSettings(req, res) {
   }
   if (body?.syncIntervalMinutes !== undefined) {
     const minutes = Number(body.syncIntervalMinutes);
-    if (!Number.isFinite(minutes) || minutes < 1) {
-      json(res, 400, { ok: false, error: 'El intervalo debe ser de al menos 1 minuto.' });
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 9999) {
+      json(res, 400, { ok: false, error: 'El intervalo debe estar entre 1 y 9999 minutos.' });
       return;
     }
 
@@ -388,6 +435,9 @@ async function handleSettings(req, res) {
     await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
   }
   if (appConfig.alertRetryEnabled) {
+    if (!alertRetryWasEnabled) {
+      await state.runtime.alerts.scheduleUnreadRetriesFromNow();
+    }
     startAlertRetryTimer();
   } else {
     stopAlertRetryTimer();
@@ -543,8 +593,9 @@ function validateGridPayload(body) {
   const allowedFields = new Set([
     'key', 'project', 'issuetype', 'summary', 'description', 'status', 'reporter',
     'assignee', 'created', 'updated', 'resolutiondate', 'parent', 'timeestimate',
-    'timespent', 'timeremaining', 'estadoGeneral',
+    'timespent', 'timeremaining', 'estadoGeneral', 'closedSubtasks', 'openSubtasks',
   ]);
+  const allowedConditionFields = new Set([...allowedFields].filter((field) => !SUBTASK_COUNT_FIELDS.has(field)));
   const allowedOperators = new Set(['=', '<>', 'LIKE', '>', '<', '>=', '<=', 'IS NULL', 'IS NOT NULL']);
 
   if (!name) throw new Error('El grid requiere un nombre.');
@@ -553,10 +604,11 @@ function validateGridPayload(body) {
   }
   if (columns.length === 0 || columns.length > 50) throw new Error('El grid debe tener entre 1 y 50 campos.');
   if (columns.some((column) => !column?.field || !allowedFields.has(column.field)
-    || (column.field !== 'projectGroupId' && column.field !== 'estadoGeneral' && !graphTypes.has(column.issueType)))) {
+    || (column.field !== 'projectGroupId' && column.field !== 'estadoGeneral' && !graphTypes.has(column.issueType))
+    || (SUBTASK_COUNT_FIELDS.has(column.field) && !SUBTASK_COUNT_ISSUE_TYPES.has(column.issueType)))) {
     throw new Error('Uno de los campos seleccionados no es valido para el grafo actual.');
   }
-  if (conditions.some((condition) => !condition?.field || !allowedFields.has(condition.field)
+  if (conditions.some((condition) => !condition?.field || !allowedConditionFields.has(condition.field)
     || !allowedOperators.has(condition.operator)
     || (condition.field !== 'estadoGeneral' && !graphTypes.has(condition.issueType)))) {
     throw new Error('Una de las condiciones del grid no es valida.');
@@ -577,6 +629,7 @@ function validateGridPayload(body) {
       value: String(condition.value ?? '').trim(),
       connector: index === 0 ? undefined : (condition.connector === 'OR' ? 'OR' : 'AND'),
     })),
+    visible: body?.visible !== false,
   };
 }
 
@@ -638,11 +691,12 @@ async function handleGridData(req, res, id) {
       COALESCE(
         list(
           struct_pack(
-            key := i.key, project := i.project, issuetype := i.issuetype,
+            id := i.id, key := i.key, project := i.project, issuetype := i.issuetype,
             summary := i.summary, description := i.description, status := i.status,
             reporter := i.reporter, assignee := i.assignee, created := i.created,
             updated := i.updated, resolutiondate := i.resolutiondate, parent := i.parent,
-            timeestimate := i.timeestimate, timespent := i.timespent, timeremaining := i.timeremaining
+            timeestimate := i.timeestimate, timespent := i.timespent, timeremaining := i.timeremaining,
+            issuelinks := i.issuelinks
           )
         ) FILTER (WHERE i.id IS NOT NULL), []
       ) AS issues_json
@@ -676,10 +730,26 @@ async function handleGridData(req, res, id) {
   const pageSize = Number.isInteger(requestedPageSize) && requestedPageSize > 0
     ? Math.min(requestedPageSize, grid.pageSize)
     : grid.pageSize;
-  const data = projectGroups.slice((page - 1) * pageSize, page * pageSize).map((group) => {
-    const result = { projectGroupId: group.id, estadoGeneral: group.estadoGeneral };
+  const data = projectGroups.map((group) => {
+    const result = {
+      projectGroupId: group.id,
+      estadoGeneral: group.estadoGeneral,
+      issueDetails: Object.fromEntries(
+        group.issues
+          .filter((issue) => issue?.key)
+          .map((issue) => [issue.key, issue]),
+      ),
+    };
     for (const column of grid.columns) {
       if (column.field === 'estadoGeneral') continue;
+      if (SUBTASK_COUNT_FIELDS.has(column.field)) {
+        result[`${column.issueType}::${column.field}`] = getSubtaskCountEntries(
+          group.issues,
+          column.issueType,
+          column.field,
+        );
+        continue;
+      }
       const values = group.issues
         .filter((issue) => issue.issuetype === column.issueType)
         .map((issue) => gridFieldValue(issue, column.field))
@@ -688,7 +758,26 @@ async function handleGridData(req, res, id) {
     }
     return result;
   });
-  json(res, 200, { grid, rows: data, total: projectGroups.length, page, pageSize });
+
+  const sortField = String(searchParams.get('sortField') ?? '').trim();
+  const sortIssueType = String(searchParams.get('sortIssueType') ?? '');
+  const sortDirection = searchParams.get('sortDirection') === 'desc' ? 'desc' : 'asc';
+  const sortColumn = grid.columns.find((column) => (
+    column.field === sortField && String(column.issueType ?? '') === sortIssueType
+  ));
+  if (sortColumn) {
+    data.sort((left, right) => compareGridRows(left, right, sortColumn, sortDirection));
+  }
+
+  const pagedData = data.slice((page - 1) * pageSize, page * pageSize);
+  json(res, 200, {
+    grid,
+    rows: pagedData,
+    total: projectGroups.length,
+    page,
+    pageSize,
+    sort: sortColumn ? { issueType: sortColumn.issueType ?? null, field: sortColumn.field, direction: sortDirection } : null,
+  });
 }
 
 async function handleAlertsSummary(res) {

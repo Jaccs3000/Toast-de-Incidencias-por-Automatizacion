@@ -1,3 +1,5 @@
+import { jiraDescriptionToText } from '../../../shared/jira/descriptionText.js';
+
 function toText(value) {
   if (value === null || value === undefined) {
     return null;
@@ -27,7 +29,7 @@ function normalizeIssue(issue) {
     issuetype: issue?.fields?.issuetype?.name ?? null,
     issuetype_icon_url: issue?.fields?.issuetype?.iconUrl ?? null,
     summary: issue?.fields?.summary ?? null,
-    description: issue?.fields?.description ?? null,
+    description: jiraDescriptionToText(issue?.fields?.description),
     status: issue?.fields?.status?.name ?? null,
     reporter: issue?.fields?.reporter?.displayName ?? issue?.fields?.reporter?.name ?? null,
     assignee: issue?.fields?.assignee?.displayName ?? issue?.fields?.assignee?.name ?? null,

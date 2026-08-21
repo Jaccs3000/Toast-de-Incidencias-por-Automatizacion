@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS GRID_DEFINITIONS (
   page_size INTEGER NOT NULL DEFAULT 25,
   columns_json TEXT NOT NULL,
   conditions_json TEXT NOT NULL,
+  is_visible INTEGER NOT NULL DEFAULT 1,
   created TEXT NOT NULL,
   updated TEXT NOT NULL
 );
