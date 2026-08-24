@@ -7,6 +7,7 @@
     { "field": "summary", "label": "Resumen", "type": "text" },
     { "field": "description", "label": "Descripcion", "type": "text" },
     { "field": "status", "label": "Estado", "type": "text" },
+    { "field": "estadoGeneral", "label": "Estado General", "type": "text", "projectGroup": true },
     { "field": "reporter", "label": "Informador", "type": "text" },
     { "field": "assignee", "label": "Responsable", "type": "text" },
     { "field": "created", "label": "Fecha de creacion", "type": "datetime" },

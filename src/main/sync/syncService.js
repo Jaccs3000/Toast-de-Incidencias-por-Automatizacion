@@ -703,9 +703,8 @@ export class SyncService {
       });
 
       await this.persistence.syncStatus.updateStatus({
-        last_status: 'Error durante la sincronización.',
         last_finished_at: finishedAt,
-        last_status: canceled ? 'Sincronizacion detenida.' : 'Error durante la sincronizacion.',
+        last_status: canceled ? 'Sincronización detenida.' : 'Error al sincronizar',
         last_error_message: canceled ? null : error.message,
         is_running: false,
         is_canceling: false,

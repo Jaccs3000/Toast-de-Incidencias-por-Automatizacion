@@ -86,7 +86,15 @@ Campos iniciales a extraer de cada incidencia:
 
 La app valida la sesion de Jira antes de sincronizar.
 
-Si no hay sesion valida:
+Si no hay sesion valida durante una sincronizacion automatica o manual:
+
+- intenta abrir Playwright en modo headless con el perfil propio de la app;
+- espera la carga de la pantalla de Jira y busca el boton `Continuar` durante varios segundos;
+- si encuentra `Continuar`, lo pulsa, valida `GET /rest/api/3/myself` y guarda el nuevo `storageState`;
+- si no encuentra `Continuar`, no escribe credenciales ni abre una ventana visible automaticamente;
+- la sincronizacion termina con error controlado y muestra el aviso de inicio de sesion requerido.
+
+Si el usuario inicia el login desde la interfaz, la app abre inmediatamente la ventana visible de Playwright:
 
 - muestra una notificacion nativa de Windows con el mensaje `Se requiere inicio de sesion en Jira`;
 - si el permiso esta bloqueado o denegado, muestra un Toast interno con el mismo mensaje;
@@ -106,7 +114,9 @@ Si la sesion expira o deja de ser valida:
 - la app vuelve a mostrar la notificacion de inicio de sesion requerido en cada intervalo de sincronizacion configurado mientras la sesion siga invalida;
 - tambien muestra el boton de inicio de sesion en la interfaz.
 
-La sincronizacion automatica o manual nunca abre Playwright por si sola. Chromium administrado por Playwright solo se abre cuando el usuario hace clic en la notificacion, en el Toast interno o en el boton de inicio de sesion.
+El intento headless de sincronizacion nunca solicita credenciales. Si Jira muestra usuario y contrasena, no se completa el login, la sincronizacion termina con error controlado y se mantienen visibles el aviso y el boton de inicio de sesion.
+La accion explicita de iniciar sesion no ejecuta headless: abre inmediatamente la ventana visible de Playwright.
+El perfil persistente de Playwright se guarda en `data/session/playwright-profile`. Es independiente del perfil de Google Chrome instalado y no modifica Chrome, el registro ni variables de entorno.
 
 ### 6. ProjectGroups
 
@@ -459,6 +469,7 @@ Reglas:
 - si ya no es valido, la app pide iniciar sesion otra vez;
 - cuando se crea una nueva sesion, se borran antes solo los archivos anteriores de esa carpeta para evitar guardar datos obsoletos;
 - no se borra la carpeta contenedora.
+- el perfil propio de Playwright se conserva para permitir el uso posterior de una cuenta guardada en ese navegador;
 - el archivo de sesion no debe incluirse en control de versiones ni compartirse.
 
 ### 15. Estado de la sesion de Windows

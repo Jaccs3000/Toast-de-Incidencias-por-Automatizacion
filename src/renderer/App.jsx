@@ -560,6 +560,7 @@ const alertFieldLabels = {
   summary: 'Resumen',
   description: 'Descripcion',
   status: 'Estado',
+  estadoGeneral: 'Estado General',
   reporter: 'Informador',
   assignee: 'Responsable',
   created: 'Fecha de creacion',
@@ -812,10 +813,13 @@ function buildAlertSql(alertForm) {
   const conditionExpressions = [];
   const numericFields = new Set(['timeestimate', 'timespent', 'timeremaining']);
   const datetimeFields = new Set(['created', 'updated', 'resolutiondate']);
+  const projectGroupFields = new Set(['estadoGeneral']);
   alertForm.conditions
     .filter((condition) => condition.value.trim() || ['IS NULL', 'IS NOT NULL'].includes(condition.operator))
     .forEach((condition, index) => {
-      const rawField = `COALESCE(json_extract_string(c.after_json, '$.${condition.field}'), json_extract_string(c.before_json, '$.${condition.field}'))`;
+      const rawField = projectGroupFields.has(condition.field)
+        ? 'p.estado_general'
+        : `COALESCE(json_extract_string(c.after_json, '$.${condition.field}'), json_extract_string(c.before_json, '$.${condition.field}'))`;
       const field = numericFields.has(condition.field)
         ? `TRY_CAST(${rawField} AS DOUBLE)`
         : datetimeFields.has(condition.field)
@@ -852,7 +856,7 @@ function buildAlertSql(alertForm) {
     expressions.push(groupedConditions);
   }
 
-  return `SELECT issue_id, issue_key, project_group_id, change_type, changed_fields, after_json, before_json\nFROM SYNC_CHANGES c\nWHERE ${expressions.join('\n  AND ')}`;
+  return `SELECT c.issue_id, c.issue_key, c.project_group_id, c.change_type, c.changed_fields, c.after_json, c.before_json\nFROM SYNC_CHANGES c\nLEFT JOIN JIRA_PROJECT_GROUPS p ON p.id = c.project_group_id\nWHERE ${expressions.join('\n  AND ')}`;
 }
 
 function emptyAlertForm() {
@@ -932,6 +936,8 @@ export default function App() {
   const [jqlQueries, setJqlQueries] = useState([]);
   const [jqlSaving, setJqlSaving] = useState(false);
   const [jqlMessage, setJqlMessage] = useState(null);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState(null);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
   const [alertRetryEnabled, setAlertRetryEnabled] = useState(true);
   const [alertRetrySaving, setAlertRetrySaving] = useState(false);
@@ -959,6 +965,7 @@ export default function App() {
   const lastSessionNotificationAtRef = useRef(0);
   const permissionRequestStartedRef = useRef(false);
   const sessionNotificationRef = useRef(null);
+  const notificationWorkerRegistrationRef = useRef(null);
   const knownAlertNotifiedAtRef = useRef(new Map());
   const alertNotificationQueueRef = useRef([]);
   const queuedAlertIdsRef = useRef(new Set());
@@ -972,6 +979,25 @@ export default function App() {
   const syncIntervalDirtyRef = useRef(false);
   const autoSyncDirtyRef = useRef(false);
   const alertRetryDirtyRef = useRef(false);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+
+    let mounted = true;
+    navigator.serviceWorker.register('/notification-worker.js', { scope: '/' })
+      .then((registration) => {
+        if (mounted) {
+          notificationWorkerRegistrationRef.current = registration;
+        }
+      })
+      .catch((error) => {
+        console.warn('[alerts] No se pudo registrar el Service Worker:', error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!headerAlertsOpen) return undefined;
@@ -1023,9 +1049,11 @@ export default function App() {
   const appState = bootstrapContext?.appState ?? 'booting';
   const sessionIsValid = Boolean(session?.ok);
   const sessionExpired = session?.ok === false;
+  const rawSyncStatus = syncStatus?.last_status ?? 'Sincronizacion no iniciada';
+  const syncHasError = !sessionExpired && /error|fallo|falló|no se pudo|requiere/i.test(String(rawSyncStatus));
   const syncResultLabel = sessionExpired
     ? 'Inicie sesión en Jira'
-    : (syncStatus?.last_status ?? 'Sincronizacion no iniciada');
+    : syncHasError ? 'Error al sincronizar' : rawSyncStatus;
   const syncInProgress = manualSyncInProgress || Boolean(syncStatus?.is_running) || appState === 'syncing';
   const syncCanceling = Boolean(syncStatus?.is_canceling);
   const configurationSections = [
@@ -1043,6 +1071,11 @@ export default function App() {
   const conditionOperators = alertOperatorDefinitions.length > 0
     ? alertOperatorDefinitions
     : Object.entries(alertOperators).map(([value, label]) => ({ value, label }));
+  const projectGroupStateOptions = [...new Set([
+    bootstrapContext?.projectGroupRules?.defaultValue,
+    ...(bootstrapContext?.projectGroupRules?.rules ?? []).map((rule) => rule?.output),
+  ].filter((value) => typeof value === 'string' && value.trim()))]
+    .map((value) => ({ value, label: value }));
   const operatorsForField = (fieldName) => {
     const field = conditionFields.find((item) => item.field === fieldName);
     const allowed = field?.type === 'text'
@@ -1059,8 +1092,10 @@ export default function App() {
   });
 
   const gridConditionFieldOptions = [
+    ...conditionFields
+      .filter((field) => field.field !== 'estadoGeneral')
+      .map((field) => ({ field: field.field, label: field.label })),
     { field: 'estadoGeneral', label: 'Estado General', projectGroup: true },
-    ...conditionFields.map((field) => ({ field: field.field, label: field.label })),
   ];
   const gridFieldOptions = [
     ...gridConditionFieldOptions,
@@ -1272,9 +1307,11 @@ export default function App() {
     const catalogKey = condition.field === 'project'
       ? 'projects'
       : condition.field === 'issuetype' ? 'issueTypes' : 'statuses';
-    const catalogOptions = (jiraCatalog?.[catalogKey] ?? []).map((item) => (
+    const catalogOptions = condition.field === 'estadoGeneral'
+      ? projectGroupStateOptions
+      : (jiraCatalog?.[catalogKey] ?? []).map((item) => (
       typeof item === 'string' ? { value: item, label: item } : item
-    ));
+      ));
     const updateValue = (event) => setAlertForm((current) => ({
       ...current,
       conditions: current.conditions.map((item, itemIndex) => itemIndex === index
@@ -1287,7 +1324,7 @@ export default function App() {
         : item),
     }));
 
-    if (['project', 'issuetype', 'status'].includes(condition.field) && catalogOptions.length > 0) {
+    if (['project', 'issuetype', 'status', 'estadoGeneral'].includes(condition.field) && catalogOptions.length > 0) {
       return (
         <select className="condition-value-combobox" value={condition.value} onChange={updateValue}>
           <option value="">Seleccione una opcion</option>
@@ -1379,15 +1416,49 @@ export default function App() {
       return false;
     }
 
-    const notification = new Notification(title, { body, ...(icon ? { icon } : {}) });
-    notification.onclick = () => {
-      notification.close();
-      onClick?.();
-    };
-    return true;
+    try {
+      const notification = new Notification(title, { body, ...(icon ? { icon } : {}) });
+      notification.onclick = () => {
+        notification.close();
+        onClick?.();
+      };
+      return true;
+    } catch (error) {
+      console.warn('[alerts] No se pudo crear la notificacion nativa:', error);
+      return false;
+    }
   };
 
-  const processAlertNotificationQueue = () => {
+  const showAlertNotification = async (title, body, alertId, icon = null) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+      return false;
+    }
+
+    if (!('serviceWorker' in navigator)) {
+      return false;
+    }
+
+    try {
+      const registration = notificationWorkerRegistrationRef.current
+        ?? await navigator.serviceWorker.ready;
+      await registration.showNotification(title, {
+        body,
+        ...(icon ? { icon } : {}),
+        tag: `jira-alert-${alertId}`,
+        renotify: true,
+        data: {
+          alertId,
+          readUrl: new URL('/api/alerts/read', window.location.href).toString(),
+        },
+      });
+      return true;
+    } catch (error) {
+      console.warn('[alerts] No se pudo crear la notificacion de alerta:', error);
+      return false;
+    }
+  };
+
+  const processAlertNotificationQueue = async () => {
     if (alertNotificationProcessingRef.current) {
       return;
     }
@@ -1403,13 +1474,21 @@ export default function App() {
     const imageUrl = alert.toast_image
       ? backendAssetUrl(alert.toast_image)
       : alert.issuetype_icon_url;
-    showNativeNotification('Jira Notifications', message, () => handleReadAlert(alert.id), imageUrl);
+    const shownNatively = await showAlertNotification(
+      'Jira Notifications',
+      message,
+      alert.id,
+      imageUrl,
+    );
+    if (!shownNatively) {
+      showUiToast(message, 'warning');
+    }
 
     alertNotificationTimerRef.current = setTimeout(() => {
       queuedAlertIdsRef.current.delete(alert.id);
       alertNotificationProcessingRef.current = false;
       alertNotificationTimerRef.current = null;
-      processAlertNotificationQueue();
+      void processAlertNotificationQueue();
     }, 2500);
   };
 
@@ -1422,7 +1501,7 @@ export default function App() {
       queuedAlertIdsRef.current.add(alert.id);
       alertNotificationQueueRef.current.push(alert);
     }
-    processAlertNotificationQueue();
+    void processAlertNotificationQueue();
   };
 
   const notifySessionRequired = (intervalSeconds = 300) => {
@@ -1532,17 +1611,16 @@ export default function App() {
 
     const unreadAlerts = Array.isArray(summary?.unreadAlerts) ? summary.unreadAlerts : [];
     const knownAlerts = knownAlertNotifiedAtRef.current;
-    const alertsToShow = alertRetryEnabledRef.current && alertsInitializedRef.current
+    const alertsToShow = alertsInitializedRef.current
       ? unreadAlerts.filter((alert) => {
         const previous = knownAlerts.get(alert.id);
         if (!previous) {
-          const retryMinutes = Number(alert?.retry_minutes ?? 0);
-          if (!Number.isFinite(retryMinutes) || retryMinutes <= 0) {
-            return true;
-          }
+          // The retry switch must not suppress the first notification of a new alert.
+          return true;
+        }
 
-          const retryAt = new Date(alert?.next_retry_at ?? '').getTime();
-          return !Number.isFinite(retryAt) || Date.now() >= retryAt;
+        if (!alertRetryEnabledRef.current) {
+          return false;
         }
 
         // A changed last_notified_at proves the backend sent a new retry.
@@ -1802,12 +1880,6 @@ export default function App() {
       return;
     }
 
-    const minutes = Number(syncIntervalMinutes);
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 9999) {
-      setJqlMessage('El intervalo debe estar entre 1 y 9999 minutos.');
-      return;
-    }
-
     setJqlSaving(true);
     setJqlMessage(null);
 
@@ -1816,22 +1888,47 @@ export default function App() {
         method: 'PUT',
         body: JSON.stringify({
           jqlQueries: queries,
+        }),
+      });
+      setJqlQueries(result.jqlQueries ?? queries);
+      jqlDirtyRef.current = false;
+      setJqlMessage('Consultas JQL guardadas correctamente.');
+      showUiToast('Consultas JQL guardadas correctamente.');
+    } catch (error) {
+      setJqlMessage(`No se pudieron guardar las consultas: ${error.message}`);
+    } finally {
+      setJqlSaving(false);
+    }
+  };
+
+  const handleSaveStatus = async () => {
+    const minutes = Number(syncIntervalMinutes);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 9999) {
+      setStatusMessage('El intervalo debe estar entre 1 y 9999 minutos.');
+      return;
+    }
+
+    setStatusSaving(true);
+    setStatusMessage(null);
+
+    try {
+      const result = await api('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
           autoSyncEnabled,
           syncIntervalMinutes: minutes,
         }),
       });
-      setJqlQueries(result.jqlQueries ?? queries);
       setAutoSyncEnabled(Boolean(result.autoSyncEnabled));
       setSyncIntervalMinutes(Number(result.syncIntervalMinutes ?? minutes));
-      jqlDirtyRef.current = false;
       autoSyncDirtyRef.current = false;
       syncIntervalDirtyRef.current = false;
-      setJqlMessage('Configuracion guardada correctamente.');
-      showUiToast('Configuracion guardada correctamente.');
+      setStatusMessage('Sincronizacion guardada correctamente.');
+      showUiToast('Sincronizacion guardada correctamente.');
     } catch (error) {
-      setJqlMessage(`No se pudo guardar la configuracion: ${error.message}`);
+      setStatusMessage(`No se pudo guardar la sincronizacion: ${error.message}`);
     } finally {
-      setJqlSaving(false);
+      setStatusSaving(false);
     }
   };
 
@@ -2307,7 +2404,7 @@ export default function App() {
     const nextValue = event.target.checked;
     autoSyncDirtyRef.current = true;
     setAutoSyncEnabled(nextValue);
-    setJqlMessage(null);
+    setStatusMessage(null);
   };
 
   const handleAlertRetryToggle = async (event) => {
@@ -2986,7 +3083,7 @@ export default function App() {
             <div className="header-sync-summary" aria-live="polite">
               <span>Ultima: {formatBogotaDate(syncStatus?.last_finished_at)}</span>
               <span>Proxima: {autoSyncEnabled ? (syncInProgress ? 'En curso' : formatCountdown(syncStatus?.next_sync_at, countdownNow)) : 'Apagada'}</span>
-              <span className={`header-sync-result${syncInProgress ? ' sync-status-pulsing' : ''}${sessionExpired ? ' session-required' : ''}`}>
+              <span className={`header-sync-result${syncInProgress ? ' sync-status-pulsing' : ''}${sessionExpired ? ' session-required' : ''}${syncHasError ? ' sync-error' : ''}`}>
                 {sessionExpired ? (
                   <button
                     type="button"
@@ -3310,6 +3407,13 @@ export default function App() {
             <LineIcon name="plus" />
             Agregar JQL
           </button>
+          <div className="settings-actions jql-save-actions">
+            <button type="button" className="save-action-button" onClick={handleSaveJql} disabled={jqlSaving}>
+              <LineIcon name="save" />
+              {jqlSaving ? 'Guardando...' : 'Guardar'}
+            </button>
+            {jqlMessage ? <span className="settings-message">{jqlMessage}</span> : null}
+          </div>
           <div className="jql-sync-settings">
             <label className="settings-toggle jql-auto-sync-toggle">
               <input
@@ -3457,7 +3561,7 @@ export default function App() {
             <div>
               <span className="status-row-icon"><LineIcon name="sync" /></span>
               <dt>Sincronizacion</dt>
-              <dd className={`${syncInProgress ? 'sync-status-pulsing ' : ''}${sessionExpired ? 'session-required sync-status-pulsing ' : ''}${!sessionExpired && syncStatus?.last_status === 'Sincronizado correctamente.' ? 'status-value-positive' : ''}`}>
+              <dd className={`${syncInProgress ? 'sync-status-pulsing ' : ''}${sessionExpired ? 'session-required sync-status-pulsing ' : ''}${syncHasError ? 'sync-error ' : ''}${!sessionExpired && !syncHasError && rawSyncStatus === 'Sincronizado correctamente.' ? 'status-value-positive' : ''}`}>
                 {sessionExpired ? 'Inicie sesión en Jira' : (syncStatus?.last_status ?? 'Cargando...')}
               </dd>
             </div>
@@ -3514,7 +3618,7 @@ export default function App() {
                 />
                 <span>minutos</span>
             </label>
-            {jqlMessage ? <span className="status-sync-message">{jqlMessage}</span> : null}
+            {statusMessage ? <span className="status-sync-message">{statusMessage}</span> : null}
           </div>
 
           <div className={`actions ${appState === 'auth_required' || !sessionIsValid ? 'actions-with-login' : 'actions-ready'}`}>
@@ -3535,9 +3639,9 @@ export default function App() {
               <LineIcon name="power" />
               <span>{shutdownRequested ? 'Deteniendo servicios...' : 'Detener app'}</span>
             </button>
-            <button className="action-save save-action-button" type="button" onClick={handleSaveJql} disabled={jqlSaving || syncInProgress}>
+            <button className="action-save save-action-button" type="button" onClick={handleSaveStatus} disabled={statusSaving || syncInProgress}>
               <LineIcon name="save" />
-              <span>{jqlSaving ? 'Guardando...' : 'Guardar'}</span>
+              <span>{statusSaving ? 'Guardando...' : 'Guardar'}</span>
             </button>
             {appState === 'auth_required' || !sessionIsValid ? (
               <button className="action-login" type="button" onClick={handleLogin} disabled={loginInProgress || syncInProgress}>
@@ -3563,7 +3667,9 @@ export default function App() {
                   <small>{alertRetryEnabled ? 'Activo' : 'Apagado'}</small>
                 </label>
               </div>
-              <span className="alerts-badge">{alertsSummary?.unreadCount ?? 0}</span>
+              {(alertsSummary?.unreadCount ?? 0) >= 1 ? (
+                <span className="alerts-badge">{alertsSummary.unreadCount}</span>
+              ) : null}
             </div>
             {Array.isArray(alertsSummary?.unreadAlerts) && alertsSummary.unreadAlerts.length > 0 ? (
               <ul className="alerts-list">

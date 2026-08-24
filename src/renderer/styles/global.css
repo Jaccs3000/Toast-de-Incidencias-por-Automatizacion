@@ -325,6 +325,12 @@ body {
   animation: sync-status-pulse 1.05s ease-in-out infinite;
 }
 
+.header-sync-result.sync-error,
+.status-grid dd.sync-error {
+  color: #ff6676 !important;
+  font-weight: 800;
+}
+
 .header-sync-login-link {
   appearance: none;
   border: 0;
@@ -4602,6 +4608,41 @@ h1 {
 .configuration-workspace button:disabled {
   opacity: .5;
   cursor: not-allowed;
+}
+
+/* Keep dynamic button labels inside their available space. */
+.configuration-workspace button {
+  min-width: 0 !important;
+  max-width: 100%;
+  height: auto !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  text-align: center;
+}
+
+.configuration-workspace .actions,
+.configuration-workspace .settings-actions,
+.configuration-workspace .alert-form-actions,
+.configuration-workspace .grid-form-actions {
+  min-width: 0;
+}
+
+.configuration-workspace .actions > button,
+.configuration-workspace .settings-actions > button,
+.configuration-workspace .alert-form-actions button,
+.configuration-workspace .grid-form-actions button,
+.configuration-workspace .header-sync-login-link {
+  min-width: 0 !important;
+  max-width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  line-height: 1.2 !important;
+}
+
+.configuration-workspace .header-sync-login-link {
+  display: inline-flex;
+  text-align: right;
 }
 
 /* Blue actions. */

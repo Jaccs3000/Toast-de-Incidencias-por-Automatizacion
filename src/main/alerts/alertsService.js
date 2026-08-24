@@ -20,6 +20,11 @@ function formatToastValue(field, value) {
   }).format(date).replace(',', '');
 }
 
+function isPersistenceFailure(error) {
+  const message = String(error?.message ?? error ?? '').toLowerCase();
+  return /duplicate key|constraint error|transactioncontext|transaction is aborted|transaction aborted/.test(message);
+}
+
 export class AlertsService {
   constructor({ persistence, toast, logs } = {}) {
     this.persistence = persistence;
@@ -134,29 +139,47 @@ export class AlertsService {
 
     const alertId = `alert-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-    await this.persistence.exec(
-      `
-      INSERT INTO ALERTS (
-        id, rule_id, issue_id, project_group_id, is_read,
-        created, updated, last_notified_at, retry_count,
-        next_retry_sync, next_retry_at, payload_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [
-        alertId,
-        ruleId,
-        issueId,
-        projectGroupId ?? null,
-        0,
-        now,
-        now,
-        now,
-        0,
-        Math.max(Number(rule.retry_syncs ?? 0) || 0, 0),
-        new Date(Date.now() + Math.max(Number(rule.retry_minutes ?? 0) || 0, 0) * 60000).toISOString(),
-        payloadJson,
-      ],
-    );
+    const insertParameters = [
+      alertId,
+      ruleId,
+      issueId,
+      projectGroupId ?? null,
+      0,
+      now,
+      now,
+      now,
+      0,
+      Math.max(Number(rule.retry_syncs ?? 0) || 0, 0),
+      new Date(Date.now() + Math.max(Number(rule.retry_minutes ?? 0) || 0, 0) * 60000).toISOString(),
+      payloadJson,
+    ];
+
+    await this.logs?.info?.('Alert insert attempt', { alertId, ruleId, issueId });
+    try {
+      await this.persistence.exec(
+        `
+        INSERT OR IGNORE INTO ALERTS (
+          id, rule_id, issue_id, project_group_id, is_read,
+          created, updated, last_notified_at, retry_count,
+          next_retry_sync, next_retry_at, payload_json
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM ALERTS WHERE rule_id = ? AND issue_id = ?
+        )
+        `,
+        [...insertParameters, ruleId, issueId],
+      );
+    } catch (error) {
+      await this.logs?.error?.('Alert insert failed', { alertId, ruleId, issueId, error: error.message });
+      throw error;
+    }
+    await this.logs?.info?.('Alert insert completed', { alertId, ruleId, issueId });
+
+    const persisted = await this.alertExists(ruleId, issueId);
+    if (!persisted || persisted.id !== alertId) {
+      return { created: false, id: persisted?.id ?? null };
+    }
 
     await this.logs?.info?.('Alert created and toast pending', {
       alertId,
@@ -308,12 +331,20 @@ export class AlertsService {
 
     const createdAlerts = [];
     const notifiedIds = new Set();
+    const processedAlertKeys = new Set();
 
     for (const rule of rules) {
       try {
         const rows = await this.getRuleRows(rule.sql);
 
         for (const row of rows) {
+          const issueId = String(row.issue_id ?? row.id ?? row.issueId ?? '').trim();
+          const alertKey = `${rule.id}:${issueId}`;
+          if (processedAlertKeys.has(alertKey)) {
+            continue;
+          }
+          processedAlertKeys.add(alertKey);
+
           const result = await this.upsertAlert({
             rule,
             row,
@@ -335,6 +366,10 @@ export class AlertsService {
           }
         }
       } catch (error) {
+        if (isPersistenceFailure(error)) {
+          throw error;
+        }
+
         await this.logs?.error?.('Alert rule skipped because its condition could not be evaluated', {
           ruleId: rule.id,
           ruleName: rule.name,
@@ -347,6 +382,10 @@ export class AlertsService {
     try {
       repeatedAlerts = await this.repeatUnreadAlerts(rules, notifiedIds);
     } catch (error) {
+      if (isPersistenceFailure(error)) {
+        throw error;
+      }
+
       await this.logs?.error?.('Alert retries skipped because they could not be evaluated', {
         error: error.message,
       });

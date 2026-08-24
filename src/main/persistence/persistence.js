@@ -106,6 +106,7 @@ export class Persistence {
       // The column already exists in databases initialized after the schema update.
     }
     try {
+      await this.exec('DROP INDEX IF EXISTS idx_alerts_rule_issue');
       await this.exec(`
         DELETE FROM ALERTS
         WHERE id IN (
@@ -121,9 +122,7 @@ export class Persistence {
           WHERE duplicate_number > 1
         )
       `);
-      await this.exec(
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_rule_issue ON ALERTS(rule_id, issue_id)',
-      );
+      await this.exec('CREATE UNIQUE INDEX idx_alerts_rule_issue ON ALERTS(rule_id, issue_id)');
     } catch {
       // Keep startup compatible with databases that do not support this migration.
     }

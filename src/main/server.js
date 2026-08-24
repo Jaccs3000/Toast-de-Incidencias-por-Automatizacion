@@ -377,6 +377,10 @@ async function handleBootstrapContext(res) {
     alertRetryEnabled: Boolean(state.runtime.configuration?.app?.alertRetryEnabled),
     alertFields: state.runtime.configuration?.alertFields?.fields ?? [],
     alertOperators: state.runtime.configuration?.alertFields?.operators ?? [],
+    projectGroupRules: state.runtime.configuration?.projectGroupRules ?? {
+      defaultValue: 'No definido',
+      rules: [],
+    },
     jiraCatalog: state.runtime.jiraCatalog ?? {
       projects: [],
       issueTypes: [],
@@ -393,6 +397,8 @@ async function handleSettings(req, res) {
     return;
   }
   const body = await readBody(req);
+  const hasSyncSettings = typeof body?.autoSyncEnabled === 'boolean' || body?.syncIntervalMinutes !== undefined;
+  const hasAlertRetrySetting = typeof body?.alertRetryEnabled === 'boolean';
   const alertRetryWasEnabled = Boolean(state.runtime.configuration?.app?.alertRetryEnabled);
   const requestedJqlQueries = Array.isArray(body?.jqlQueries)
     ? [...new Set(body.jqlQueries
@@ -428,19 +434,23 @@ async function handleSettings(req, res) {
 
   const appConfig = await saveAppConfig(updates);
   state.runtime.configuration.app = appConfig;
-  if (appConfig.autoSyncEnabled) {
-    await startAutoSyncTimer({ scheduleNext: true });
-  } else {
-    stopAutoSyncTimer();
-    await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
-  }
-  if (appConfig.alertRetryEnabled) {
-    if (!alertRetryWasEnabled) {
-      await state.runtime.alerts.scheduleUnreadRetriesFromNow();
+  if (hasSyncSettings) {
+    if (appConfig.autoSyncEnabled) {
+      await startAutoSyncTimer({ scheduleNext: true });
+    } else {
+      stopAutoSyncTimer();
+      await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
     }
-    startAlertRetryTimer();
-  } else {
-    stopAlertRetryTimer();
+  }
+  if (hasAlertRetrySetting) {
+    if (appConfig.alertRetryEnabled) {
+      if (!alertRetryWasEnabled) {
+        await state.runtime.alerts.scheduleUnreadRetriesFromNow();
+      }
+      startAlertRetryTimer();
+    } else {
+      stopAlertRetryTimer();
+    }
   }
   log('settings updated', `jqlCount=${appConfig.jqlQueries.length} autoSync=${appConfig.autoSyncEnabled}`);
   json(res, 200, {

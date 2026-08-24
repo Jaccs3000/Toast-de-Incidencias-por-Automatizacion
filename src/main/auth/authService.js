@@ -21,6 +21,22 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForVisibleLocator(locators, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    for (const locator of locators) {
+      if (await locator.isVisible().catch(() => false)) {
+        return locator;
+      }
+    }
+
+    await sleep(250);
+  }
+
+  return null;
+}
+
 function cookiesToHeader(cookies) {
   return cookies
     .map((cookie) => `${cookie.name}=${cookie.value}`)
@@ -33,6 +49,10 @@ function getSessionRoot() {
 
 function getStorageStatePath() {
   return path.join(getSessionRoot(), 'jira-storage-state.json');
+}
+
+function getPlaywrightProfilePath() {
+  return path.join(getSessionRoot(), 'playwright-profile');
 }
 
 async function ensureSessionDirectory() {
@@ -215,7 +235,6 @@ export class AuthService {
       }
     };
 
-    let browser = null;
     let context = null;
     let page = null;
 
@@ -223,23 +242,45 @@ export class AuthService {
       const storageState = await readStorageState();
       await this.trace('info', 'Headless login attempt started', {
         storageStatePresent: Boolean(storageState),
+        profilePath: getPlaywrightProfilePath(),
       });
       throwIfCanceled();
-      browser = await chromium.launch({ headless: true });
+      context = await chromium.launchPersistentContext(getPlaywrightProfilePath(), {
+        headless: true,
+        ...(storageState ? { storageState } : {}),
+      });
       await this.trace('info', 'Headless browser launched');
-      context = await browser.newContext(storageState ? { storageState } : {});
-      page = await context.newPage();
+      page = context.pages()[0] ?? await context.newPage();
       await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
       throwIfCanceled();
 
       const continueButton = page.getByRole('button', { name: /^continuar$/i }).first();
-      if (await continueButton.count() === 0) {
+      const continueText = page.getByText(/^continuar$/i).first();
+      const continueLocator = await waitForVisibleLocator(
+        [continueButton, continueText],
+        Math.min(timeoutMs, 10000),
+      );
+      const continueButtonVisible = continueLocator === continueButton;
+      const continueTextVisible = continueLocator === continueText;
+      const passwordFieldVisible = await page.locator('input[type="password"]').first().isVisible().catch(() => false);
+      const emailFieldVisible = await page.locator('input[type="email"], input[name="username"]').first().isVisible().catch(() => false);
+
+      await this.trace('info', 'Headless login screen inspected', {
+        url: page.url(),
+        continueButtonVisible,
+        continueTextVisible,
+        emailFieldVisible,
+        passwordFieldVisible,
+      });
+
+      if (!continueButtonVisible && !continueTextVisible) {
         await this.trace('info', 'Headless continuation button not found; using visible login');
         return null;
       }
 
       await this.trace('info', 'Headless continuation button found; clicking');
-      await continueButton.click({ timeout: 5000 });
+      await continueLocator.click({ timeout: 5000 });
       const startedAt = Date.now();
 
       while (Date.now() - startedAt < timeoutMs) {
@@ -274,11 +315,6 @@ export class AuthService {
       }
       try {
         if (context) await context.close();
-      } catch {
-        // ignore cleanup errors
-      }
-      try {
-        if (browser) await browser.close();
       } catch {
         // ignore cleanup errors
       }
@@ -318,17 +354,17 @@ export class AuthService {
     }
 
     log('opening Playwright browser', `url=${baseUrl}`);
+    const storageState = await readStorageState();
     try {
-      this.browser = await chromium.launch({
+      this.context = await chromium.launchPersistentContext(getPlaywrightProfilePath(), {
         headless: false,
+        ...(storageState ? { storageState } : {}),
       });
     } catch (error) {
       log('Playwright browser launch failed', error.stack ?? error.message);
       throw error;
     }
-    const storageState = await readStorageState();
-    this.context = await this.browser.newContext(storageState ? { storageState } : {});
-    this.page = await this.context.newPage();
+    this.page = this.context.pages()[0] ?? await this.context.newPage();
     await this.page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     await this.page.bringToFront();
     log('Playwright browser ready');
@@ -422,12 +458,6 @@ export class AuthService {
 
   async loginAndValidate() {
     await this.trace('info', 'Login flow started');
-    const headlessSession = await this.tryHeadlessContinue();
-    if (headlessSession?.ok) {
-      await this.trace('info', 'Login completed through headless continuation');
-      return headlessSession;
-    }
-
     await this.trace('info', 'Opening visible login fallback');
     await this.openLoginWindow();
     const session = await this.waitForValidSession();

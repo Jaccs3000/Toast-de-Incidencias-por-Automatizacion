@@ -67,7 +67,14 @@ Campos iniciales que se extraen de cada incidencia:
 
 ### 4.1 Inicio de sesion
 
-Si no existe una sesion valida de Jira:
+Si no existe una sesion valida de Jira al iniciar una sincronizacion automatica o manual:
+
+- la app intenta continuar automaticamente en Playwright headless;
+- espera que Jira termine de cargar y busca el boton `Continuar`;
+- si lo encuentra, lo pulsa, valida la sesion y guarda el archivo de cookies;
+- si no encuentra el boton o Jira solicita usuario y contrasena, no intenta escribir credenciales y la sincronizacion termina con error controlado.
+
+Cuando el usuario solicita iniciar sesion desde la interfaz:
 
 - la app muestra una notificacion nativa de Windows con el mensaje `Se requiere inicio de sesion en Jira`;
 - si Windows no permite la notificacion, la app muestra un Toast interno con el mismo mensaje;
@@ -80,7 +87,9 @@ Si no existe una sesion valida de Jira:
 
 La sesion queda disponible para siguientes sincronizaciones mientras siga siendo valida.
 Si expira, la app vuelve a mostrar la notificacion de inicio de sesion requerido en cada intervalo de sincronizacion configurado mientras la sesion siga invalida y tambien muestra el boton de inicio de sesion.
-La sincronizacion automatica o manual no abre el navegador de Playwright. Este solo se abre cuando el usuario hace clic en la notificacion, en el Toast interno o en el boton de inicio de sesion.
+Las sincronizaciones automaticas y manuales ejecutan el intento headless. Si no puede completar el login, conserva el aviso y habilita el boton de inicio de sesion.
+El boton de inicio de sesion no ejecuta headless ni espera: abre inmediatamente la ventana visible de Playwright.
+El perfil persistente propio de Playwright se guarda en `data/session/playwright-profile` y no usa ni modifica el perfil de Google Chrome instalado.
 
 ### 5. Que es un ProjectGroup
 
