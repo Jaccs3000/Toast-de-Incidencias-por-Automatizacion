@@ -1,3 +1,7 @@
+import { gridConditionMatches } from '../../shared/grids/gridCondition.js';
+
+const JQL_SOURCE_ISSUE_OPTION = '__jql_source_issue__';
+
 function formatToastValue(field, value) {
   if (!['created', 'updated', 'resolutiondate'].includes(field) || !value) {
     return value;
@@ -25,6 +29,12 @@ function isPersistenceFailure(error) {
   return /duplicate key|constraint error|transactioncontext|transaction is aborted|transaction aborted/.test(message);
 }
 
+function composeToastMessage(baseMessage, displayValue) {
+  const base = String(baseMessage ?? '').trim();
+  const value = String(displayValue ?? '').trim();
+  return value ? `${base}\n• ${value}` : base;
+}
+
 export class AlertsService {
   constructor({ persistence, toast, logs } = {}) {
     this.persistence = persistence;
@@ -37,15 +47,15 @@ export class AlertsService {
     return Array.isArray(rows) ? rows : [];
   }
 
-  async alertExists(ruleId, issueId) {
+  async alertExists(ruleId, issueId, identityKey = null) {
     const rows = await this.persistence.query(
       `
-      SELECT id, is_read, project_group_id
+      SELECT id, is_read, project_group_id, identity_key
       FROM ALERTS
-      WHERE rule_id = ? AND issue_id = ?
+      WHERE ${identityKey ? 'identity_key = ?' : 'rule_id = ? AND issue_id = ?'}
       LIMIT 1
       `,
-      [ruleId, issueId],
+      identityKey ? [identityKey] : [ruleId, issueId],
     );
 
     return rows[0] ?? null;
@@ -108,7 +118,7 @@ export class AlertsService {
     });
   }
 
-  async upsertAlert({ rule, row, projectGroupId, notify = false }) {
+  async upsertAlert({ rule, row, projectGroupId, identityKey = null, toastMessage = null, notify = false }) {
     const ruleId = String(rule.id);
     const issueId = String(row.issue_id ?? row.id ?? row.issueId ?? '');
 
@@ -116,10 +126,11 @@ export class AlertsService {
       return { created: false };
     }
 
-    const existing = await this.alertExists(ruleId, issueId);
+    const stableIdentity = identityKey ?? `${ruleId}:${projectGroupId ?? ''}:${issueId}`;
+    const existing = await this.alertExists(ruleId, issueId, stableIdentity);
     const now = new Date().toISOString();
-    const toastMessage = await this.resolveToastText(rule.toast_text ?? '', row, projectGroupId);
-    const payloadJson = JSON.stringify({ ...row, toast_message: toastMessage });
+    const resolvedToastMessage = toastMessage ?? await this.resolveToastText(rule.toast_text ?? '', row, projectGroupId);
+    const payloadJson = JSON.stringify({ ...row, toast_message: resolvedToastMessage });
 
     if (existing) {
       await this.persistence.exec(
@@ -141,6 +152,7 @@ export class AlertsService {
 
     const insertParameters = [
       alertId,
+      stableIdentity,
       ruleId,
       issueId,
       projectGroupId ?? null,
@@ -159,16 +171,16 @@ export class AlertsService {
       await this.persistence.exec(
         `
         INSERT OR IGNORE INTO ALERTS (
-          id, rule_id, issue_id, project_group_id, is_read,
+          id, identity_key, rule_id, issue_id, project_group_id, is_read,
           created, updated, last_notified_at, retry_count,
           next_retry_sync, next_retry_at, payload_json
         )
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         WHERE NOT EXISTS (
-          SELECT 1 FROM ALERTS WHERE rule_id = ? AND issue_id = ?
+          SELECT 1 FROM ALERTS WHERE identity_key = ?
         )
         `,
-        [...insertParameters, ruleId, issueId],
+        [...insertParameters, stableIdentity],
       );
     } catch (error) {
       await this.logs?.error?.('Alert insert failed', { alertId, ruleId, issueId, error: error.message });
@@ -176,7 +188,7 @@ export class AlertsService {
     }
     await this.logs?.info?.('Alert insert completed', { alertId, ruleId, issueId });
 
-    const persisted = await this.alertExists(ruleId, issueId);
+    const persisted = await this.alertExists(ruleId, issueId, stableIdentity);
     if (!persisted || persisted.id !== alertId) {
       return { created: false, id: persisted?.id ?? null };
     }
@@ -198,7 +210,336 @@ export class AlertsService {
       });
     }
 
-      return { created: true, id: alertId, rule, row, toastMessage };
+      return { created: true, id: alertId, rule, row, toastMessage: resolvedToastMessage };
+  }
+
+  parseConditionConfig(rule) {
+    try {
+      const parsed = typeof rule?.condition_config === 'string'
+        ? JSON.parse(rule.condition_config)
+        : rule?.condition_config;
+      return parsed && typeof parsed === 'object' ? parsed : { conditions: [] };
+    } catch {
+      return { conditions: [] };
+    }
+  }
+
+  sourceIdentity(source) {
+    return [
+      source?.jql_id ?? source?.jqlId,
+      source?.project_group_id ?? source?.projectGroupId,
+      source?.seed_issue_id ?? source?.seedIssueId,
+    ].map((value) => String(value ?? '')).join('|');
+  }
+
+  sourceScope(source) {
+    return [
+      source?.jql_id ?? source?.jqlId,
+      source?.seed_issue_id ?? source?.seedIssueId,
+    ].map((value) => String(value ?? '')).join('|');
+  }
+
+  buildSourceLineage(previousSources = [], incomingSources = []) {
+    const previousByIdentity = new Map(
+      previousSources.map((source) => [this.sourceIdentity(source), source]),
+    );
+    const previousByScope = new Map();
+    const incomingByScope = new Map();
+
+    for (const source of previousSources) {
+      const scope = this.sourceScope(source);
+      const sources = previousByScope.get(scope) ?? [];
+      sources.push(source);
+      previousByScope.set(scope, sources);
+    }
+    for (const source of incomingSources) {
+      const scope = this.sourceScope(source);
+      const sources = incomingByScope.get(scope) ?? [];
+      sources.push(source);
+      incomingByScope.set(scope, sources);
+    }
+
+    const lineage = new Map();
+    for (const source of incomingSources) {
+      const identity = this.sourceIdentity(source);
+      const exact = previousByIdentity.get(identity);
+      if (exact) {
+        lineage.set(identity, exact);
+        continue;
+      }
+
+      const scope = this.sourceScope(source);
+      const previousMatches = previousByScope.get(scope) ?? [];
+      const incomingMatches = incomingByScope.get(scope) ?? [];
+      // A one-to-one group reassignment is structural continuity, not a new
+      // JQL result. Ambiguous multi-branch cases remain independent.
+      if (previousMatches.length === 1 && incomingMatches.length === 1) {
+        lineage.set(identity, previousMatches[0]);
+      }
+    }
+
+    return lineage;
+  }
+
+  async getAlertByIdentity(identityKey) {
+    if (!identityKey) return null;
+    const rows = await this.persistence.query(
+      `
+      SELECT id, is_read, project_group_id, identity_key, created,
+             last_notified_at, next_retry_at, retry_count, next_retry_sync
+      FROM ALERTS
+      WHERE identity_key = ?
+      LIMIT 1
+      `,
+      [identityKey],
+    );
+    return rows[0] ?? null;
+  }
+
+  async migrateReassignedAlert({ rule, jqlId, previousSource, source, payloadJson }) {
+    const previousGroupId = String(previousSource?.project_group_id ?? previousSource?.projectGroupId ?? '');
+    const groupId = String(source?.project_group_id ?? source?.projectGroupId ?? '');
+    const seedIssueId = String(source?.seed_issue_id ?? source?.seedIssueId ?? '');
+    if (!previousGroupId || !groupId || previousGroupId === groupId || !seedIssueId) {
+      return null;
+    }
+
+    const previousIdentity = `${rule.id}:${jqlId}:${previousGroupId}:${seedIssueId}`;
+    const currentIdentity = `${rule.id}:${jqlId}:${groupId}:${seedIssueId}`;
+    const previousAlert = await this.getAlertByIdentity(previousIdentity);
+    if (!previousAlert) return null;
+
+    const currentAlert = await this.getAlertByIdentity(currentIdentity);
+    const now = new Date().toISOString();
+    if (!currentAlert) {
+      await this.persistence.exec(
+        `
+        UPDATE ALERTS
+        SET identity_key = ?, project_group_id = ?, payload_json = ?, updated = ?
+        WHERE id = ?
+        `,
+        [currentIdentity, groupId, payloadJson, now, previousAlert.id],
+      );
+      return previousAlert.id;
+    }
+
+    if (currentAlert.id === previousAlert.id) {
+      return currentAlert.id;
+    }
+
+    // Keep one occurrence when both identities already exist. An unread
+    // occurrence wins so a notification cannot be lost during reassignment.
+    const isRead = Number(previousAlert.is_read ?? 0) === 0
+      || Number(currentAlert.is_read ?? 0) === 0
+      ? 0
+      : 1;
+    await this.persistence.exec(
+      `
+      UPDATE ALERTS
+      SET is_read = ?, project_group_id = ?, payload_json = ?, updated = ?
+      WHERE id = ?
+      `,
+      [isRead, groupId, payloadJson, now, currentAlert.id],
+    );
+    await this.persistence.exec('DELETE FROM ALERTS WHERE id = ?', [previousAlert.id]);
+    return currentAlert.id;
+  }
+
+  groupRows(rows = []) {
+    const groups = new Map();
+    for (const row of rows) {
+      const groupId = String(row?.project_group_id ?? '');
+      if (!groupId) continue;
+      const current = groups.get(groupId) ?? [];
+      current.push(row);
+      groups.set(groupId, current);
+    }
+    return groups;
+  }
+
+  projectGroupStates(groups = []) {
+    return new Map(groups.map((group) => [
+      String(group?.id ?? ''),
+      group?.estado_general ?? 'No definido',
+    ]));
+  }
+
+  conditionMatchesGroup(condition, issues, estadoGeneral) {
+    const field = String(condition?.field ?? '').trim();
+    const issueType = String(condition?.issueType ?? condition?.issue_type ?? '').trim();
+    const operator = String(condition?.operator ?? '=').trim();
+    const expected = condition?.value ?? '';
+    if (['estado_general', 'estadoGeneral'].includes(field)) {
+      return gridConditionMatches(estadoGeneral, operator, expected, field);
+    }
+
+    const candidates = issueType && !['Otros', 'ProjectGroup'].includes(issueType)
+      ? issues.filter((issue) => String(issue?.issuetype ?? '') === issueType)
+      : issues;
+    return candidates.some((issue) => gridConditionMatches(issue?.[field], operator, expected, field));
+  }
+
+  conditionsMatchGroup(conditions, issues, estadoGeneral) {
+    if (!Array.isArray(conditions) || conditions.length === 0) return true;
+    let result = this.conditionMatchesGroup(conditions[0], issues, estadoGeneral);
+    for (let index = 1; index < conditions.length; index += 1) {
+      const condition = conditions[index];
+      const matches = this.conditionMatchesGroup(condition, issues, estadoGeneral);
+      result = String(condition?.connector ?? 'AND').toUpperCase() === 'OR'
+        ? result || matches
+        : result && matches;
+    }
+    return result;
+  }
+
+  displayValue(rule, issues, estadoGeneral, seedIssue = null) {
+    const field = String(rule?.display_field ?? '').trim();
+    if (!field) return '';
+    if (['estado_general', 'estadoGeneral'].includes(field)) return estadoGeneral ?? '';
+    const issueType = String(rule?.display_issue_type ?? '').trim();
+    if (issueType === JQL_SOURCE_ISSUE_OPTION) {
+      const value = seedIssue?.[field];
+      return value !== null && value !== undefined && String(value).trim() !== ''
+        ? String(formatToastValue(field, value))
+        : '';
+    }
+    const values = issues
+      .filter((issue) => !issueType || String(issue?.issuetype ?? '') === issueType)
+      .map((issue) => issue?.[field])
+      .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
+      .map((value) => String(formatToastValue(field, value)));
+    return [...new Set(values)].join(' | ');
+  }
+
+  async evaluateJqlAlerts({
+    previousSnapshot = [],
+    incomingSnapshot = [],
+    previousSources = [],
+    incomingSources = [],
+    previousProjectGroups = [],
+    incomingProjectGroups = [],
+  } = {}) {
+    const rules = await this.persistence.query(`
+      SELECT id, jql_id, alert_type, name, toast_text, toast_image, condition_config,
+             display_issue_type, display_field, retry_minutes, is_active
+      FROM ALERT_RULES
+      WHERE is_active = 1 AND jql_id IS NOT NULL
+      ORDER BY jql_id, created, name
+    `);
+    const beforeGroups = this.groupRows(previousSnapshot);
+    const afterGroups = this.groupRows(incomingSnapshot);
+    const beforeStates = new Map(previousProjectGroups.map((group) => [
+      String(group.id), group.estado_general ?? 'No definido',
+    ]));
+    const afterStates = this.projectGroupStates(incomingProjectGroups);
+    const previousSourceKeys = new Set(previousSources.map((source) => this.sourceIdentity(source)));
+    const sourceLineage = this.buildSourceLineage(previousSources, incomingSources);
+    const rulesByJql = new Map();
+    for (const rule of rules) {
+      const current = rulesByJql.get(String(rule.jql_id)) ?? [];
+      current.push(rule);
+      rulesByJql.set(String(rule.jql_id), current);
+    }
+
+    const createdAlerts = [];
+    for (const source of incomingSources) {
+      const jqlId = String(source.jqlId ?? source.jql_id ?? '');
+      const groupId = String(source.projectGroupId ?? source.project_group_id ?? '');
+      const seedIssueId = String(source.seedIssueId ?? source.seed_issue_id ?? '');
+      const sourceKey = this.sourceIdentity(source);
+      const afterIssues = afterGroups.get(groupId) ?? [];
+      const beforeIssues = beforeGroups.get(groupId) ?? [];
+      const seedIssue = afterIssues.find((issue) => String(issue.id) === seedIssueId);
+      if (!seedIssue) continue;
+      const previousSource = sourceLineage.get(sourceKey) ?? null;
+      const sourceWasKnown = Boolean(previousSource);
+      const sourceWasReassigned = sourceWasKnown
+        && String(previousSource.project_group_id ?? previousSource.projectGroupId ?? '') !== groupId;
+
+      for (const rule of rulesByJql.get(jqlId) ?? []) {
+        const config = this.parseConditionConfig(rule);
+        let shouldCreate = false;
+        if (sourceWasReassigned) {
+          // A JQL source can move to another graph branch when the graph is
+          // rebuilt. Keep the existing alert occurrence attached to the new
+          // group instead of creating a duplicate or a false transition.
+          const displayValue = this.displayValue(rule, afterIssues, afterStates.get(groupId), seedIssue);
+          const baseMessage = String(rule.toast_text ?? rule.name ?? 'Alerta Jira').trim();
+          const toastMessage = composeToastMessage(baseMessage, displayValue);
+          const row = {
+            ...seedIssue,
+            issue_id: seedIssueId,
+            issue_key: seedIssue.key,
+            project_group_id: groupId,
+            jql_id: jqlId,
+            toast_message: toastMessage,
+          };
+          await this.migrateReassignedAlert({
+            rule,
+            jqlId,
+            previousSource,
+            source,
+            payloadJson: JSON.stringify({ ...row, toast_message: toastMessage }),
+          });
+          continue;
+        }
+
+        if (rule.alert_type === 'new_issue') {
+          // "New" is scoped to the owning JQL. A seed may already exist in the
+          // local mirror because another JQL discovered it previously.
+          shouldCreate = !sourceWasKnown && !previousSourceKeys.has(sourceKey);
+        } else if (rule.alert_type === 'attribute_changed' && sourceWasKnown && !sourceWasReassigned) {
+          const matchedBefore = this.conditionsMatchGroup(
+            config.conditions,
+            beforeIssues,
+            beforeStates.get(groupId) ?? 'No definido',
+          );
+          const matchedAfter = this.conditionsMatchGroup(
+            config.conditions,
+            afterIssues,
+            afterStates.get(groupId) ?? 'No definido',
+          );
+          shouldCreate = !matchedBefore && matchedAfter;
+        }
+        if (!shouldCreate) continue;
+
+        const displayValue = this.displayValue(rule, afterIssues, afterStates.get(groupId), seedIssue);
+        const baseMessage = String(rule.toast_text ?? rule.name ?? 'Alerta Jira').trim();
+        const toastMessage = composeToastMessage(baseMessage, displayValue);
+        const row = {
+          ...seedIssue,
+          issue_id: seedIssueId,
+          issue_key: seedIssue.key,
+          project_group_id: groupId,
+          jql_id: jqlId,
+          toast_message: toastMessage,
+        };
+        const result = await this.upsertAlert({
+          rule,
+          row,
+          projectGroupId: groupId,
+          identityKey: `${rule.id}:${jqlId}:${groupId}:${seedIssueId}`,
+          toastMessage,
+        });
+        if (result.created) {
+          createdAlerts.push({
+            alertId: result.id,
+            issueId: seedIssueId,
+            projectGroupId: groupId,
+            rule,
+            row,
+            toastMessage,
+          });
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      createdAlertsCount: createdAlerts.length,
+      repeatedAlertsCount: 0,
+      createdAlerts,
+    };
   }
 
   async repeatUnreadAlerts(rules, notifiedIds = new Set()) {

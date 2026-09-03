@@ -11,9 +11,16 @@ import {
   SUBTASK_COUNT_ISSUE_TYPES,
   getSubtaskCountEntries,
 } from '../shared/grids/subtaskCounts.js';
+import {
+  REPORTED_TIMES_FIELD,
+  collapseReportedTimeColumns,
+  getReportedTimesEntries,
+  getReportedTimesSortValue,
+} from '../shared/grids/reportedTimes.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
+const JQL_SOURCE_ISSUE_OPTION = '__jql_source_issue__';
 const MAX_ALERT_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALERT_IMAGE_TYPES = {
   png: { mime: 'image/png' },
@@ -63,6 +70,10 @@ function getGridSortValue(row, column) {
     ? row.estadoGeneral
     : row[`${column.issueType}::${column.field}`];
 
+  if (column.field === REPORTED_TIMES_FIELD) {
+    return getReportedTimesSortValue(rawValue);
+  }
+
   if (Array.isArray(rawValue)) {
     return rawValue.reduce((total, item) => total + (Number(item?.count) || 0), 0);
   }
@@ -103,8 +114,12 @@ function parseGridDefinition(row) {
     name: row.name,
     pageSize: Number(row.page_size) || 10,
     visible: Number(row.is_visible ?? 1) !== 0,
-    columns: JSON.parse(row.columns_json ?? '[]'),
-    conditions: JSON.parse(row.conditions_json ?? '[]'),
+    columns: collapseReportedTimeColumns(JSON.parse(row.columns_json ?? '[]')),
+    conditions: JSON.parse(row.conditions_json ?? '[]').map((condition) => (
+      condition?.field === 'estadoGeneral' && !condition.issueType
+        ? { ...condition, issueType: 'Otros' }
+        : condition
+    )),
     created: row.created,
     updated: row.updated,
   };
@@ -212,19 +227,11 @@ function toPublicSession(session) {
 async function createAppState() {
   const runtime = await bootstrapApp();
   const storedSession = await runtime.auth.loadStoredSession();
-  let syncStatus = await runtime.persistence.syncStatus.getCurrent();
+  const recovery = await runtime.persistence.syncStatus.recoverInterruptedState();
+  const syncStatus = recovery.status;
 
-  if (syncStatus?.is_running) {
-    const recoveredAt = new Date().toISOString();
-    await runtime.persistence.syncStatus.updateStatus({
-      last_status: 'Sincronizacion anterior interrumpida.',
-      last_finished_at: recoveredAt,
-      last_error_message: 'El proceso anterior no finalizo correctamente.',
-      is_running: false,
-      is_canceling: false,
-    });
-    syncStatus = await runtime.persistence.syncStatus.getCurrent();
-    log('recovered interrupted synchronization state');
+  if (recovery.recovered) {
+    log('recovered stale synchronization state');
   }
 
   return {
@@ -239,6 +246,7 @@ async function createAppState() {
 const state = await createAppState();
 let syncInProgress = false;
 let syncAbortController = null;
+let syncCancellationRequested = false;
 let syncTimer = null;
 let alertRetryTimer = null;
 let alertRetryInProgress = false;
@@ -283,19 +291,20 @@ function isWindowsSessionUnlocked() {
   return windowsSessionState.state === 'unlocked';
 }
 
+function canRunAutomaticWindowsWork() {
+  return isWindowsSessionUnlocked()
+    && state.runtime.windowsSession?.isMonitoringAvailable?.() === true;
+}
+
 function startAlertRetryTimer() {
   if (alertRetryTimer) {
     clearInterval(alertRetryTimer);
     alertRetryTimer = null;
   }
 
-  if (!state.runtime.configuration?.app?.alertRetryEnabled) {
-    return;
-  }
-
   alertRetryTimer = setInterval(() => {
     refreshWindowsSessionState().then(() => {
-      if (!isWindowsSessionUnlocked() || syncInProgress || alertRetryInProgress) return;
+      if (!canRunAutomaticWindowsWork() || syncInProgress || alertRetryInProgress) return;
 
       alertRetryInProgress = true;
       return state.runtime.alerts.repeatDueUnreadAlerts()
@@ -333,15 +342,15 @@ async function startAutoSyncTimer({ scheduleNext = false } = {}) {
   syncTimer = setInterval(() => {
     refreshWindowsSessionState().then(async () => {
       const nextSyncAt = new Date(Date.now() + intervalSeconds * 1000).toISOString();
-      if (!isWindowsSessionUnlocked()) {
+      if (!canRunAutomaticWindowsWork()) {
         await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: nextSyncAt });
-        log('automatic synchronization skipped; Windows session is not unlocked', `state=${windowsSessionState.state}`);
+        log('automatic synchronization skipped; Windows session is not available', `state=${windowsSessionState.state} monitoring=${state.runtime.windowsSession?.isMonitoringAvailable?.()}`);
         return;
       }
       await refreshWindowsSessionState();
-      if (!isWindowsSessionUnlocked()) {
+      if (!canRunAutomaticWindowsWork()) {
         await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: nextSyncAt });
-        log('automatic synchronization canceled before start; Windows session changed', `state=${windowsSessionState.state}`);
+        log('automatic synchronization canceled before start; Windows session changed', `state=${windowsSessionState.state} monitoring=${state.runtime.windowsSession?.isMonitoringAvailable?.()}`);
         return;
       }
       await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
@@ -365,6 +374,7 @@ async function handleBootstrapContext(res) {
   if (state.runtime.jiraCatalogService) {
     state.runtime.jiraCatalog = await state.runtime.jiraCatalogService.load();
   }
+  const jqlDefinitions = await state.runtime.persistence.jqlDefinitions.list();
   json(res, 200, {
     appState: state.appState,
     session: toPublicSession(state.session),
@@ -372,9 +382,9 @@ async function handleBootstrapContext(res) {
     jiraBaseUrl: state.runtime.configuration?.app?.jiraBaseUrl ?? '',
     syncIntervalSeconds: Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 300),
     syncIntervalMinutes: Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 300) / 60,
-    jqlQueries: state.runtime.configuration?.app?.jqlQueries ?? [],
+    jqlQueries: jqlDefinitions.map((definition) => definition.query_text),
+    jqlDefinitions,
     autoSyncEnabled: Boolean(state.runtime.configuration?.app?.autoSyncEnabled),
-    alertRetryEnabled: Boolean(state.runtime.configuration?.app?.alertRetryEnabled),
     alertFields: state.runtime.configuration?.alertFields?.fields ?? [],
     alertOperators: state.runtime.configuration?.alertFields?.operators ?? [],
     projectGroupRules: state.runtime.configuration?.projectGroupRules ?? {
@@ -391,6 +401,60 @@ async function handleBootstrapContext(res) {
   });
 }
 
+async function handleJqlDefinitionsSave(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se pueden modificar los JQL durante una sincronización.' });
+    return;
+  }
+  const body = await readBody(req);
+  const definitions = Array.isArray(body?.definitions) ? body.definitions : [];
+  const normalized = definitions.map((definition) => ({
+    id: String(definition?.id ?? '').trim() || null,
+    queryText: String(definition?.query_text ?? definition?.queryText ?? '').trim(),
+  })).filter((definition) => definition.queryText);
+  if (normalized.length === 0) {
+    json(res, 400, { ok: false, error: 'Debe existir al menos un JQL.' });
+    return;
+  }
+  if (new Set(normalized.map((definition) => definition.queryText)).size !== normalized.length) {
+    json(res, 400, { ok: false, error: 'No se permiten consultas JQL duplicadas.' });
+    return;
+  }
+
+  const submittedIds = normalized.map((definition) => definition.id).filter(Boolean);
+  if (new Set(submittedIds).size !== submittedIds.length) {
+    json(res, 400, { ok: false, error: 'La lista contiene identificadores JQL duplicados.' });
+    return;
+  }
+
+  const currentDefinitions = await state.runtime.persistence.jqlDefinitions.list();
+  const retainedIds = new Set(submittedIds);
+  const removedIds = currentDefinitions
+    .filter((definition) => !retainedIds.has(definition.id))
+    .map((definition) => definition.id);
+  const removedImages = removedIds.length > 0
+    ? await state.runtime.persistence.query(
+      `SELECT toast_image FROM ALERT_RULES WHERE jql_id IN (${removedIds.map(() => '?').join(', ')})`,
+      removedIds,
+    )
+    : [];
+  const saved = await state.runtime.persistence.jqlDefinitions.replace(normalized);
+  for (const image of removedImages) {
+    await removeAlertImage(image.toast_image);
+  }
+  try {
+    const appConfig = await saveAppConfig({
+      jqlQueries: saved.map((definition) => definition.query_text),
+    });
+    state.runtime.configuration.app = appConfig;
+  } catch (error) {
+    log('JQL compatibility mirror update failed', error.message);
+  }
+  state.runtime.jqlDefinitions = saved;
+  log('JQL definitions updated', `count=${saved.length}`);
+  json(res, 200, { ok: true, definitions: saved });
+}
+
 async function handleSettings(req, res) {
   if (syncInProgress) {
     json(res, 409, { ok: false, error: 'No se puede cambiar la configuracion durante una sincronizacion.' });
@@ -398,8 +462,6 @@ async function handleSettings(req, res) {
   }
   const body = await readBody(req);
   const hasSyncSettings = typeof body?.autoSyncEnabled === 'boolean' || body?.syncIntervalMinutes !== undefined;
-  const hasAlertRetrySetting = typeof body?.alertRetryEnabled === 'boolean';
-  const alertRetryWasEnabled = Boolean(state.runtime.configuration?.app?.alertRetryEnabled);
   const requestedJqlQueries = Array.isArray(body?.jqlQueries)
     ? [...new Set(body.jqlQueries
       .filter((query) => typeof query === 'string')
@@ -418,9 +480,6 @@ async function handleSettings(req, res) {
   }
   if (typeof body?.autoSyncEnabled === 'boolean') {
     updates.autoSyncEnabled = body.autoSyncEnabled;
-  }
-  if (typeof body?.alertRetryEnabled === 'boolean') {
-    updates.alertRetryEnabled = body.alertRetryEnabled;
   }
   if (body?.syncIntervalMinutes !== undefined) {
     const minutes = Number(body.syncIntervalMinutes);
@@ -442,22 +501,11 @@ async function handleSettings(req, res) {
       await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
     }
   }
-  if (hasAlertRetrySetting) {
-    if (appConfig.alertRetryEnabled) {
-      if (!alertRetryWasEnabled) {
-        await state.runtime.alerts.scheduleUnreadRetriesFromNow();
-      }
-      startAlertRetryTimer();
-    } else {
-      stopAlertRetryTimer();
-    }
-  }
   log('settings updated', `jqlCount=${appConfig.jqlQueries.length} autoSync=${appConfig.autoSyncEnabled}`);
   json(res, 200, {
     ok: true,
     jqlQueries: appConfig.jqlQueries,
     autoSyncEnabled: appConfig.autoSyncEnabled,
-    alertRetryEnabled: appConfig.alertRetryEnabled,
     syncIntervalMinutes: appConfig.syncIntervalSeconds / 60,
   });
 }
@@ -496,6 +544,7 @@ async function handleSync(res) {
   }
 
   syncAbortController = new AbortController();
+  syncCancellationRequested = false;
   syncInProgress = true;
   await refreshState();
 
@@ -505,16 +554,28 @@ async function handleSync(res) {
     await refreshState();
     json(res, 200, result);
   } finally {
-    syncInProgress = false;
-    syncAbortController = null;
+    const cancellationRequested = syncCancellationRequested;
     const intervalSeconds = Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 0);
-    await state.runtime.persistence.syncStatus.updateStatus({
+    const statusUpdate = {
       next_sync_at: state.runtime.configuration?.app?.autoSyncEnabled
         && Number.isFinite(intervalSeconds)
         && intervalSeconds > 0
         ? new Date(Date.now() + intervalSeconds * 1000).toISOString()
         : null,
-    });
+    };
+    if (cancellationRequested) {
+      Object.assign(statusUpdate, {
+        last_status: 'Sincronizacion detenida.',
+        last_finished_at: new Date().toISOString(),
+        last_error_message: null,
+        is_running: false,
+        is_canceling: false,
+      });
+    }
+    await state.runtime.persistence.syncStatus.updateStatus(statusUpdate);
+    syncInProgress = false;
+    syncAbortController = null;
+    syncCancellationRequested = false;
     await refreshState();
   }
 }
@@ -529,6 +590,7 @@ async function handleSyncCancel(res) {
     is_canceling: true,
     last_status: 'Deteniendo sincronizacion...',
   });
+  syncCancellationRequested = true;
   syncAbortController.abort();
   log('synchronization cancellation requested');
   json(res, 200, { ok: true, message: 'Se solicito detener la sincronizacion.' });
@@ -604,8 +666,11 @@ function validateGridPayload(body) {
     'key', 'project', 'issuetype', 'summary', 'description', 'status', 'reporter',
     'assignee', 'created', 'updated', 'resolutiondate', 'parent', 'timeestimate',
     'timespent', 'timeremaining', 'estadoGeneral', 'closedSubtasks', 'openSubtasks',
+    REPORTED_TIMES_FIELD,
   ]);
-  const allowedConditionFields = new Set([...allowedFields].filter((field) => !SUBTASK_COUNT_FIELDS.has(field)));
+  const allowedConditionFields = new Set([...allowedFields].filter((field) => (
+    !SUBTASK_COUNT_FIELDS.has(field) && field !== REPORTED_TIMES_FIELD
+  )));
   const allowedOperators = new Set(['=', '<>', 'LIKE', '>', '<', '>=', '<=', 'IS NULL', 'IS NOT NULL']);
 
   if (!name) throw new Error('El grid requiere un nombre.');
@@ -620,7 +685,9 @@ function validateGridPayload(body) {
   }
   if (conditions.some((condition) => !condition?.field || !allowedConditionFields.has(condition.field)
     || !allowedOperators.has(condition.operator)
-    || (condition.field !== 'estadoGeneral' && !graphTypes.has(condition.issueType)))) {
+    || (condition.field === 'estadoGeneral'
+      ? condition.issueType !== 'Otros'
+      : !graphTypes.has(condition.issueType)))) {
     throw new Error('Una de las condiciones del grid no es valida.');
   }
 
@@ -760,6 +827,10 @@ async function handleGridData(req, res, id) {
         );
         continue;
       }
+      if (column.field === REPORTED_TIMES_FIELD) {
+        result[`${column.issueType}::${column.field}`] = getReportedTimesEntries(group.issues, column.issueType);
+        continue;
+      }
       const values = group.issues
         .filter((issue) => issue.issuetype === column.issueType)
         .map((issue) => gridFieldValue(issue, column.field))
@@ -813,15 +884,43 @@ async function handleAlertRuleSave(req, res) {
   const body = await readBody(req);
   const now = new Date().toISOString();
   const id = String(body?.id ?? `rule-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const jqlId = String(body?.jql_id ?? '').trim();
+  const alertType = String(body?.alert_type ?? '').trim();
   const name = String(body?.name ?? '').trim();
-  const sql = String(body?.sql ?? '').trim();
+  const sql = '';
 
-  if (!name || !sql) {
-    json(res, 400, { ok: false, error: 'El nombre y el SQL de la alerta son obligatorios.' });
+  if (!jqlId || !['new_issue', 'attribute_changed'].includes(alertType)) {
+    json(res, 400, { ok: false, error: 'La alerta debe pertenecer a un JQL y tener un tipo válido.' });
+    return;
+  }
+  const jqlRows = await state.runtime.persistence.query(
+    'SELECT id FROM JQL_DEFINITIONS WHERE id = ? LIMIT 1',
+    [jqlId],
+  );
+  if (jqlRows.length === 0) {
+    json(res, 400, { ok: false, error: 'El JQL asociado ya no existe.' });
+    return;
+  }
+  if (!name || !String(body?.toast_text ?? '').trim()) {
+    json(res, 400, { ok: false, error: 'El nombre y el texto del Toast son obligatorios.' });
     return;
   }
 
-  const conditionValidation = validateAlertConditionConfig(body?.condition_config, {
+  let conditionConfig = body?.condition_config;
+  let parsedConditionConfig = null;
+  try {
+    const parsed = typeof conditionConfig === 'string' ? JSON.parse(conditionConfig) : conditionConfig;
+    parsedConditionConfig = {
+      ...(parsed ?? {}),
+      event: alertType,
+      conditions: alertType === 'new_issue' ? [] : (parsed?.conditions ?? []),
+    };
+    conditionConfig = JSON.stringify(parsedConditionConfig);
+  } catch {
+    parsedConditionConfig = { event: alertType, conditions: [] };
+    conditionConfig = JSON.stringify(parsedConditionConfig);
+  }
+  const conditionValidation = validateAlertConditionConfig(conditionConfig, {
     fields: state.runtime.configuration?.alertFields?.fields ?? [],
     operators: state.runtime.configuration?.alertFields?.operators ?? [],
   });
@@ -831,6 +930,39 @@ async function handleAlertRuleSave(req, res) {
       error: 'La alerta contiene condiciones inválidas.',
       details: conditionValidation.errors,
     });
+    return;
+  }
+  const graphTypes = new Set(Object.keys(state.runtime.configuration?.graph?.nodes ?? {}));
+  if ((parsedConditionConfig?.conditions ?? []).some((condition) => (
+    condition.field === 'estadoGeneral'
+      ? condition.issueType !== 'Otros'
+      : !graphTypes.has(condition.issueType)
+  ))) {
+    json(res, 400, { ok: false, error: 'Una condición usa un tipo de incidencia que no pertenece al grafo.' });
+    return;
+  }
+
+  const displayIssueType = String(body?.display_issue_type ?? '').trim() || null;
+  const displayField = String(body?.display_field ?? '').trim() || null;
+  if (Boolean(displayIssueType) !== Boolean(displayField)) {
+    json(res, 400, { ok: false, error: 'Para mostrar información debes seleccionar tipo de incidencia y atributo.' });
+    return;
+  }
+  const allowedDisplayFields = new Set([
+    ...(state.runtime.configuration?.alertFields?.fields ?? []).map((field) => field.field),
+    'estado_general',
+  ]);
+  const isJqlSourceIssue = displayIssueType === JQL_SOURCE_ISSUE_OPTION;
+  const hasValidDisplaySource = displayIssueType === 'Otros'
+    ? displayField === 'estado_general'
+    : isJqlSourceIssue
+      ? displayField !== 'estado_general'
+      : graphTypes.has(displayIssueType);
+  if (displayIssueType && (
+    !allowedDisplayFields.has(displayField)
+    || !hasValidDisplaySource
+  )) {
+    json(res, 400, { ok: false, error: 'La información seleccionada para el Toast no es válida.' });
     return;
   }
 
@@ -853,14 +985,19 @@ async function handleAlertRuleSave(req, res) {
     await state.runtime.persistence.exec(
       `
       INSERT INTO ALERT_RULES (
-        id, name, sql, toast_text, toast_image, condition_config, retry_syncs, retry_minutes, is_active, created, updated
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, jql_id, alert_type, name, sql, toast_text, toast_image, condition_config,
+        display_issue_type, display_field, retry_syncs, retry_minutes, is_active, created, updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
+        jql_id = excluded.jql_id,
+        alert_type = excluded.alert_type,
         name = excluded.name,
         sql = excluded.sql,
         toast_text = excluded.toast_text,
         toast_image = excluded.toast_image,
         condition_config = excluded.condition_config,
+        display_issue_type = excluded.display_issue_type,
+        display_field = excluded.display_field,
         retry_syncs = excluded.retry_syncs,
         retry_minutes = excluded.retry_minutes,
         is_active = excluded.is_active,
@@ -868,11 +1005,15 @@ async function handleAlertRuleSave(req, res) {
       `,
       [
         id,
+        jqlId,
+        alertType,
         name,
         sql,
         String(body?.toast_text ?? '').trim() || null,
         toastImage,
-        String(body?.condition_config ?? '').trim() || null,
+        conditionConfig,
+        displayIssueType,
+        displayField,
         Math.max(Number(body?.retry_syncs ?? 0) || 0, 0),
         Math.max(Number(body?.retry_minutes ?? 0) || 0, 0),
         body?.is_active === false ? 0 : 1,
@@ -953,12 +1094,13 @@ async function runSyncCycle({ automatic = false } = {}) {
   }
 
   await refreshWindowsSessionState();
-  if (automatic && !isWindowsSessionUnlocked()) {
-    log('automatic synchronization skipped; Windows session is not unlocked', `state=${windowsSessionState.state}`);
+  if (automatic && !canRunAutomaticWindowsWork()) {
+    log('automatic synchronization skipped; Windows session is not available', `state=${windowsSessionState.state} monitoring=${state.runtime.windowsSession?.isMonitoringAvailable?.()}`);
     return { ok: false, skipped: true, reason: 'windows-session-not-unlocked' };
   }
 
   syncAbortController = new AbortController();
+  syncCancellationRequested = false;
   syncInProgress = true;
   await refreshState();
 
@@ -968,16 +1110,28 @@ async function runSyncCycle({ automatic = false } = {}) {
     await refreshState();
     return result;
   } finally {
-    syncInProgress = false;
+    const cancellationRequested = syncCancellationRequested;
     const intervalSeconds = Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 0);
-    await state.runtime.persistence.syncStatus.updateStatus({
+    const statusUpdate = {
       next_sync_at: state.runtime.configuration?.app?.autoSyncEnabled
         && Number.isFinite(intervalSeconds)
         && intervalSeconds > 0
         ? new Date(Date.now() + intervalSeconds * 1000).toISOString()
         : null,
-    });
+    };
+    if (cancellationRequested) {
+      Object.assign(statusUpdate, {
+        last_status: 'Sincronizacion detenida.',
+        last_finished_at: new Date().toISOString(),
+        last_error_message: null,
+        is_running: false,
+        is_canceling: false,
+      });
+    }
+    await state.runtime.persistence.syncStatus.updateStatus(statusUpdate);
+    syncInProgress = false;
     syncAbortController = null;
+    syncCancellationRequested = false;
     await refreshState();
   }
 }
@@ -1000,6 +1154,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'PUT' && url.pathname === '/api/settings') {
       await handleSettings(req, res);
+      return;
+    }
+
+    if (req.method === 'PUT' && url.pathname === '/api/jql-definitions') {
+      await handleJqlDefinitionsSave(req, res);
       return;
     }
 

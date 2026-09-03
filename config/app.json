@@ -3,17 +3,17 @@
   "jiraBaseUrl": "https://puertodecartagena.atlassian.net/",
   "chromeUserDataDir": "",
   "chromeProfileDirectory": "Default",
-  "syncIntervalSeconds": 1800,
+  "syncIntervalSeconds": 3600,
   "queryDelaySeconds": 1,
   "logRetentionDays": 7,
   "startMinimized": true,
   "enableToasts": true,
-  "autoSyncEnabled": false,
-  "alertRetryEnabled": true,
+  "autoSyncEnabled": true,
   "jqlQueries": [
     "type = \"Implementación Q&A\" AND assignee = currentUser() AND status != Cerrado AND issuekey != \"ONL-7689\"",
-    "(type = \"Test Tarea\" AND assignee = currentUser() AND status != Cerrado) OR (status = \"En espera PRE-PROD\" and assignee = currentUser() AND status != Cerrado)",
+    "type = \"Test Tarea\" AND assignee = currentUser() AND status != Cerrado",
     "type = \"Solicitud Paso a Pre-Producción\" AND reporter = currentUser() AND status = Cerrado AND created >= -10d",
-    "type = \"Documentar Criterios de Aceptación\" AND status != Cerrado AND assignee = currentUser()"
+    "type = \"Documentar Criterios de Aceptación\" AND status != Cerrado AND assignee = currentUser()",
+    "status = \"En espera PRE-PROD\" and assignee = currentUser() AND status != Cerrado"
   ]
 }

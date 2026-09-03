@@ -411,6 +411,76 @@ export class SyncService {
     return changes;
   }
 
+  getSourceScope(source) {
+    return [
+      source?.jql_id ?? source?.jqlId,
+      source?.seed_issue_id ?? source?.seedIssueId,
+    ].map((value) => String(value ?? '')).join('|');
+  }
+
+  getReassignedSourceGroups(previousSources = [], incomingSources = []) {
+    const previousByScope = new Map();
+    const incomingByScope = new Map();
+    for (const source of previousSources) {
+      const scope = this.getSourceScope(source);
+      const values = previousByScope.get(scope) ?? [];
+      values.push(source);
+      previousByScope.set(scope, values);
+    }
+    for (const source of incomingSources) {
+      const scope = this.getSourceScope(source);
+      const values = incomingByScope.get(scope) ?? [];
+      values.push(source);
+      incomingByScope.set(scope, values);
+    }
+
+    const targetsByPreviousGroup = new Map();
+    for (const [scope, previous] of previousByScope) {
+      const incoming = incomingByScope.get(scope) ?? [];
+      if (previous.length !== 1 || incoming.length !== 1) continue;
+
+      const previousGroupId = String(previous[0].project_group_id ?? previous[0].projectGroupId ?? '');
+      const incomingGroupId = String(incoming[0].project_group_id ?? incoming[0].projectGroupId ?? '');
+      if (previousGroupId && incomingGroupId && previousGroupId !== incomingGroupId) {
+        const targets = targetsByPreviousGroup.get(previousGroupId) ?? new Set();
+        targets.add(incomingGroupId);
+        targetsByPreviousGroup.set(previousGroupId, targets);
+      }
+    }
+
+    // A previous group may have been shared by several JQL sources. Only move
+    // its snapshot when all those sources agree on the same new group.
+    const moves = new Map([...targetsByPreviousGroup.entries()]
+      .filter(([, targets]) => targets.size === 1)
+      .map(([previousGroupId, targets]) => [previousGroupId, [...targets][0]]));
+    return moves;
+  }
+
+  normalizePreviousSnapshotForReassignedSources(snapshot = [], previousSources = [], incomingSources = []) {
+    const moves = this.getReassignedSourceGroups(previousSources, incomingSources);
+    if (moves.size === 0) return { snapshot, moves };
+
+    const normalized = [];
+    const occupied = new Set();
+    for (const row of snapshot) {
+      if (!moves.has(String(row.project_group_id ?? ''))) {
+        normalized.push(row);
+        occupied.add(`${row.project_group_id}|${row.id}`);
+      }
+    }
+    for (const row of snapshot) {
+      const targetGroupId = moves.get(String(row.project_group_id ?? ''));
+      if (!targetGroupId) continue;
+      const normalizedRow = { ...row, project_group_id: targetGroupId };
+      const identity = `${normalizedRow.project_group_id}|${normalizedRow.id}`;
+      if (!occupied.has(identity)) {
+        normalized.push(normalizedRow);
+        occupied.add(identity);
+      }
+    }
+    return { snapshot: normalized, moves };
+  }
+
   async persistChanges(syncId, changes) {
     await this.persistence.exec('DELETE FROM SYNC_CHANGES');
 
@@ -440,16 +510,20 @@ export class SyncService {
   deduplicateProjectGroups(candidateGroups) {
     const unique = new Map();
     for (const group of Array.isArray(candidateGroups) ? candidateGroups : []) {
-      const signature = [...new Set((group.issues ?? [])
-        .map((issue) => String(issue?.id ?? issue?.key ?? ''))
-        .filter(Boolean))]
-        .sort()
-        .join('|');
+      const signature = this.getProjectGroupSignature(group);
       if (signature && !unique.has(signature)) {
         unique.set(signature, group);
       }
     }
     return [...unique.values()];
+  }
+
+  getProjectGroupSignature(group) {
+    return [...new Set((group?.issues ?? [])
+      .map((issue) => String(issue?.id ?? issue?.key ?? ''))
+      .filter(Boolean))]
+      .sort()
+      .join('|');
   }
 
   async run({ signal } = {}) {
@@ -516,24 +590,26 @@ export class SyncService {
         cacheHits: 0,
       };
 
+      const jqlDefinitions = await this.persistence.jqlDefinitions.list();
       await this.logs.info('Synchronization cycle started', {
         startedAt,
-        jqlCount: this.configuration?.app?.jqlQueries?.length ?? 0,
+        jqlCount: jqlDefinitions.length,
       });
 
       await this.logs.info('Synchronization phase: validating Jira user');
       await this.jira.getMyself({ signal });
       await this.logs.info('Synchronization phase completed: Jira user validated');
 
-      const jqlQueries = this.configuration?.app?.jqlQueries ?? [];
-      if (jqlQueries.length === 0) {
+      if (jqlDefinitions.length === 0) {
         throw new Error('Debe existir al menos un JQL configurado.');
       }
 
       const seedIssues = new Map();
+      const seedJqlSources = new Map();
       const jqlStartedAt = Date.now();
-      for (const jql of jqlQueries) {
+      for (const definition of jqlDefinitions) {
         throwIfCanceled();
+        const jql = definition.query_text;
         await this.logs.info('Executing configured JQL', { jql });
         const searchResult = await this.jira.searchIssues(jql, 50, { signal });
         await this.logs.info('Configured JQL completed', {
@@ -543,6 +619,9 @@ export class SyncService {
         for (const issue of searchResult?.issues ?? []) {
           if (issue?.key) {
             seedIssues.set(issue.key, issue);
+            const sources = seedJqlSources.get(issue.key) ?? new Set();
+            sources.add(definition.id);
+            seedJqlSources.set(issue.key, sources);
           }
         }
       }
@@ -558,6 +637,7 @@ export class SyncService {
       });
 
       const candidateGroups = [];
+      const candidateSources = [];
       const graphIssueCache = new Map([...seedIssues.entries()]);
       const batchLoader = new JiraBatchLoader({
         jira: this.jira,
@@ -578,7 +658,7 @@ export class SyncService {
               issueKey: seedIssue.key,
               issueType: detailedSeedIssue?.fields?.issuetype?.name ?? null,
             });
-            return [];
+            return { seedIssue, projectGroups: [] };
           }
           const projectGroups = await this.graph.buildProjectGroups(
             detailedSeedIssue,
@@ -595,15 +675,50 @@ export class SyncService {
             issuesCount: projectGroups.map((group) => group.issues.length),
             relationshipsCount: projectGroups.map((group) => group.relationships.length),
           });
-          return projectGroups;
+          const sourceGroups = projectGroups.filter((projectGroup) => (
+            projectGroup.issues?.some((issue) => String(issue?.id ?? issue?.key) === String(seedIssue.id ?? seedIssue.key))
+          ));
+          if (sourceGroups.length !== projectGroups.length) {
+            await this.logs.warn('Some graph branches were discarded because they do not contain the JQL seed', {
+              issueKey: seedIssue.key,
+              discardedGroups: projectGroups.length - sourceGroups.length,
+            });
+          }
+          return { seedIssue, projectGroups: sourceGroups };
         }));
-        candidateGroups.push(...groupsBySeed.flat());
+        for (const result of groupsBySeed) {
+          candidateGroups.push(...result.projectGroups);
+          for (const projectGroup of result.projectGroups) {
+            for (const jqlId of seedJqlSources.get(result.seedIssue.key) ?? []) {
+              candidateSources.push({
+                jqlId,
+                seedIssueId: String(result.seedIssue.id),
+                signature: this.getProjectGroupSignature(projectGroup),
+              });
+            }
+          }
+        }
       } else {
         await this.logs.warn('No seed issue found for ProjectGroup build');
       }
       phaseTimings.graphMs = Date.now() - graphStartedAt;
 
       const consolidatedGroups = this.deduplicateProjectGroups(candidateGroups);
+      const consolidatedBySignature = new Map(consolidatedGroups.map((group) => [
+        this.getProjectGroupSignature(group),
+        group,
+      ]));
+      const incomingSources = candidateSources.flatMap((source) => {
+        const projectGroup = consolidatedBySignature.get(source.signature);
+        return projectGroup ? [{
+          jqlId: source.jqlId,
+          projectGroupId: projectGroup.id,
+          seedIssueId: source.seedIssueId,
+        }] : [];
+      });
+      for (const projectGroup of consolidatedGroups) {
+        projectGroup.estado_general = this.evaluateProjectGroupState(projectGroup);
+      }
       await this.logs.info('ProjectGroup consolidation completed', {
         candidateGroups: candidateGroups.length,
         consolidatedGroups: consolidatedGroups.length,
@@ -613,13 +728,23 @@ export class SyncService {
       });
 
       const previousSnapshot = await this.getExistingSnapshot();
+      const previousSources = await this.persistence.jqlDefinitions.listSources();
+      const previousProjectGroups = await this.persistence.query(
+        'SELECT id, estado_general FROM JIRA_PROJECT_GROUPS',
+      );
       const incomingSnapshot = this.getIncomingSnapshot(consolidatedGroups);
-      const changes = this.compareSnapshots(previousSnapshot, incomingSnapshot);
+      const normalizedPrevious = this.normalizePreviousSnapshotForReassignedSources(
+        previousSnapshot,
+        previousSources,
+        incomingSources,
+      );
+      const changes = this.compareSnapshots(normalizedPrevious.snapshot, incomingSnapshot);
       const syncId = `sync-${startedAt}`;
       let alertResult = { createdAlertsCount: 0, createdAlerts: [] };
 
       await this.logs.info('Synchronization comparison completed', {
         syncId,
+        reassignedSourceGroups: normalizedPrevious.moves.size,
         created: changes.filter((change) => change.change_type === 'created').length,
         updated: changes.filter((change) => change.change_type === 'updated').length,
         removed: changes.filter((change) => change.change_type === 'removed').length,
@@ -651,9 +776,17 @@ export class SyncService {
           await this.persistProjectGroup(projectGroup, detailedSeedIssue, startedAt, { persistIssues: false });
         }
 
+        await this.persistence.jqlDefinitions.replaceSources(incomingSources);
         await this.persistChanges(syncId, changes);
         throwIfCanceled();
-        alertResult = await this.alerts.evaluate({ notify: false });
+        alertResult = await this.alerts.evaluateJqlAlerts({
+          previousSnapshot,
+          incomingSnapshot,
+          previousSources,
+          incomingSources,
+          previousProjectGroups,
+          incomingProjectGroups: consolidatedGroups,
+        });
       });
       phaseTimings.persistenceMs = Date.now() - persistenceStartedAt;
 

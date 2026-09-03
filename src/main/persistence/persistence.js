@@ -10,6 +10,7 @@ import { ProjectGroupIssuesRepository } from './repositories/projectGroupIssuesR
 import { RelationshipsRepository } from './repositories/relationshipsRepository.js';
 import { AlertsRepository } from './repositories/alertsRepository.js';
 import { GridsRepository } from './repositories/gridsRepository.js';
+import { JqlDefinitionsRepository } from './repositories/jqlDefinitionsRepository.js';
 
 const require = createRequire(import.meta.url);
 const duckdb = require('duckdb');
@@ -27,6 +28,7 @@ export class Persistence {
     this.relationships = new RelationshipsRepository(this);
     this.alerts = new AlertsRepository(this);
     this.grids = new GridsRepository(this);
+    this.jqlDefinitions = new JqlDefinitionsRepository(this);
   }
 
   async initialize() {
@@ -105,8 +107,32 @@ export class Persistence {
     } catch {
       // The column already exists in databases initialized after the schema update.
     }
+    for (const statement of [
+      'ALTER TABLE ALERT_RULES ADD COLUMN jql_id TEXT',
+      'ALTER TABLE ALERT_RULES ADD COLUMN alert_type TEXT',
+      'ALTER TABLE ALERT_RULES ADD COLUMN display_issue_type TEXT',
+      'ALTER TABLE ALERT_RULES ADD COLUMN display_field TEXT',
+      'ALTER TABLE ALERTS ADD COLUMN identity_key TEXT',
+    ]) {
+      try {
+        await this.exec(statement);
+      } catch {
+        // The column already exists in databases initialized after the schema update.
+      }
+    }
+    const jqlAlertMigration = await this.query(
+      "SELECT value FROM SETTINGS WHERE key = 'jql_alert_model_v1' LIMIT 1",
+    );
+    if (jqlAlertMigration.length === 0) {
+      await this.transaction(async () => {
+        await this.exec('DELETE FROM ALERTS');
+        await this.exec('DELETE FROM ALERT_RULES');
+        await this.settings.upsert('jql_alert_model_v1', 'true', new Date().toISOString());
+      });
+    }
     try {
       await this.exec('DROP INDEX IF EXISTS idx_alerts_rule_issue');
+      await this.exec('DROP INDEX IF EXISTS idx_alerts_identity');
       await this.exec(`
         DELETE FROM ALERTS
         WHERE id IN (
@@ -122,10 +148,11 @@ export class Persistence {
           WHERE duplicate_number > 1
         )
       `);
-      await this.exec('CREATE UNIQUE INDEX idx_alerts_rule_issue ON ALERTS(rule_id, issue_id)');
+      await this.exec('CREATE UNIQUE INDEX idx_alerts_identity ON ALERTS(identity_key)');
     } catch {
       // Keep startup compatible with databases that do not support this migration.
     }
+    await this.grids.migrateLegacyReportedTimeColumns();
     await this.syncStatus.ensureRow();
 
     return schema;
@@ -216,6 +243,7 @@ export class Persistence {
     await this.exec(`
       BEGIN TRANSACTION;
       DELETE FROM ALERTS;
+      DELETE FROM JQL_PROJECT_GROUPS;
       DELETE FROM JIRA_RELATIONSHIPS;
       DELETE FROM JIRA_PROJECT_GROUP_ISSUES;
       DELETE FROM JIRA_PROJECT_GROUPS;

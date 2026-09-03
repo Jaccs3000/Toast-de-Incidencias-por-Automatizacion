@@ -70,3 +70,62 @@ test('keeps concurrent Testing branches inside the originating graph boundary', 
   assert.deepEqual([...keysByAnchor.get('TEST-2')].sort(), ['DOC-1', 'IMPL-2', 'TEST-2']);
   assert.equal(loaded.includes('TEST-OTHER'), false);
 });
+
+test('attaches any Jira subtask seed to its configured parent ProjectGroup', async () => {
+  const subtask = {
+    id: 'SUB-1',
+    key: 'SUB-1',
+    fields: {
+      issuetype: { name: 'Test Tarea', subtask: true },
+      project: { key: 'ABC', name: 'ABC' },
+      parent: { key: 'TEST-1' },
+    },
+  };
+  const parent = {
+    id: 'TEST-1',
+    key: 'TEST-1',
+    fields: {
+      issuetype: { name: 'Testing', subtask: false },
+      project: { key: 'ABC', name: 'ABC' },
+      issuelinks: [],
+      subtasks: [
+        { key: subtask.key, fields: { issuetype: { name: 'Test Tarea', subtask: true } } },
+      ],
+    },
+  };
+  const service = new GraphService({
+    configuration: {
+      graph: {
+        entryTypes: ['Testing'],
+        nodes: {
+          Testing: { follow: [{ relation: 'subtasks', to: ['*'] }] },
+        },
+      },
+    },
+  });
+
+  const groups = await service.buildProjectGroups(subtask, async (key) => {
+    assert.equal(key, parent.key);
+    return parent;
+  }, { issueCache: new Map([[subtask.key, subtask]]) });
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].rootIssueKey, parent.key);
+  assert.deepEqual(
+    groups[0].issues.map((issue) => issue.key).sort(),
+    [parent.key, subtask.key].sort(),
+  );
+  assert.deepEqual(groups[0].members.find((member) => member.key === subtask.key), {
+    id: subtask.id,
+    key: subtask.key,
+    isRoot: false,
+    depth: 1,
+    relationType: 'subtasks',
+    created: null,
+  });
+  assert.deepEqual(groups[0].relationships, [{
+    fromIssueId: parent.id,
+    toIssueId: subtask.id,
+    relationType: 'subtasks',
+  }]);
+});

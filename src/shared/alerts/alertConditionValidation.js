@@ -1,4 +1,4 @@
-const DEFAULT_EVENTS = new Set(['created', 'updated', 'removed']);
+const DEFAULT_EVENTS = new Set(['new_issue', 'attribute_changed']);
 const EMPTY_OPERATORS = new Set(['IS NULL', 'IS NOT NULL']);
 const TEXT_OPERATORS = new Set(['=', '<>', 'LIKE', 'IS NULL', 'IS NOT NULL']);
 const VALUE_OPERATORS = new Set(['=', '<>', '>', '<', '>=', '<=', 'IS NULL', 'IS NOT NULL']);
@@ -55,7 +55,11 @@ export function validateAlertConditionConfig(config, { fields = [], operators = 
 
   const availableFields = fieldMap(fields);
   const availableOperators = operatorMap(operators);
-  if (!Array.isArray(parsed.conditions) || parsed.conditions.length === 0) {
+  if (!Array.isArray(parsed.conditions)) {
+    errors.push('Agrega al menos una condición.');
+    return { ok: errors.length === 0, errors };
+  }
+  if (parsed.event !== 'new_issue' && parsed.conditions.length === 0) {
     errors.push('Agrega al menos una condición.');
     return { ok: errors.length === 0, errors };
   }
@@ -65,6 +69,16 @@ export function validateAlertConditionConfig(config, { fields = [], operators = 
     const field = availableFields.get(condition?.field);
     const operator = availableOperators.get(condition?.operator);
     const value = String(condition?.value ?? '').trim();
+
+    if (parsed.event === 'attribute_changed' && !String(condition?.issueType ?? '').trim()) {
+      errors.push(`${position}: selecciona el tipo de incidencia.`);
+      return;
+    }
+
+    if (index > 0 && !['AND', 'OR'].includes(String(condition?.connector ?? 'AND').toUpperCase())) {
+      errors.push(`${position}: el conector debe ser AND u OR.`);
+      return;
+    }
 
     if (!field) {
       errors.push(`${position}: el campo seleccionado no existe en la configuración.`);

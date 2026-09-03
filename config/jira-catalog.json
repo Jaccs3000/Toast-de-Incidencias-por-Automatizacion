@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-24T15:52:18.407Z",
+  "updatedAt": "2026-09-03T13:09:29.650Z",
   "projects": [
     {
       "value": "AP",
@@ -453,6 +453,7 @@
     "Revisado y aprobado redes",
     "Seguimiento",
     "SEGUIMIENTO",
+    "Sub-task cerradas",
     "Tareas por hacer",
     "Terminado"
   ]

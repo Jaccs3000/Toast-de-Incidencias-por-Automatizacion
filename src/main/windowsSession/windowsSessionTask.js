@@ -140,16 +140,33 @@ export class WindowsSessionTask {
       locked: `${TASK_PREFIX} Lock`,
       unlocked: `${TASK_PREFIX} Unlock`,
     };
+    this.monitoringAvailable = false;
+  }
+
+  isMonitoringAvailable() {
+    return this.monitoringAvailable;
+  }
+
+  async writeState(state, source, details = {}) {
+    await fs.mkdir(this.sessionDirectory, { recursive: true });
+    const payload = {
+      state,
+      updatedAt: getBogotaTimestamp(),
+      source,
+      ...details,
+    };
+    await fs.writeFile(this.statePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    return payload;
   }
 
   async writeStartupState() {
-    await fs.mkdir(this.sessionDirectory, { recursive: true });
-    const payload = {
-      state: 'unlocked',
-      updatedAt: getBogotaTimestamp(),
-      source: 'backend-startup',
-    };
-    await fs.writeFile(this.statePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    return this.writeState('unlocked', 'backend-startup');
+  }
+
+  async writeUnavailableState(error) {
+    return this.writeState('unknown', 'windows-session-task-unavailable', {
+      reason: String(error?.message ?? error ?? 'No se pudo habilitar el monitoreo de sesion.'),
+    });
   }
 
   async readState() {
@@ -166,6 +183,7 @@ export class WindowsSessionTask {
         state,
         updatedAt: Number.isFinite(updatedAt) ? updatedAt : null,
         source: payload?.source ?? null,
+        reason: payload?.reason ?? null,
       };
     } catch (error) {
       return { state: 'unknown', updatedAt: null, source: 'read-error', error: error.message };
@@ -173,13 +191,7 @@ export class WindowsSessionTask {
   }
 
   async markManualSyncUnlocked() {
-    await fs.mkdir(this.sessionDirectory, { recursive: true });
-    const payload = {
-      state: 'unlocked',
-      updatedAt: getBogotaTimestamp(),
-      source: 'manual-sync',
-    };
-    await fs.writeFile(this.statePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    await this.writeState('unlocked', 'manual-sync');
     return this.readState();
   }
 
@@ -229,9 +241,9 @@ export class WindowsSessionTask {
   }
 
   async initialize() {
-    await this.writeStartupState();
-
     if (process.platform !== 'win32') {
+      this.monitoringAvailable = false;
+      await this.writeUnavailableState('Plataforma sin soporte para tareas de sesion de Windows.');
       await this.logs?.warn?.('Windows session task skipped: unsupported platform');
       return { ok: false, reason: 'unsupported-platform' };
     }
@@ -241,6 +253,9 @@ export class WindowsSessionTask {
       await fs.access(this.hiddenScriptPath);
       const lockedStatus = await this.ensureTask('locked');
       const unlockedStatus = await this.ensureTask('unlocked');
+      // A backend launched from the interactive desktop starts in an unlocked session.
+      await this.writeStartupState();
+      this.monitoringAvailable = true;
       await this.logs?.info?.('Windows session tasks registered', {
         lockedTask: this.taskNames.locked,
         unlockedTask: this.taskNames.unlocked,
@@ -251,6 +266,8 @@ export class WindowsSessionTask {
       });
       return { ok: true };
     } catch (error) {
+      this.monitoringAvailable = false;
+      await this.writeUnavailableState(error);
       await this.logs?.warn?.('Windows session tasks could not be registered', {
         error: error.message,
       });

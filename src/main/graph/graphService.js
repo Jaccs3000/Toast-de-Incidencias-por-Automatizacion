@@ -357,12 +357,121 @@ export class GraphService {
     };
   }
 
+  async loadTraversalIssue(issueKey, issueLoader, issueCache, signal, metrics) {
+    const key = normalizeType(issueKey);
+    if (!key) return null;
+
+    if (issueCache.has(key)) {
+      if (metrics) metrics.cacheHits = (metrics.cacheHits ?? 0) + 1;
+      return issueCache.get(key);
+    }
+
+    if (signal?.aborted) {
+      throw new DOMException('Synchronization canceled.', 'AbortError');
+    }
+
+    const loadIssue = issueLoader ?? (async (loadedKey) => this.jira.getIssue(loadedKey));
+    const issue = await loadIssue(key);
+    issueCache.set(key, issue ?? null);
+    if (metrics) metrics.issueLoads = (metrics.issueLoads ?? 0) + 1;
+    return issue;
+  }
+
+  isSubtaskAcceptedByParent(parentIssue, subtaskIssue) {
+    if (!parentIssue || subtaskIssue?.fields?.issuetype?.subtask !== true) {
+      return false;
+    }
+
+    return this.getRulesForIssue(parentIssue).some((rule) => (
+      rule?.relation === 'subtasks'
+      && matchesTarget(rule, subtaskIssue, this.getGraphIssueTypes())
+    ));
+  }
+
+  async resolveTraversalSeed(seedIssue, issueLoader, {
+    signal,
+    issueCache,
+    metrics,
+  } = {}) {
+    const seedType = getIssueType(seedIssue);
+    if (this.getGraphIssueTypes().has(seedType)) {
+      return { issue: seedIssue, attachedSubtask: false };
+    }
+
+    if (seedIssue?.fields?.issuetype?.subtask !== true) {
+      return { issue: seedIssue, attachedSubtask: false };
+    }
+
+    const parentKey = getParentKey(seedIssue);
+    if (!parentKey) {
+      return { issue: seedIssue, attachedSubtask: false };
+    }
+
+    const parentIssue = await this.loadTraversalIssue(
+      parentKey,
+      issueLoader,
+      issueCache,
+      signal,
+      metrics,
+    );
+    if (!this.isSubtaskAcceptedByParent(parentIssue, seedIssue)) {
+      return { issue: seedIssue, attachedSubtask: false };
+    }
+
+    return {
+      issue: parentIssue,
+      attachedSubtask: true,
+      parentIssue,
+    };
+  }
+
+  includeSubtaskInGroup(group, subtaskIssue, parentIssue) {
+    const subtaskId = createIssueIdentity(subtaskIssue);
+    const parentId = createIssueIdentity(parentIssue);
+    if (!subtaskId || !parentId || !group.issues.some((issue) => createIssueIdentity(issue) === parentId)) {
+      return;
+    }
+
+    if (!group.issues.some((issue) => createIssueIdentity(issue) === subtaskId)) {
+      group.issues.push(subtaskIssue);
+      const parentMember = group.members.find((member) => String(member.id) === String(parentId));
+      group.members.push({
+        id: subtaskId,
+        key: normalizeType(subtaskIssue.key),
+        isRoot: false,
+        depth: Number(parentMember?.depth ?? 0) + 1,
+        relationType: 'subtasks',
+        created: subtaskIssue?.fields?.created ?? null,
+      });
+    }
+
+    const hasRelationship = group.relationships.some((relationship) => (
+      String(relationship.fromIssueId) === String(parentId)
+      && String(relationship.toIssueId) === String(subtaskId)
+      && relationship.relationType === 'subtasks'
+    ));
+    if (!hasRelationship) {
+      group.relationships.push({
+        fromIssueId: parentId,
+        toIssueId: subtaskId,
+        relationType: 'subtasks',
+      });
+    }
+  }
+
   async buildProjectGroups(seedIssue, issueLoader = null, {
     signal,
     issueCache = new Map(),
     metrics = null,
   } = {}) {
-    const discovery = await this.buildProjectGroup(seedIssue, issueLoader, {
+    const sourceSeedIssue = seedIssue;
+    const resolution = await this.resolveTraversalSeed(seedIssue, issueLoader, {
+      signal,
+      issueCache,
+      metrics,
+    });
+    const traversalSeed = resolution.issue;
+    const discovery = await this.buildProjectGroup(traversalSeed, issueLoader, {
       signal,
       issueCache,
       metrics,
@@ -372,17 +481,20 @@ export class GraphService {
     const issueById = new Map(
       discovery.issues.map((issue) => [createIssueIdentity(issue), issue]),
     );
-    const seedIsTesting = getIssueType(seedIssue) === testingType;
+    const seedIsTesting = getIssueType(traversalSeed) === testingType;
     // Only Testing issues directly connected to the seed define branches.
     // A Testing found deeper in another branch must not start a second graph.
     const anchors = seedIsTesting
-      ? [seedIssue]
+      ? [traversalSeed]
       : discovery.members
         .filter((member) => member.depth === 1)
         .map((member) => issueById.get(String(member.id)))
         .filter((issue) => issue && getIssueType(issue) === testingType);
 
     if (anchors.length === 0) {
+      if (resolution.attachedSubtask) {
+        this.includeSubtaskInGroup(discovery, sourceSeedIssue, resolution.parentIssue);
+      }
       return [discovery];
     }
 
@@ -392,23 +504,26 @@ export class GraphService {
         issueCache,
         metrics,
         anchorKey: anchor.key,
-        boundaryRootKey: seedIssue.key,
-        boundaryRootType: seedIssue?.fields?.issuetype?.name,
+        boundaryRootKey: traversalSeed.key,
+        boundaryRootType: traversalSeed?.fields?.issuetype?.name,
       });
-      const seedId = createIssueIdentity(seedIssue);
+      const seedId = createIssueIdentity(traversalSeed);
       if (!seedIsTesting && seedId && !group.issues.some((issue) => createIssueIdentity(issue) === seedId)) {
-        group.issues.push(seedIssue);
+        group.issues.push(traversalSeed);
         group.members.push({
           id: seedId,
-          key: normalizeType(seedIssue.key),
+          key: normalizeType(traversalSeed.key),
           isRoot: false,
           depth: 0,
           relationType: 'seed',
-          created: seedIssue?.fields?.created ?? null,
+          created: traversalSeed?.fields?.created ?? null,
         });
       }
+      if (resolution.attachedSubtask) {
+        this.includeSubtaskInGroup(group, sourceSeedIssue, resolution.parentIssue);
+      }
       const groupRootId = seedIsTesting ? createIssueIdentity(anchor) : seedId;
-      const groupRootKey = seedIsTesting ? normalizeType(anchor.key) : normalizeType(seedIssue.key);
+      const groupRootKey = seedIsTesting ? normalizeType(anchor.key) : normalizeType(traversalSeed.key);
       group.id = `project-group-${createIssueIdentity(anchor) || group.id}-${groupRootId || 'root'}`;
       group.rootIssueId = groupRootId || group.rootIssueId;
       group.rootIssueKey = groupRootKey || group.rootIssueKey;

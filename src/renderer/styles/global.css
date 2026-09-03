@@ -31,6 +31,29 @@ body {
   padding: 8px 10px 10px;
 }
 
+.sync-watermark {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  align-items: center;
+  justify-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.sync-watermark span {
+  color: rgba(144, 163, 255, 0.075);
+  font-size: clamp(1rem, 1.8vw, 1.8rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  transform: rotate(-45deg);
+  white-space: nowrap;
+}
+
 .hero {
   width: calc(100vw - 20px);
   max-width: none;
@@ -267,6 +290,7 @@ body {
   color: #eef1ff;
   font-size: .8rem;
   line-height: 1.3;
+  white-space: pre-line;
   overflow-wrap: anywhere;
 }
 
@@ -372,11 +396,39 @@ body {
   padding: 10px 20px 11px;
   color: rgba(218, 225, 255, .68);
   font: inherit;
-  font-size: .86rem;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   transition: color .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.app-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-tab-count {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 7px;
+  padding: 0 6px;
+  place-items: center;
+  border: 1px solid rgba(154, 172, 255, .48);
+  border-radius: 999px;
+  background: rgba(7, 13, 32, .62);
+  color: #cbd4ff;
+  font-size: .7rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.app-tab.is-active .app-tab-count {
+  border-color: rgba(226, 231, 255, .54);
+  background: rgba(18, 28, 67, .68);
+  color: #ffffff;
 }
 
 .app-tab:hover {
@@ -1846,9 +1898,33 @@ h1 {
 
 .configuration-workspace .dashboard-jql .jql-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 58px;
+  grid-template-columns: minmax(0, 1fr) 202px;
   gap: 14px;
 }
+
+.configuration-workspace .dashboard-jql .jql-row-actions {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.configuration-workspace .dashboard-jql .jql-row-actions > button {
+  box-sizing: border-box;
+  flex: 0 0 58px;
+  width: 58px;
+  height: auto;
+  min-height: 0;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-list-placeholder {
+  display: block;
+  flex: 0 0 58px;
+  width: 58px;
+  height: auto;
+  min-height: 0;
+}
+
 
 .configuration-workspace .dashboard-jql .jql-editor-shell {
   display: grid;
@@ -1865,7 +1941,7 @@ h1 {
   flex-direction: column;
   align-items: center;
   gap: 0;
-  padding-top: 24px;
+  padding-top: 14px;
   border-right: 1px solid rgba(142, 157, 255, .2);
   color: #929bbd;
   font: 400 .94rem/1.65 "Cascadia Code", "IBM Plex Mono", monospace;
@@ -1879,8 +1955,8 @@ h1 {
 
 .configuration-workspace .dashboard-jql .jql-editor-shell textarea {
   min-width: 0;
-  min-height: calc(3.3em + 46px);
-  padding: 23px 20px;
+  min-height: calc(3.3em + 26px);
+  padding: 13px 20px;
   resize: none;
   overflow-y: hidden;
   border: 0;
@@ -1902,20 +1978,112 @@ h1 {
 
 .configuration-workspace .dashboard-jql .jql-delete {
   display: grid;
-  width: 58px;
-  height: 100%;
-  min-height: 0;
   place-items: center;
   border-color: rgba(255, 103, 166, .72);
-  border-radius: 13px;
+  border-radius: 12px;
   background: linear-gradient(180deg, rgba(255, 93, 160, .16), rgba(118, 33, 78, .12));
   color: #ff83b4;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 0 18px rgba(255, 75, 149, .08);
 }
 
+.configuration-workspace .dashboard-jql .jql-alert-add {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 205, 89, .72);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 205, 89, .14), rgba(114, 78, 16, .1));
+  color: #ffd66f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 18px rgba(255, 196, 71, .07);
+  cursor: pointer;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-add:hover:not(:disabled) {
+  border-color: #ffe09a;
+  background: linear-gradient(180deg, rgba(255, 205, 89, .22), rgba(114, 78, 16, .15));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 20px rgba(255, 196, 71, .12);
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-add:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-add .line-icon {
+  width: 31px;
+  height: 31px;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-add > span {
+  position: absolute;
+  top: calc(50% - 18px);
+  left: calc(50% + 5px);
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border: 2px solid #11182c;
+  border-radius: 50%;
+  background: #59ff9a;
+  color: #07140d;
+  box-shadow: 0 0 12px rgba(89, 255, 154, .48);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-list {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(118, 204, 255, .72);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(86, 181, 255, .16), rgba(21, 76, 125, .11));
+  color: #83d1ff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 18px rgba(75, 176, 255, .07);
+  cursor: pointer;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-list:hover:not(:disabled),
+.configuration-workspace .dashboard-jql .jql-alert-list[aria-expanded="true"] {
+  border-color: #a4ddff;
+  background: linear-gradient(180deg, rgba(86, 181, 255, .25), rgba(21, 76, 125, .16));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 20px rgba(75, 176, 255, .14);
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-list:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-list .line-icon {
+  width: 31px;
+  height: 31px;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-list > span {
+  position: absolute;
+  top: calc(50% - 18px);
+  left: calc(50% + 5px);
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  place-items: center;
+  padding: 0 3px;
+  border: 2px solid #11182c;
+  border-radius: 999px;
+  background: #83d1ff;
+  color: #11182c;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .configuration-workspace .dashboard-jql .jql-delete .line-icon {
-  width: 27px;
-  height: 27px;
+  width: 31px;
+  height: 31px;
 }
 
 .configuration-workspace .dashboard-jql > .jql-add {
@@ -2040,6 +2208,10 @@ h1 {
   margin: 0;
 }
 
+.configuration-workspace .dashboard-jql .jql-save-actions {
+  margin-top: 14px;
+}
+
 .configuration-workspace .dashboard-jql .settings-actions button {
   display: inline-flex;
   min-width: 230px;
@@ -2068,10 +2240,90 @@ h1 {
   text-align: right;
 }
 
+.configuration-workspace .jql-definition-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(142, 162, 255, .2);
+  border-radius: 14px;
+  background: rgba(7, 13, 31, .48);
+}
+
+.configuration-workspace .jql-definition-card + .jql-definition-card { margin-top: 14px; }
+
+.configuration-workspace .jql-alerts-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.configuration-workspace .jql-alerts-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: #dfe5ff;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.configuration-workspace .jql-alerts-toggle > span {
+  min-width: 24px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(142, 162, 255, .16);
+  color: #aebcff;
+  text-align: center;
+}
+
+.configuration-workspace .jql-alerts-toggle .line-icon {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.configuration-workspace .jql-alerts-toggle .line-icon:last-child {
+  transition: transform .2s ease;
+}
+
+.configuration-workspace .jql-alerts-toggle[aria-expanded="true"] .line-icon:last-child {
+  transform: rotate(180deg);
+}
+
+.configuration-workspace .jql-associated-alerts {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(142, 162, 255, .15);
+}
+
+.configuration-workspace .dashboard-alert .condition-row {
+  grid-template-columns: 34px minmax(155px, 1.15fr) minmax(130px, 1fr) minmax(115px, .8fr) minmax(150px, 1fr) 42px;
+}
+
+@media (max-width: 900px) {
+  .configuration-workspace .jql-alerts-toolbar { align-items: stretch; flex-direction: column; }
+  .configuration-workspace .dashboard-alert .condition-row { grid-template-columns: 1fr; }
+  .configuration-workspace .dashboard-alert .condition-index { display: none; }
+}
+
 @media (max-width: 720px) {
   .configuration-workspace .dashboard-jql { min-height: 0; padding: 22px 18px 26px; }
-  .configuration-workspace .dashboard-jql .jql-row { grid-template-columns: minmax(0, 1fr) 48px; gap: 8px; }
-  .configuration-workspace .dashboard-jql .jql-delete { width: 48px; }
+  .configuration-workspace .dashboard-jql .jql-row { grid-template-columns: minmax(0, 1fr) 160px; gap: 8px; }
+  .configuration-workspace .dashboard-jql .jql-row-actions { gap: 8px; }
+  .configuration-workspace .dashboard-jql .jql-row-actions > button {
+    flex-basis: 48px;
+    width: 48px;
+    height: auto;
+    min-height: 0;
+  }
+  .configuration-workspace .dashboard-jql .jql-alert-list-placeholder {
+    flex-basis: 48px;
+    width: 48px;
+  }
   .configuration-workspace .dashboard-jql .jql-sync-footer { align-items: stretch; flex-direction: column; }
   .configuration-workspace .dashboard-jql .settings-actions,
   .configuration-workspace .dashboard-jql .settings-actions button { width: 100%; min-width: 0; }
@@ -2302,6 +2554,7 @@ h1 {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
   font-size: 0.88rem;
   font-weight: 700;
+  white-space: pre-line;
 }
 
 .ui-toast-error {
@@ -2425,6 +2678,7 @@ h1 {
   color: #f2f5ff;
   font-weight: 700;
   line-height: 1.4;
+  white-space: pre-line;
   overflow-wrap: anywhere;
 }
 
@@ -3379,8 +3633,8 @@ h1 {
 .configuration-workspace[data-section="grids"] .dashboard-grids {
   display: block;
   width: 100%;
-  max-width: 1080px;
-  padding: 24px;
+  max-width: none;
+  padding: 30px;
   container-type: inline-size;
   border-color: rgba(123, 143, 229, .28);
   border-radius: 15px;
@@ -3450,9 +3704,10 @@ h1 {
 
 .configuration-workspace .dashboard-grids .grid-configured-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-column: auto;
-  gap: 12px;
-  margin-top: 20px;
+  gap: 24px;
+  margin-top: 28px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -3460,6 +3715,7 @@ h1 {
 }
 
 .configuration-workspace .dashboard-grids .grid-configured-row {
+  position: relative;
   display: grid;
   gap: 0;
   border: 1px solid rgba(119, 139, 225, .25);
@@ -3470,18 +3726,43 @@ h1 {
 }
 
 .configuration-workspace .dashboard-grids .grid-configured-row.is-expanded {
+  grid-column: 1 / -1;
   border-color: rgba(139, 155, 255, .68);
   background: rgba(7, 14, 35, .66);
   box-shadow: 0 0 0 1px rgba(120, 138, 235, .08), 0 12px 30px rgba(0, 0, 0, .14);
 }
 
+.configuration-workspace .dashboard-grids .grid-editor-heading {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  padding: 16px 24px 12px;
+  border-bottom: 1px solid rgba(121, 141, 224, .2);
+  background: linear-gradient(90deg, rgba(54, 68, 139, .12), rgba(20, 31, 69, .04));
+}
+
+.configuration-workspace .dashboard-grids .grid-editor-title {
+  min-width: 0;
+  color: #eef1ff;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .configuration-workspace .dashboard-grids .grid-configured-name {
   display: grid;
-  grid-template-columns: 40px minmax(150px, 1fr) auto minmax(180px, auto) 24px;
-  min-height: 64px;
+  grid-template-areas:
+    "icon"
+    "title"
+    "visibility"
+    "meta";
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 390px;
   align-items: center;
-  gap: 13px;
-  padding: 11px 16px;
+  justify-items: center;
+  gap: 18px;
+  padding: 38px 28px 30px;
   border: 0;
   border-radius: 11px;
   background: linear-gradient(90deg, rgba(54, 68, 139, .12), rgba(20, 31, 69, .04));
@@ -3493,42 +3774,53 @@ h1 {
 }
 
 .configuration-workspace .dashboard-grids .grid-new-summary {
-  grid-template-columns: 40px minmax(150px, 1fr) auto 24px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .configuration-workspace .dashboard-grids .grid-summary-icon {
+  grid-area: icon;
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 126px;
+  height: 126px;
   place-items: center;
   border: 1px solid rgba(134, 151, 238, .3);
-  border-radius: 9px;
+  border-radius: 20px;
   background: rgba(90, 108, 203, .13);
   color: #aab7ff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 12px 26px rgba(39, 58, 132, .12);
 }
 
 .configuration-workspace .dashboard-grids .grid-summary-icon .line-icon {
-  width: 20px;
-  height: 20px;
+  width: 66px;
+  height: 66px;
 }
 
 .configuration-workspace .dashboard-grids .grid-summary-title {
+  grid-area: title;
   min-width: 0;
-  overflow: hidden;
   color: #f1f3ff;
-  font-size: .95rem;
+  font-size: 1.5rem;
   font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.16;
+  overflow: visible;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .configuration-workspace .dashboard-grids .grid-summary-meta {
+  grid-area: meta;
+  width: min(100%, 360px);
+  padding-top: 22px;
+  border-top: 1px solid rgba(121, 141, 224, .2);
   color: #9da8cf;
-  font-size: .8rem;
+  font-size: 1rem;
+  text-align: center;
   white-space: nowrap;
 }
 
 .configuration-workspace .dashboard-grids .grid-visibility-status {
+  grid-area: visibility;
   display: inline-flex;
   min-height: 26px;
   align-items: center;
@@ -3549,6 +3841,9 @@ h1 {
 }
 
 .configuration-workspace .dashboard-grids .grid-accordion-chevron {
+  position: absolute;
+  top: 22px;
+  right: 24px;
   display: grid;
   width: 24px;
   height: 24px;
@@ -3566,6 +3861,16 @@ h1 {
   height: 18px;
 }
 
+@media (max-width: 800px) {
+  .configuration-workspace[data-section="grids"] .dashboard-grids {
+    padding: 20px;
+  }
+
+  .configuration-workspace .dashboard-grids .grid-configured-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .configuration-workspace .dashboard-grids .grid-builder-form {
   display: grid;
   grid-column: auto;
@@ -3577,6 +3882,10 @@ h1 {
   border-radius: 0;
   background: transparent;
   animation: grid-accordion-open .2s ease-out both;
+}
+
+.configuration-workspace .dashboard-grids .grid-editor-heading + .grid-builder-form {
+  border-top: 0;
 }
 
 @keyframes grid-accordion-open {
@@ -3654,7 +3963,7 @@ h1 {
 }
 
 .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row {
-  grid-template-columns: 40px repeat(4, minmax(120px, 1fr)) 42px;
+  grid-template-columns: 40px repeat(4, minmax(120px, 1fr)) 64px 42px;
   gap: 9px;
   padding-left: 45px;
 }
@@ -3708,7 +4017,22 @@ h1 {
 }
 
 .configuration-workspace .dashboard-grids .grid-condition-connector {
-  margin: 0 auto;
+  width: 64px;
+  min-width: 0;
+  min-height: 36px;
+  margin: 0;
+  padding: 6px 18px 6px 8px;
+  border-color: rgba(142, 162, 255, .3);
+  border-radius: 8px;
+  background: rgba(4, 10, 25, .58);
+  color: #f2f5ff;
+  text-align: center;
+}
+
+.configuration-workspace .dashboard-grids .grid-condition-connector-spacer {
+  display: block;
+  width: 64px;
+  min-width: 0;
 }
 
 .configuration-workspace .dashboard-grids .grid-form-actions {
@@ -3765,7 +4089,7 @@ h1 {
   }
 
   .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row {
-    grid-template-columns: 40px repeat(2, minmax(140px, 1fr)) 42px;
+    grid-template-columns: 40px repeat(2, minmax(140px, 1fr)) 64px 42px;
   }
 
   .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row > .grid-row-number {
@@ -3773,9 +4097,16 @@ h1 {
   }
 
   .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row > .jql-delete {
-    grid-column: 4;
+    grid-column: 5;
     grid-row: 1 / 3;
     height: 100%;
+  }
+
+  .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row > .grid-condition-connector,
+  .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row > .grid-condition-connector-spacer {
+    grid-column: 4;
+    grid-row: 1 / 3;
+    align-self: center;
   }
 }
 
@@ -3786,9 +4117,11 @@ h1 {
   }
 
   .configuration-workspace .dashboard-grids .grid-new-button { width: 100%; }
-  .configuration-workspace .dashboard-grids .grid-summary-meta { display: none; }
-  .configuration-workspace .dashboard-grids .grid-configured-name { grid-template-columns: 40px minmax(0, 1fr) auto 24px; }
-  .configuration-workspace .dashboard-grids .grid-new-summary { grid-template-columns: 40px minmax(0, 1fr) auto 24px; }
+  .configuration-workspace .dashboard-grids .grid-configured-name,
+  .configuration-workspace .dashboard-grids .grid-new-summary {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 300px;
+  }
 
   .configuration-workspace .dashboard-grids .grid-general-fields {
     grid-template-columns: 1fr 1fr;
@@ -3812,7 +4145,10 @@ h1 {
   .configuration-workspace .dashboard-grids .grid-configured-name { gap: 9px; padding-right: 11px; padding-left: 11px; }
   .configuration-workspace .dashboard-grids .grid-visibility-status { display: none; }
   .configuration-workspace .dashboard-grids .grid-configured-name,
-  .configuration-workspace .dashboard-grids .grid-new-summary { grid-template-columns: 36px minmax(0, 1fr) 24px; }
+  .configuration-workspace .dashboard-grids .grid-new-summary {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 270px;
+  }
   .configuration-workspace .dashboard-grids .grid-general-fields,
   .configuration-workspace .dashboard-grids .grid-fields-section .grid-builder-row,
   .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row { padding-left: 0; }
@@ -4048,6 +4384,112 @@ h1 {
   font-weight: 400;
   line-height: inherit;
   text-shadow: none;
+}
+
+/* Compact visualization for the virtual grid attribute "Tiempos reportados". */
+.project-grid .grid-issue-cell-content {
+  display: block;
+  min-width: 0;
+}
+
+.project-grid .grid-issue-cell-content.has-reported-times {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.project-grid .grid-issue-cell-details {
+  min-width: 0;
+  /* Keep the time indicator next to this content instead of at the cell edge. */
+  flex: 0 1 360px;
+  max-width: 100%;
+}
+
+.project-grid .grid-issue-cell-details:empty {
+  display: none;
+}
+
+.reported-times-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 1 190px;
+  margin: 0;
+}
+
+.reported-times-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 176px;
+  padding: 6px 8px;
+  border: 1px solid rgba(104, 226, 175, .25);
+  border-radius: 10px;
+  background: rgba(28, 93, 73, .12);
+}
+
+.reported-times-ring {
+  --reported-time-color: #5cdda1;
+  position: relative;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--reported-time-color) var(--reported-time-progress), rgba(132, 148, 207, .17) 0);
+}
+
+.reported-times-card.is-overdue {
+  border-color: rgba(255, 124, 135, .38);
+  background: rgba(139, 49, 62, .14);
+}
+
+.reported-times-card.is-overdue .reported-times-ring {
+  --reported-time-color: #ff7c87;
+}
+
+.reported-times-ring::after {
+  position: absolute;
+  inset: 5px;
+  border-radius: inherit;
+  background: #111931;
+  content: '';
+}
+
+.reported-times-ring > span {
+  position: relative;
+  z-index: 1;
+  color: #eaf0ff;
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.reported-times-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: #aeb9dd;
+  font-size: .74rem;
+  line-height: 1.2;
+}
+
+.reported-times-copy b {
+  color: #e7ecff;
+  font-weight: 650;
+}
+
+.reported-times-copy .is-negative-time b {
+  color: #ff7c87;
+}
+
+@media (max-width: 760px) {
+  .reported-times-list {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
 }
 
 /* Automatic synchronization belongs with the live status controls. */
@@ -4476,7 +4918,7 @@ h1 {
 }
 
 /* Common action-button geometry across configuration sections. */
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button) {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name) {
   display: inline-flex !important;
   min-height: 46px !important;
   align-items: center !important;
@@ -4491,11 +4933,11 @@ h1 {
   transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):hover:not(:disabled) {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):focus-visible {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
@@ -4576,7 +5018,7 @@ h1 {
 }
 
 /* Final button system: every interface button shares this geometry and an explicit color variant. */
-.configuration-workspace button {
+.configuration-workspace button:not(.grid-configured-name) {
   display: inline-flex !important;
   min-height: 46px !important;
   align-items: center !important;
@@ -4593,25 +5035,25 @@ h1 {
   line-height: 1.1 !important;
 }
 
-.configuration-workspace button:hover:not(:disabled) {
+.configuration-workspace button:not(.grid-configured-name):hover:not(:disabled) {
   border-color: rgba(174, 184, 255, .9) !important;
   background: rgba(25, 36, 72, .78) !important;
   color: #eef1ff !important;
   transform: translateY(-1px);
 }
 
-.configuration-workspace button:focus-visible {
+.configuration-workspace button:not(.grid-configured-name):focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
 
-.configuration-workspace button:disabled {
+.configuration-workspace button:not(.grid-configured-name):disabled {
   opacity: .5;
   cursor: not-allowed;
 }
 
 /* Keep dynamic button labels inside their available space. */
-.configuration-workspace button {
+.configuration-workspace button:not(.grid-configured-name) {
   min-width: 0 !important;
   max-width: 100%;
   height: auto !important;
@@ -4745,6 +5187,7 @@ h1 {
 
 .configuration-workspace .dashboard-alert .jql-add,
 .configuration-workspace .dashboard-alert .alert-message-insert button,
+.configuration-workspace .dashboard-grids .jql-add,
 .configuration-workspace .dashboard-card .unified-add-button {
   border-color: #7dd3fc !important;
   background: rgba(13, 22, 47, .62) !important;
@@ -4753,6 +5196,7 @@ h1 {
 
 .configuration-workspace .dashboard-alert .jql-add:hover:not(:disabled),
 .configuration-workspace .dashboard-alert .alert-message-insert button:hover:not(:disabled),
+.configuration-workspace .dashboard-grids .jql-add:hover:not(:disabled),
 .configuration-workspace .dashboard-card .unified-add-button:hover:not(:disabled) {
   border-color: #a4e6ff !important;
   background: rgba(25, 36, 72, .78) !important;
@@ -4765,6 +5209,531 @@ h1 {
 }
 
 /* Database reset uses an amber warning color without a colored background. */
+.configuration-workspace .dashboard-sql .action-database-reset {
+  border-color: #f2c56b !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #f4cf83 !important;
+}
+
+.configuration-workspace .dashboard-sql .action-database-reset:hover:not(:disabled) {
+  border-color: #ffe09b !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #ffe5ad !important;
+}
+
+/* Canonical action palette. This stays last so shared button rules cannot mute an action. */
+.configuration-workspace .status-summary-card .actions > button,
+.configuration-workspace .settings-actions > button,
+.configuration-workspace .alert-form-actions > button,
+.configuration-workspace .grid-form-actions > button {
+  min-height: 48px !important;
+  padding: 9px 14px !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-radius: 10px !important;
+  font-size: .78rem !important;
+  font-weight: 800 !important;
+  line-height: 1.15 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 8px 18px rgba(3, 8, 25, .2) !important;
+}
+
+.configuration-workspace .status-summary-card .actions-ready {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.configuration-workspace .status-summary-card .actions-with-login {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.configuration-workspace .status-summary-card .actions > button > span,
+.configuration-workspace .settings-actions > button > span {
+  min-width: 0;
+}
+
+/* Primary execution actions. */
+.configuration-workspace .dashboard-status .sync-button,
+.configuration-workspace .dashboard-sql .sql-execute-button {
+  border-color: #8295ff !important;
+  background: linear-gradient(180deg, rgba(93, 112, 237, .34), rgba(47, 63, 173, .2)) !important;
+  color: #d7ddff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 0 18px rgba(89, 108, 242, .14) !important;
+}
+
+.configuration-workspace .dashboard-status .sync-button.is-syncing {
+  border-color: #61e89a !important;
+  background: linear-gradient(180deg, rgba(57, 206, 123, .42), rgba(21, 125, 73, .3)) !important;
+  color: #eafff1 !important;
+  animation: action-sync-pulse 1.45s ease-in-out infinite;
+}
+
+@keyframes action-sync-pulse {
+  50% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 0 23px rgba(77, 238, 143, .36) !important; }
+}
+
+/* Persisting data is always green. */
+.configuration-workspace .save-action-button,
+.configuration-workspace .alert-save-button,
+.configuration-workspace .dashboard-alert .settings-actions > button {
+  border-color: #57dd91 !important;
+  background: linear-gradient(180deg, rgba(45, 172, 96, .34), rgba(22, 103, 61, .22)) !important;
+  color: #a5f6c6 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 17px rgba(70, 218, 127, .12) !important;
+}
+
+/* Cancel is deliberately orange across grid and alert forms. */
+.configuration-workspace .grid-cancel-button,
+.configuration-workspace .alert-cancel-button {
+  border-color: #f1aa52 !important;
+  background: linear-gradient(180deg, rgba(193, 115, 40, .28), rgba(106, 57, 19, .18)) !important;
+  color: #ffd193 !important;
+}
+
+/* Destructive and stop actions remain visibly red. */
+.configuration-workspace .action-shutdown,
+.configuration-workspace .action-login,
+.configuration-workspace .alert-condition-delete,
+.configuration-workspace .jql-delete,
+.configuration-workspace .sql-query-delete,
+.configuration-workspace .alert-delete-rule,
+.configuration-workspace .alert-image-preview button,
+.configuration-workspace .dashboard-toast button,
+.configuration-workspace .grid-delete-button,
+.configuration-workspace .danger-button {
+  border-color: #ff5d79 !important;
+  background: linear-gradient(180deg, rgba(184, 46, 78, .3), rgba(96, 20, 43, .19)) !important;
+  color: #ff9daf !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 0 16px rgba(255, 79, 117, .12) !important;
+}
+
+/* JQL icon actions retain their purpose even after the global button baseline. */
+.configuration-workspace .dashboard-jql .jql-row-actions > button {
+  width: 58px !important;
+  min-width: 58px !important;
+  min-height: 58px !important;
+  height: 58px !important;
+  padding: 0 !important;
+}
+
+.configuration-workspace .dashboard-jql .jql-delete {
+  border-color: #ff5d79 !important;
+  background: linear-gradient(180deg, rgba(184, 46, 78, .3), rgba(96, 20, 43, .19)) !important;
+  color: #ff9daf !important;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-add {
+  border-color: #a67cff !important;
+  background: linear-gradient(180deg, rgba(108, 72, 190, .27), rgba(49, 30, 100, .18)) !important;
+  color: #d9c5ff !important;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-add > span {
+  color: #61f59a !important;
+  text-shadow: 0 0 10px rgba(97, 245, 154, .7);
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-list {
+  border-color: #54bdf0 !important;
+  background: linear-gradient(180deg, rgba(40, 130, 197, .28), rgba(19, 63, 107, .18)) !important;
+  color: #a9e8ff !important;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-list > span {
+  background: #7fd9ff !important;
+  color: #06243a !important;
+}
+
+/* The read check is an affirmative action, never a neutral outline. */
+.configuration-workspace .alerts-read-button,
+.configuration-workspace .header-alert-read-button {
+  border-color: #58ec92 !important;
+  background: linear-gradient(180deg, #68f4a0, #39d979) !important;
+  color: #062817 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 15px rgba(75, 234, 141, .22) !important;
+}
+
+.configuration-workspace .alerts-read-button:hover:not(:disabled),
+.configuration-workspace .header-alert-read-button:hover:not(:disabled) {
+  border-color: #9bffc1 !important;
+  background: linear-gradient(180deg, #8affb7, #4ee888) !important;
+  color: #062817 !important;
+}
+
+/* New, add and secondary data actions have their own readable accent. */
+.configuration-workspace .alert-new-rule-button,
+.configuration-workspace .dashboard-grids .grid-new-button {
+  border-color: #c09bff !important;
+  background: linear-gradient(180deg, rgba(143, 96, 223, .3), rgba(71, 41, 129, .18)) !important;
+  color: #e0cfff !important;
+}
+
+.configuration-workspace .dashboard-card .unified-add-button,
+.configuration-workspace .dashboard-alert .jql-add,
+.configuration-workspace .dashboard-alert .alert-message-insert button,
+.configuration-workspace .dashboard-grids .jql-add,
+.configuration-workspace .sql-query-add {
+  border-color: #60ccf6 !important;
+  background: linear-gradient(180deg, rgba(48, 151, 199, .24), rgba(22, 68, 107, .16)) !important;
+  color: #a9e8ff !important;
+}
+
+.configuration-workspace .dashboard-sql .action-database-reset {
+  border-color: #f2bf64 !important;
+  background: linear-gradient(180deg, rgba(181, 123, 35, .28), rgba(100, 62, 16, .18)) !important;
+  color: #ffda8c !important;
+}
+
+.configuration-workspace .status-summary-card .actions > button:hover:not(:disabled),
+.configuration-workspace .settings-actions > button:hover:not(:disabled),
+.configuration-workspace .alert-form-actions > button:hover:not(:disabled),
+.configuration-workspace .grid-form-actions > button:hover:not(:disabled) {
+  filter: brightness(1.16);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .configuration-workspace .dashboard-status .sync-button.is-syncing { animation: none; }
+}
+
+/* Higher specificity intentionally protects semantic colors from legacy shared rules below. */
+body .configuration-workspace .dashboard-status .sync-button,
+body .configuration-workspace .dashboard-sql .sql-execute-button {
+  border-color: #8295ff !important;
+  background: linear-gradient(180deg, rgba(93, 112, 237, .34), rgba(47, 63, 173, .2)) !important;
+  color: #d7ddff !important;
+}
+
+body .configuration-workspace .dashboard-status .sync-button.is-syncing {
+  border-color: #61e89a !important;
+  background: linear-gradient(180deg, rgba(57, 206, 123, .42), rgba(21, 125, 73, .3)) !important;
+  color: #eafff1 !important;
+}
+
+body .configuration-workspace .save-action-button,
+body .configuration-workspace .alert-save-button,
+body .configuration-workspace .dashboard-alert .settings-actions > button {
+  border-color: #57dd91 !important;
+  background: linear-gradient(180deg, rgba(45, 172, 96, .34), rgba(22, 103, 61, .22)) !important;
+  color: #a5f6c6 !important;
+}
+
+body .configuration-workspace .dashboard-grids .grid-cancel-button,
+body .configuration-workspace .dashboard-alert .alert-cancel-button {
+  border-color: #f1aa52 !important;
+  background: linear-gradient(180deg, rgba(193, 115, 40, .28), rgba(106, 57, 19, .18)) !important;
+  color: #ffd193 !important;
+}
+
+body .configuration-workspace .action-shutdown,
+body .configuration-workspace .action-login,
+body .configuration-workspace .alert-condition-delete,
+body .configuration-workspace .jql-delete,
+body .configuration-workspace .sql-query-delete,
+body .configuration-workspace .alert-delete-rule,
+body .configuration-workspace .alert-image-preview button,
+body .configuration-workspace .dashboard-toast button,
+body .configuration-workspace .grid-delete-button,
+body .configuration-workspace .danger-button {
+  border-color: #ff5d79 !important;
+  background: linear-gradient(180deg, rgba(184, 46, 78, .3), rgba(96, 20, 43, .19)) !important;
+  color: #ff9daf !important;
+}
+
+body .configuration-workspace .dashboard-jql .jql-alert-add {
+  border-color: #a67cff !important;
+  background: linear-gradient(180deg, rgba(108, 72, 190, .27), rgba(49, 30, 100, .18)) !important;
+  color: #d9c5ff !important;
+}
+
+body .configuration-workspace .dashboard-jql .jql-alert-add > span {
+  color: #61f59a !important;
+}
+
+body .configuration-workspace .dashboard-jql .jql-alert-list {
+  border-color: #54bdf0 !important;
+  background: linear-gradient(180deg, rgba(40, 130, 197, .28), rgba(19, 63, 107, .18)) !important;
+  color: #a9e8ff !important;
+}
+
+body .configuration-workspace .dashboard-jql .jql-alert-list > span {
+  background: #7fd9ff !important;
+  color: #06243a !important;
+}
+
+body .configuration-workspace .dashboard-status .alerts-read-button,
+body .configuration-workspace .header-alert-read-button {
+  border-color: #58ec92 !important;
+  background: linear-gradient(180deg, #68f4a0, #39d979) !important;
+  color: #062817 !important;
+}
+
+body .configuration-workspace .alert-new-rule-button,
+body .configuration-workspace .dashboard-grids .grid-new-button {
+  border-color: #c09bff !important;
+  background: linear-gradient(180deg, rgba(143, 96, 223, .3), rgba(71, 41, 129, .18)) !important;
+  color: #e0cfff !important;
+}
+
+body .configuration-workspace .dashboard-card .unified-add-button,
+body .configuration-workspace .dashboard-alert .jql-add,
+body .configuration-workspace .dashboard-alert .alert-message-insert button,
+body .configuration-workspace .dashboard-grids .jql-add,
+body .configuration-workspace .sql-query-add {
+  border-color: #60ccf6 !important;
+  background: linear-gradient(180deg, rgba(48, 151, 199, .24), rgba(22, 68, 107, .16)) !important;
+  color: #a9e8ff !important;
+}
+
+body .configuration-workspace .dashboard-sql .action-database-reset {
+  border-color: #f2bf64 !important;
+  background: linear-gradient(180deg, rgba(181, 123, 35, .28), rgba(100, 62, 16, .18)) !important;
+  color: #ffda8c !important;
+}
+
+/* Grid form actions keep the same semantic colors as the other forms. */
+.dashboard-grids .grid-form-actions .save-action-button {
+  border-color: rgba(111, 239, 164, .78) !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #7fe8aa !important;
+}
+
+.dashboard-grids .grid-form-actions .save-action-button:hover:not(:disabled) {
+  border-color: #8af2b1 !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #a7f5c5 !important;
+}
+
+.dashboard-grids .grid-form-actions .secondary-button {
+  border-color: rgba(142, 162, 255, .48) !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #dce3ff !important;
+}
+
+.dashboard-grids .grid-form-actions .secondary-button:hover:not(:disabled) {
+  border-color: rgba(174, 184, 255, .9) !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #eef1ff !important;
+}
+
+.dashboard-grids .grid-form-actions .grid-delete-button {
+  border-color: rgba(255, 101, 124, .72) !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #ff91a3 !important;
+}
+
+.dashboard-grids .grid-form-actions .grid-delete-button:hover:not(:disabled) {
+  border-color: #ff9aaa !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #ffb4c0 !important;
+}
+
+.dashboard-grids .grid-form-actions > button {
+  flex: 1 1 0;
+  min-width: 0 !important;
+  min-height: 46px !important;
+}
+
+/* Final semantic palette: keep action colors visible after shared button rules. */
+.configuration-workspace .save-action-button,
+.configuration-workspace .alert-save-button,
+.configuration-workspace .alerts-read-button {
+  border-color: #6fefa4 !important;
+  color: #8af2b1 !important;
+}
+
+.configuration-workspace .action-shutdown,
+.configuration-workspace .action-login,
+.configuration-workspace .alert-condition-delete,
+.configuration-workspace .jql-delete,
+.configuration-workspace .sql-query-delete,
+.configuration-workspace .alert-delete-rule,
+.configuration-workspace .grid-delete-button,
+.configuration-workspace .danger-button {
+  border-color: #ff657c !important;
+  color: #ff91a3 !important;
+}
+
+.configuration-workspace .alert-new-rule-button,
+.configuration-workspace .dashboard-grids .grid-new-button {
+  border-color: #c09bff !important;
+  color: #d6baff !important;
+}
+
+.configuration-workspace .dashboard-card .unified-add-button,
+.configuration-workspace .dashboard-alert .jql-add,
+.configuration-workspace .dashboard-alert .alert-message-insert button,
+.configuration-workspace .dashboard-grids .jql-add {
+  border-color: #7dd3fc !important;
+  color: #8fddff !important;
+}
+
+.configuration-workspace .dashboard-sql .action-database-reset {
+  border-color: #f2c56b !important;
+  color: #f4cf83 !important;
+}
+
+.configuration-workspace .grid-cancel-button,
+.configuration-workspace .alert-cancel-button {
+  border-color: #f2b56b !important;
+  color: #ffd08c !important;
+}
+
+.configuration-workspace .grid-cancel-button:hover:not(:disabled),
+.configuration-workspace .alert-cancel-button:hover:not(:disabled) {
+  border-color: #ffd08c !important;
+  color: #ffe0ae !important;
+}
+
+.configuration-workspace .dashboard-status .sync-button,
+.configuration-workspace .primary-button,
+.configuration-workspace .secondary-button,
+.configuration-workspace .grid-tab-heading > button {
+  border-color: #9daaff !important;
+  color: #c4ccff !important;
+}
+
+/* Alerts are configured only inside their owning JQL. */
+.configuration-workspace .dashboard-alert:not(.dashboard-jql) {
+  display: none !important;
+}
+
+/* Keep all five condition controls aligned in the nested JQL form. */
+.configuration-workspace .dashboard-jql.dashboard-alert .condition-row {
+  display: grid;
+  grid-template-columns: 34px minmax(180px, 1.25fr) minmax(150px, 1fr) minmax(135px, .8fr) minmax(180px, 1fr) 46px;
+  align-items: center;
+  gap: 10px;
+}
+
+@media (max-width: 1100px) {
+  .configuration-workspace .dashboard-jql.dashboard-alert .condition-row {
+    grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr) 46px;
+  }
+
+  .configuration-workspace .dashboard-jql.dashboard-alert .condition-row > :nth-child(4),
+  .configuration-workspace .dashboard-jql.dashboard-alert .condition-row > :nth-child(5) {
+    grid-column: span 1;
+  }
+}
+
+/* Final action palette: keep every configuration section visibly consistent. */
+.configuration-workspace .dashboard-status .sync-button,
+.configuration-workspace .dashboard-sql .settings-actions > button:not(.action-database-reset),
+.configuration-workspace .dashboard-jql .jql-alert-list,
+.configuration-workspace .dashboard-grids .grid-tab-heading > button,
+.configuration-workspace .primary-button {
+  border-color: #9daaff !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #c4ccff !important;
+}
+
+.configuration-workspace .dashboard-status .sync-button:hover:not(:disabled),
+.configuration-workspace .dashboard-sql .settings-actions > button:not(.action-database-reset):hover:not(:disabled),
+.configuration-workspace .dashboard-jql .jql-alert-list:hover:not(:disabled),
+.configuration-workspace .dashboard-grids .grid-tab-heading > button:hover:not(:disabled),
+.configuration-workspace .primary-button:hover:not(:disabled) {
+  border-color: #b6c0ff !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #eef1ff !important;
+}
+
+.configuration-workspace .save-action-button,
+.configuration-workspace .alert-save-button,
+.configuration-workspace .alerts-read-button,
+.configuration-workspace .dashboard-alert .settings-actions > button {
+  border-color: #6fefa4 !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #8af2b1 !important;
+}
+
+.configuration-workspace .save-action-button:hover:not(:disabled),
+.configuration-workspace .alert-save-button:hover:not(:disabled),
+.configuration-workspace .alerts-read-button:hover:not(:disabled),
+.configuration-workspace .dashboard-alert .settings-actions > button:hover:not(:disabled) {
+  border-color: #8af2b1 !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #c0ffd5 !important;
+}
+
+.configuration-workspace .action-shutdown,
+.configuration-workspace .action-login,
+.configuration-workspace .alert-condition-delete,
+.configuration-workspace .jql-delete,
+.configuration-workspace .sql-query-delete,
+.configuration-workspace .alert-delete-rule,
+.configuration-workspace .alert-image-preview button,
+.configuration-workspace .dashboard-toast button,
+.configuration-workspace .grid-delete-button,
+.configuration-workspace .danger-button {
+  border-color: #ff657c !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #ff91a3 !important;
+}
+
+.configuration-workspace .action-shutdown:hover:not(:disabled),
+.configuration-workspace .action-login:hover:not(:disabled),
+.configuration-workspace .alert-condition-delete:hover:not(:disabled),
+.configuration-workspace .jql-delete:hover:not(:disabled),
+.configuration-workspace .sql-query-delete:hover:not(:disabled),
+.configuration-workspace .alert-delete-rule:hover:not(:disabled),
+.configuration-workspace .alert-image-preview button:hover:not(:disabled),
+.configuration-workspace .dashboard-toast button:hover:not(:disabled),
+.configuration-workspace .grid-delete-button:hover:not(:disabled),
+.configuration-workspace .danger-button:hover:not(:disabled) {
+  border-color: #ff9aaa !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #ffb4c0 !important;
+}
+
+.configuration-workspace .grid-cancel-button,
+.configuration-workspace .alert-cancel-button {
+  border-color: #f2b56b !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #ffd08c !important;
+}
+
+.configuration-workspace .grid-cancel-button:hover:not(:disabled),
+.configuration-workspace .alert-cancel-button:hover:not(:disabled) {
+  border-color: #ffd08c !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #ffe0ae !important;
+}
+
+.configuration-workspace .alert-new-rule-button,
+.configuration-workspace .dashboard-grids .grid-new-button,
+.configuration-workspace .dashboard-jql .jql-alert-add {
+  border-color: #c09bff !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #d6baff !important;
+}
+
+.configuration-workspace .alert-new-rule-button:hover:not(:disabled),
+.configuration-workspace .dashboard-grids .grid-new-button:hover:not(:disabled),
+.configuration-workspace .dashboard-jql .jql-alert-add:hover:not(:disabled) {
+  border-color: #d5baff !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #eadcff !important;
+}
+
+.configuration-workspace .dashboard-card .unified-add-button,
+.configuration-workspace .dashboard-alert .jql-add,
+.configuration-workspace .dashboard-alert .alert-message-insert button,
+.configuration-workspace .dashboard-grids .jql-add {
+  border-color: #7dd3fc !important;
+  background: rgba(13, 22, 47, .62) !important;
+  color: #8fddff !important;
+}
+
+.configuration-workspace .dashboard-card .unified-add-button:hover:not(:disabled),
+.configuration-workspace .dashboard-alert .jql-add:hover:not(:disabled),
+.configuration-workspace .dashboard-alert .alert-message-insert button:hover:not(:disabled),
+.configuration-workspace .dashboard-grids .jql-add:hover:not(:disabled) {
+  border-color: #a4e6ff !important;
+  background: rgba(25, 36, 72, .78) !important;
+  color: #c6f1ff !important;
+}
+
 .configuration-workspace .dashboard-sql .action-database-reset {
   border-color: #f2c56b !important;
   background: rgba(13, 22, 47, .62) !important;

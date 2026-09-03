@@ -30,14 +30,14 @@ La aplicacion lee:
 - `app.json`: parametros generales;
 - `graph.json`: reglas para recorrer incidencias y formar ProjectGroups;
 - `projectgroup_rules.json`: reglas para calcular campos del ProjectGroup;
-- reglas SQL de alertas guardadas en DuckDB;
-- consultas JQL guardadas en la configuracion local de la app.
+- consultas JQL y sus alertas asociadas, guardadas en DuckDB;
+- una copia de las consultas JQL en `app.json` para compatibilidad de arranque.
 
 ### 4. Como obtiene datos de Jira
 
 La aplicacion consulta Jira por REST usando `POST /rest/api/3/search/jql` y lotes de incidencias con `POST /rest/api/3/issue/bulkfetch`.
 
-El usuario puede configurar uno o varios JQL desde la interfaz. Cada consulta puede ocupar varias lineas; las consultas se separan en bloques. Se guardan en `config/app.json` y se ejecutan en cada sincronizacion.
+El usuario puede configurar uno o varios JQL desde la interfaz. Cada consulta puede ocupar varias lineas, tiene un identificador estable y puede contener varias alertas. Las definiciones se guardan en DuckDB y se reflejan en `config/app.json`.
 Las consultas JQL devuelven incidencias iniciales.
 Cada incidencia es solo un punto de partida.
 
@@ -131,15 +131,18 @@ Esto permite crear reglas de negocio complejas sobre datos ya normalizados.
 
 ### 8. Como funcionan las alertas
 
-El usuario puede crear una alerta desde un constructor visual seleccionando evento, campo, operador y valor. La app genera el SQL internamente para las reglas comunes.
+Cada alerta pertenece a una consulta JQL y se configura dentro de su bloque. Un JQL puede tener varias alertas y cada una se evalua y notifica de forma independiente.
 
-El usuario crea reglas SQL.
+Eventos disponibles:
 
-Cuando una regla devuelve filas, cada fila representa una alerta posible.
+- `Nueva incidencia`: se genera cuando la incidencia y su ProjectGroup no existian antes en la BD y ahora llegan por ese JQL.
+- `Cambio de atributo`: se genera cuando la incidencia y su ProjectGroup ya estaban asociados al mismo JQL y la expresion configurada cambia de falsa a verdadera.
 
-Antes de crear una alerta nueva, la aplicacion verifica si ya existe una alerta no leida para la misma regla e incidencia.
+Las condiciones de cambio pueden consultar cualquier tipo de incidencia y atributo del ProjectGroup, incluido `Estado General`, y combinarse con `AND` u `OR`.
 
-Si ya existe, no la duplica.
+Una incidencia fisica se guarda una sola vez, aunque pueda provenir de varios JQL. La relacion entre JQL, incidencia raiz y ProjectGroup se conserva para evaluar cada alerta solo con su origen.
+
+La identidad de cada ocurrencia incluye alerta, JQL, ProjectGroup e incidencia raiz. Si ya fue creada, incluso si esta leida, no vuelve a generarse con la misma informacion.
 
 Si no existe:
 
@@ -148,9 +151,9 @@ Si no existe:
 - la deja visible en la campana de notificaciones.
 
 Una incidencia puede disparar varias reglas.
-Cada regla puede mostrar su propio Toast.
-La misma incidencia no se notifica dos veces dentro de la misma regla.
-Reglas distintas si pueden generar alertas distintas para la misma incidencia.
+Cada alerta puede mostrar su propio Toast.
+Alertas distintas si pueden generar Toast distintos para la misma incidencia.
+Cada alerta define si esta activa y cada cuantos minutos reenvia su Toast mientras siga no leida. `0` desactiva solo el reenvio de esa alerta.
 
 ### 9. Que pasa con los Toast
 
@@ -158,12 +161,12 @@ Cada Toast muestra:
 
 - una imagen configurada;
 - un texto configurado por el usuario;
-- valores tomados del resultado SQL.
+- opcionalmente, un atributo de un tipo de incidencia del ProjectGroup entre corchetes.
 
 Si el usuario hace clic:
 
 - la alerta se marca como leida;
-- se abre la incidencia en Jira con el navegador predeterminado.
+- no se abre Jira ni otra pestaña.
 
 Si el Toast informa inicio de sesion requerido y el usuario hace clic:
 
@@ -185,7 +188,7 @@ Cada sincronizacion:
 4. calcula campos derivados;
 5. compara contra lo guardado;
 6. actualiza la base local;
-7. ejecuta reglas SQL;
+7. evalua las alertas asociadas a cada JQL;
 8. genera alertas y Toasts.
 
 Los ProjectGroups avanzan en paralelo. Las incidencias pendientes se agrupan globalmente, se consultan una sola vez y se devuelven a todos los grupos que las solicitaron. Cada rama mantiene sus limites para no abrir otro grafo relacionado.
@@ -235,7 +238,7 @@ Desde ahi se podra:
 - iniciar una sincronizacion manual;
 - cancelar una sincronizacion;
 - administrar consultas JQL;
-- administrar reglas SQL;
+- administrar las alertas de cada JQL;
 - configurar parametros generales;
 - ver alertas pendientes.
 
@@ -276,11 +279,11 @@ No existe una pantalla para verlos.
 El usuario puede cambiar sin tocar el codigo:
 
 - consultas JQL;
-- reglas SQL;
+- alertas asociadas a cada JQL;
 - tiempo entre sincronizaciones;
 - activar o apagar la sincronizacion automatica;
 - tiempo de espera entre consultas;
-- numero de sincronizaciones para reenviar alertas no leidas;
+- minutos de reenvio de cada alerta no leida;
 - texto e imagen de cada alerta;
 - grafo de recorrido;
 - reglas para calcular el Estado General del ProjectGroup;

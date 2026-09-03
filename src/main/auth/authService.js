@@ -3,6 +3,7 @@ import path from 'node:path';
 import { chromium } from 'playwright-chromium';
 
 const VALIDATION_PATH = '/rest/api/3/myself';
+const CONTINUE_BUTTON_NAME = /^(continuar|continue)$/i;
 
 function log(message, details = '') {
   const suffix = details ? ` ${details}` : '';
@@ -255,8 +256,20 @@ export class AuthService {
       await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
       throwIfCanceled();
 
-      const continueButton = page.getByRole('button', { name: /^continuar$/i }).first();
-      const continueText = page.getByText(/^continuar$/i).first();
+      const activeCookies = await context.cookies(baseUrl);
+      const activeSession = await this.validateWithCookies(baseUrl, activeCookies);
+      if (activeSession.ok) {
+        await writeStorageState(await context.storageState());
+        await this.trace('info', 'Headless Jira session already valid; storage state saved', {
+          url: page.url(),
+        });
+        return activeSession;
+      }
+
+      // Atlassian renders this action in English in headless mode even when the
+      // visible browser translates it to Spanish.
+      const continueButton = page.getByRole('button', { name: CONTINUE_BUTTON_NAME }).first();
+      const continueText = page.getByText(CONTINUE_BUTTON_NAME, { exact: true }).first();
       const continueLocator = await waitForVisibleLocator(
         [continueButton, continueText],
         Math.min(timeoutMs, 10000),
@@ -268,11 +281,17 @@ export class AuthService {
 
       await this.trace('info', 'Headless login screen inspected', {
         url: page.url(),
+        title: await page.title().catch(() => ''),
         continueButtonVisible,
         continueTextVisible,
         emailFieldVisible,
         passwordFieldVisible,
       });
+
+      if (emailFieldVisible || passwordFieldVisible) {
+        await this.trace('info', 'Headless login requires credentials; waiting for explicit user login');
+        return null;
+      }
 
       if (!continueButtonVisible && !continueTextVisible) {
         await this.trace('info', 'Headless continuation button not found; using visible login');

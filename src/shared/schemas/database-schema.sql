@@ -48,12 +48,32 @@ CREATE TABLE IF NOT EXISTS JIRA_RELATIONSHIPS (
   created TEXT
 );
 
+CREATE TABLE IF NOT EXISTS JQL_DEFINITIONS (
+  id TEXT PRIMARY KEY,
+  query_text TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created TEXT NOT NULL,
+  updated TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS JQL_PROJECT_GROUPS (
+  jql_id TEXT NOT NULL,
+  project_group_id TEXT NOT NULL,
+  seed_issue_id TEXT NOT NULL,
+  created TEXT NOT NULL,
+  PRIMARY KEY (jql_id, project_group_id, seed_issue_id)
+);
+
 CREATE TABLE IF NOT EXISTS ALERT_RULES (
   id TEXT PRIMARY KEY,
+  jql_id TEXT,
+  alert_type TEXT,
   name TEXT NOT NULL,
   sql TEXT NOT NULL,
   toast_text TEXT,
   toast_image TEXT,
+  display_issue_type TEXT,
+  display_field TEXT,
   condition_config TEXT,
   retry_syncs INTEGER NOT NULL DEFAULT 0,
   retry_minutes INTEGER NOT NULL DEFAULT 0,
@@ -64,6 +84,7 @@ CREATE TABLE IF NOT EXISTS ALERT_RULES (
 
 CREATE TABLE IF NOT EXISTS ALERTS (
   id TEXT PRIMARY KEY,
+  identity_key TEXT,
   rule_id TEXT NOT NULL,
   issue_id TEXT NOT NULL,
   project_group_id TEXT,

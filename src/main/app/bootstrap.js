@@ -18,6 +18,11 @@ export async function bootstrapApp() {
   });
 
   await logs.initialize();
+  const schema = await persistence.initialize();
+  const jqlDefinitions = await persistence.jqlDefinitions.ensureFromQueries(
+    configuration.app.jqlQueries,
+  );
+  configuration.app.jqlQueries = jqlDefinitions.map((definition) => definition.query_text);
 
   const auth = new AuthService(configuration, { logs });
 
@@ -52,7 +57,6 @@ export async function bootstrapApp() {
     logs,
   });
 
-  const schema = await persistence.initialize();
   const syncStatus = await persistence.syncStatus.getCurrent();
   const syncService = new SyncService({
     persistence,
@@ -73,6 +77,7 @@ export async function bootstrapApp() {
     jira,
     jiraCatalog,
     jiraCatalogService,
+    jqlDefinitions,
     graph,
     alerts,
     toast,

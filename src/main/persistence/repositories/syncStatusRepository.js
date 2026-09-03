@@ -87,4 +87,31 @@ export class SyncStatusRepository {
       ],
     );
   }
+
+  async recoverInterruptedState(recoveredAt = new Date().toISOString()) {
+    const current = await this.getCurrent();
+    const wasRunning = Boolean(Number(current?.is_running));
+    const wasCanceling = Boolean(Number(current?.is_canceling));
+
+    if (!wasRunning && !wasCanceling) {
+      return { recovered: false, status: current };
+    }
+
+    await this.updateStatus({
+      last_status: wasCanceling
+        ? 'Sincronizacion detenida.'
+        : 'Sincronizacion anterior interrumpida.',
+      last_finished_at: recoveredAt,
+      last_error_message: wasCanceling
+        ? null
+        : 'El proceso anterior no finalizo correctamente.',
+      is_running: false,
+      is_canceling: false,
+    });
+
+    return {
+      recovered: true,
+      status: await this.getCurrent(),
+    };
+  }
 }

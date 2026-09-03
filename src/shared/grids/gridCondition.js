@@ -29,9 +29,9 @@ export function gridConditionMatches(value, operator, expected, field = null) {
 
   const left = normalizedText(value);
   const right = normalizedText(expected);
-  if (['assignee', 'reporter'].includes(field) && ['=', '<>'].includes(operator)) {
+  if (['assignee', 'reporter'].includes(field) && ['=', '<>', 'LIKE'].includes(operator)) {
     const matchesPerson = right.split(/\s+/).filter(Boolean).every((token) => left.includes(token));
-    return operator === '=' ? matchesPerson : !matchesPerson;
+    return operator === '<>' ? !matchesPerson : matchesPerson;
   }
   return operator === 'LIKE' ? left.includes(right) : operator === '<>' ? left !== right : left === right;
 }

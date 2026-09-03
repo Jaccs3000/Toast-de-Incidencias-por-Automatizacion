@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
+import { REPORTED_TIMES_FIELD } from '../shared/grids/reportedTimes.js';
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -98,6 +99,49 @@ function hasGridIssueDetailValue(field, value) {
 
 function isNegativeGridTimeRemaining(field, value) {
   return field === 'timeremaining' && Number.isFinite(Number(value)) && Number(value) < 0;
+}
+
+function formatReportedMinutes(value) {
+  const minutes = Math.abs(Number(value));
+  if (!Number.isFinite(minutes)) return '-';
+  const wholeMinutes = Math.round(minutes);
+  const hours = Math.floor(wholeMinutes / 60);
+  const remainingMinutes = wholeMinutes % 60;
+  const formatted = hours > 0
+    ? `${hours}h${remainingMinutes > 0 ? ` ${remainingMinutes}m` : ''}`
+    : `${remainingMinutes}m`;
+  return Number(value) < 0 ? `-${formatted}` : formatted;
+}
+
+function ReportedTimesValue({ entries = [] }) {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+
+  return (
+    <div className={`reported-times-list${entries.length > 1 ? ' has-multiple' : ''}`}>
+      {entries.map((entry) => {
+        const planned = Math.max(0, Number(entry?.timeestimate) || 0);
+        const spent = Math.max(0, Number(entry?.timespent) || 0);
+        const remaining = Number(entry?.timeremaining) || 0;
+        const percent = Math.max(0, Math.min(100, Math.round((spent / planned) * 100)));
+        const isOverdue = remaining < 0 || spent > planned;
+        return (
+          <div className={`reported-times-card${isOverdue ? ' is-overdue' : ''}`} key={entry?.key ?? `${planned}-${spent}-${remaining}`}>
+            <span
+              className="reported-times-ring"
+              style={{ '--reported-time-progress': `${percent}%` }}
+              title={`Planeado: ${formatReportedMinutes(planned)}. Tiempo empleado: ${formatReportedMinutes(spent)}. Restante: ${formatReportedMinutes(remaining)}.`}
+            >
+              <span>{percent}%</span>
+            </span>
+            <span className="reported-times-copy">
+              <span>Planeado: <b>{formatReportedMinutes(planned)}</b></span>
+              <span className={remaining < 0 ? 'is-negative-time' : ''}>Restante: <b>{formatReportedMinutes(remaining)}</b></span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function formatCountdown(nextSyncAt, now = Date.now()) {
@@ -489,6 +533,7 @@ function LineIcon({ name }) {
     refresh: <><path d="M20 11a8 8 0 0 0-14.8-4L3 10" /><path d="M3 5v5h5" /><path d="M4 13a8 8 0 0 0 14.8 4L21 14" /></>,
     search: <><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4 4" /></>,
     bell: <><path d="M18 10a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 22h4" /></>,
+    list: <><path d="M9 6h11M9 12h11M9 18h11" /><path d="M4 6h.01M4 12h.01M4 18h.01" /></>,
     settings: <><path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.03-.66-.07-.98l2.11-1.65-2-3.46-2.49 1a7.7 7.7 0 0 0-1.69-.98L15 3h-4l-.37 2.93c-.61.25-1.18.58-1.69.98l-2.49-1-2 3.46 2.11 1.65c-.04.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65 2 3.46 2.49-1c.51.4 1.08.73 1.69.98L11 21h4l.37-2.93c.61-.25 1.18-.58 1.69-.98l2.49 1 2-3.46-2.12-1.65Z" /><circle cx="12" cy="12" r="3.2" /></>,
     grid: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
     database: <><ellipse cx="12" cy="5" rx="7" ry="3" /><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5" /><path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7" /></>,
@@ -604,6 +649,9 @@ const alertMessageFields = {
   resolutiondate: 'Fecha de resolucion',
   timeremaining: 'Tiempo restante',
 };
+
+const JQL_SOURCE_ISSUE_OPTION = '__jql_source_issue__';
+const JQL_SOURCE_ISSUE_LABEL = 'Incidencia origen del JQL';
 
 function sqlText(value) {
   return `'${String(value ?? '').replaceAll("'", "''")}'`;
@@ -788,11 +836,12 @@ function SubtaskCountValue({ entries = [], isOpen = false }) {
 function getGridColumnMetrics(groupKey, columns) {
   const fields = columns.map((column) => column.field);
   const hasLongText = fields.some((field) => ['summary', 'description'].includes(field));
+  const hasReportedTimes = fields.includes(REPORTED_TIMES_FIELD);
   const isCompact = groupKey.startsWith('__other::')
     || fields.every((field) => ['key', 'status', 'timeestimate', 'timespent', 'timeremaining'].includes(field));
   return {
-    minimum: hasLongText ? 250 : isCompact ? 150 : fields.length >= 4 ? 220 : 180,
-    weight: hasLongText ? 1.8 : isCompact ? 0.75 : 1 + Math.max(0, fields.length - 1) * 0.18,
+    minimum: hasLongText ? 250 : hasReportedTimes ? 280 : isCompact ? 150 : fields.length >= 4 ? 220 : 180,
+    weight: hasLongText ? 1.8 : hasReportedTimes ? 1.35 : isCompact ? 0.75 : 1 + Math.max(0, fields.length - 1) * 0.18,
   };
 }
 
@@ -859,14 +908,17 @@ function buildAlertSql(alertForm) {
   return `SELECT c.issue_id, c.issue_key, c.project_group_id, c.change_type, c.changed_fields, c.after_json, c.before_json\nFROM SYNC_CHANGES c\nLEFT JOIN JIRA_PROJECT_GROUPS p ON p.id = c.project_group_id\nWHERE ${expressions.join('\n  AND ')}`;
 }
 
-function emptyAlertForm() {
+function emptyAlertForm(jqlId = null) {
   return {
     id: null,
+    jqlId,
     name: '',
-    event: 'created',
+    event: 'new_issue',
     retryMinutes: 0,
     conditions: [],
     toastText: '',
+    displayIssueType: '',
+    displayField: '',
     isActive: true,
   };
 }
@@ -934,13 +986,13 @@ export default function App() {
   const [shutdownRequested, setShutdownRequested] = useState(false);
   const [servicesStopped, setServicesStopped] = useState(false);
   const [jqlQueries, setJqlQueries] = useState([]);
+  const [jqlDefinitionIds, setJqlDefinitionIds] = useState([]);
+  const [expandedJqlId, setExpandedJqlId] = useState(null);
   const [jqlSaving, setJqlSaving] = useState(false);
   const [jqlMessage, setJqlMessage] = useState(null);
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
-  const [alertRetryEnabled, setAlertRetryEnabled] = useState(true);
-  const [alertRetrySaving, setAlertRetrySaving] = useState(false);
   const [syncIntervalMinutes, setSyncIntervalMinutes] = useState(5);
   const [databaseResetting, setDatabaseResetting] = useState(false);
   const [sqlQueries, setSqlQueries] = useState(['SELECT key, issuetype, status FROM JIRA_ISSUES LIMIT 20']);
@@ -971,14 +1023,13 @@ export default function App() {
   const queuedAlertIdsRef = useRef(new Set());
   const alertNotificationProcessingRef = useRef(false);
   const alertNotificationTimerRef = useRef(null);
-  const alertRetryEnabledRef = useRef(true);
   const alertsInitializedRef = useRef(false);
   const servicesStoppedRef = useRef(false);
   const jqlInitializedRef = useRef(false);
   const jqlDirtyRef = useRef(false);
+  const warnedJqlEditIdsRef = useRef(new Set());
   const syncIntervalDirtyRef = useRef(false);
   const autoSyncDirtyRef = useRef(false);
-  const alertRetryDirtyRef = useRef(false);
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
@@ -1029,6 +1080,7 @@ export default function App() {
     conditions: [],
   });
   const [gridData, setGridData] = useState(null);
+  const [gridRecordCounts, setGridRecordCounts] = useState({});
   const [gridLoading, setGridLoading] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [gridPage, setGridPage] = useState(1);
@@ -1044,6 +1096,10 @@ export default function App() {
   const [draggedGridAttribute, setDraggedGridAttribute] = useState(null);
 
   const syncStatus = bootstrapContext?.syncStatus ?? null;
+  const visibleGridCountSignature = grids
+    .filter((grid) => grid.visible !== false)
+    .map((grid) => `${grid.id}:${grid.updated ?? ''}`)
+    .join('|');
   const session = bootstrapContext?.session ?? null;
   const jiraBaseUrl = bootstrapContext?.jiraBaseUrl ?? '';
   const appState = bootstrapContext?.appState ?? 'booting';
@@ -1058,8 +1114,7 @@ export default function App() {
   const syncCanceling = Boolean(syncStatus?.is_canceling);
   const configurationSections = [
     { id: 'status', label: 'Estado y sincronización', icon: 'sync', description: 'Supervisa el estado de la aplicación, la sincronización con Jira y la sesión activa.' },
-    { id: 'jql', label: 'Consultas JQL', icon: 'search', description: 'Define las consultas que determinan las incidencias a sincronizar.' },
-    { id: 'alerts', label: 'Alertas', icon: 'bell', description: 'Configura las condiciones y el contenido de las notificaciones.' },
+    { id: 'jql', label: 'Consultas JQL y Alertas', icon: 'search', description: 'Define las consultas que determinan las incidencias a sincronizar.' },
     { id: 'grids', label: 'Grids', icon: 'grid', description: 'Crea y administra las pestañas de seguimiento por ProjectGroup.' },
     { id: 'sql', label: 'SQL temporal', icon: 'database', description: 'Consulta o ajusta temporalmente la base de datos local.' },
   ];
@@ -1098,7 +1153,10 @@ export default function App() {
     { field: 'estadoGeneral', label: 'Estado General', projectGroup: true },
   ];
   const gridFieldOptions = [
-    ...gridConditionFieldOptions,
+    ...conditionFields
+      .filter((field) => !['estadoGeneral', 'timeestimate', 'timespent', 'timeremaining'].includes(field.field)),
+    { field: REPORTED_TIMES_FIELD, label: 'Tiempos reportados' },
+    { field: 'estadoGeneral', label: 'Estado General', projectGroup: true },
     ...gridSubtaskFields,
   ];
 
@@ -1171,6 +1229,7 @@ export default function App() {
   };
 
   const gridConditionCatalogOptions = (field) => {
+    if (field === 'estadoGeneral') return projectGroupStateOptions;
     const catalogKey = field === 'project' ? 'projects' : field === 'issuetype' ? 'issueTypes' : field === 'status' ? 'statuses' : null;
     if (!catalogKey) return [];
     return (jiraCatalog?.[catalogKey] ?? []).map((item) => typeof item === 'string' ? { value: item, label: item } : item);
@@ -1203,6 +1262,22 @@ export default function App() {
     return result.grids ?? [];
   };
 
+  const refreshGridRecordCounts = async (gridList = grids) => {
+    const visibleGrids = gridList.filter((grid) => grid.visible !== false);
+    const entries = await Promise.all(visibleGrids.map(async (grid) => {
+      try {
+        const result = await api(`/api/grids/${encodeURIComponent(grid.id)}/data?page=1&pageSize=1`);
+        return [grid.id, Number(result.total ?? 0)];
+      } catch {
+        return [grid.id, null];
+      }
+    }));
+
+    setGridRecordCounts((current) => Object.fromEntries(entries.map(([id, count]) => (
+      [id, Number.isFinite(count) ? count : current[id]]
+    )).filter(([, count]) => Number.isFinite(count))));
+  };
+
   const refreshGridData = async (id = activeTab, page = gridPage, pageSize = gridVisiblePageSize, sort = gridSort) => {
     if (!id || id === 'config') return;
     setGridLoading(true);
@@ -1215,6 +1290,7 @@ export default function App() {
       }
       const result = await api(`/api/grids/${encodeURIComponent(id)}/data?${query.toString()}`);
       setGridData(result);
+      setGridRecordCounts((current) => ({ ...current, [id]: Number(result.total ?? 0) }));
     } catch (error) {
       showUiToast(`No se pudo cargar el grid: ${error.message}`, 'error');
     } finally {
@@ -1226,12 +1302,13 @@ export default function App() {
     if (refreshingAll) return;
     setRefreshingAll(true);
     try {
-      await Promise.all([
+      const [, , , refreshedGrids] = await Promise.all([
         refreshBootstrapContext(),
         refreshAlerts(),
         refreshAlertRules(),
         refreshGrids(),
       ]);
+      await refreshGridRecordCounts(refreshedGrids);
       if (activeTab !== 'config') {
         await refreshGridData(activeTab, gridPage, gridVisiblePageSize, gridSort);
       }
@@ -1561,8 +1638,9 @@ export default function App() {
   const refreshBootstrapContext = async () => {
     const context = await api('/api/bootstrap-context');
     setBootstrapContext(context);
-    if (Array.isArray(context?.jqlQueries) && (!jqlInitializedRef.current || !jqlDirtyRef.current)) {
-      setJqlQueries(context.jqlQueries);
+    if (Array.isArray(context?.jqlDefinitions) && (!jqlInitializedRef.current || !jqlDirtyRef.current)) {
+      setJqlQueries(context.jqlDefinitions.map((definition) => definition.query_text));
+      setJqlDefinitionIds(context.jqlDefinitions.map((definition) => definition.id));
       jqlInitializedRef.current = true;
       jqlDirtyRef.current = false;
     }
@@ -1585,10 +1663,6 @@ export default function App() {
     }
     if (!autoSyncDirtyRef.current && typeof context?.autoSyncEnabled === 'boolean') {
       setAutoSyncEnabled(context.autoSyncEnabled);
-    }
-    if (!alertRetryDirtyRef.current && typeof context?.alertRetryEnabled === 'boolean') {
-      alertRetryEnabledRef.current = context.alertRetryEnabled;
-      setAlertRetryEnabled(context.alertRetryEnabled);
     }
     if (!syncIntervalDirtyRef.current && Number.isFinite(Number(context?.syncIntervalMinutes))) {
       setSyncIntervalMinutes(Number(context.syncIntervalMinutes));
@@ -1617,10 +1691,6 @@ export default function App() {
         if (!previous) {
           // The retry switch must not suppress the first notification of a new alert.
           return true;
-        }
-
-        if (!alertRetryEnabledRef.current) {
-          return false;
         }
 
         // A changed last_notified_at proves the backend sent a new retry.
@@ -1715,6 +1785,16 @@ export default function App() {
       refreshGridData(activeTab, gridPage, gridVisiblePageSize);
     }
   }, [activeTab, gridPage, gridVisiblePageSize, gridSort, bootstrapContext?.syncStatus?.last_success_at]);
+
+  useEffect(() => {
+    if (!visibleGridCountSignature) {
+      setGridRecordCounts({});
+      return undefined;
+    }
+
+    refreshGridRecordCounts().catch(() => {});
+    return undefined;
+  }, [visibleGridCountSignature, bootstrapContext?.syncStatus?.last_success_at]);
 
   useEffect(() => {
     if (activeTab === 'config' || !gridData || gridLoading) return undefined;
@@ -1871,11 +1951,12 @@ export default function App() {
   };
 
   const handleSaveJql = async () => {
-    const queries = jqlQueries
-      .map((query) => query.replace(/\s+/g, ' ').trim())
-      .filter(Boolean);
+    const definitions = jqlQueries.map((query, index) => ({
+      id: jqlDefinitionIds[index] ?? null,
+      queryText: query.trim(),
+    })).filter((definition) => definition.queryText);
 
-    if (queries.length === 0) {
+    if (definitions.length === 0) {
       setJqlMessage('Debe existir al menos un JQL.');
       return;
     }
@@ -1884,13 +1965,13 @@ export default function App() {
     setJqlMessage(null);
 
     try {
-      const result = await api('/api/settings', {
+      const result = await api('/api/jql-definitions', {
         method: 'PUT',
-        body: JSON.stringify({
-          jqlQueries: queries,
-        }),
+        body: JSON.stringify({ definitions }),
       });
-      setJqlQueries(result.jqlQueries ?? queries);
+      setJqlQueries((result.definitions ?? definitions).map((definition) => definition.query_text ?? definition.queryText));
+      setJqlDefinitionIds((result.definitions ?? definitions).map((definition) => definition.id));
+      await refreshAlertRules();
       jqlDirtyRef.current = false;
       setJqlMessage('Consultas JQL guardadas correctamente.');
       showUiToast('Consultas JQL guardadas correctamente.');
@@ -1970,12 +2051,22 @@ export default function App() {
     const validConditions = alertForm.conditions.filter((condition) => (
       ['IS NULL', 'IS NOT NULL'].includes(condition.operator) || condition.value.trim()
     ));
+    if (!alertForm.jqlId) {
+      setJqlMessage('Guarda primero la consulta JQL antes de crear su alerta.');
+      showUiToast('Guarda primero la consulta JQL.', 'error');
+      return;
+    }
     if (!alertForm.name.trim() || !alertForm.toastText.trim()) {
       setJqlMessage('La alerta requiere nombre y texto de Toast.');
       showUiToast('Completa el nombre y el texto del Toast.', 'error');
       return;
     }
-    if (!alertValidation.ok || validConditions.length === 0) {
+    if (Boolean(alertForm.displayIssueType) !== Boolean(alertForm.displayField)) {
+      setJqlMessage('Para mostrar un dato en la notificación debes seleccionar el tipo de incidencia y el atributo.');
+      showUiToast('Completa ambos campos de Mostrar en notificación.', 'error');
+      return;
+    }
+    if (!alertValidation.ok || (alertForm.event === 'attribute_changed' && validConditions.length === 0)) {
       setJqlMessage(alertValidation.errors.join(' '));
       showUiToast('Corrige las condiciones de la alerta.', 'error');
       return;
@@ -1987,22 +2078,25 @@ export default function App() {
         method: 'PUT',
         body: JSON.stringify({
           id: alertForm.id,
+          jql_id: alertForm.jqlId,
+          alert_type: alertForm.event,
           name: alertForm.name,
-          sql: buildAlertSql({ ...alertForm, conditions: validConditions }),
           condition_config: JSON.stringify({
             event: alertForm.event,
-            conditions: validConditions,
+            conditions: alertForm.event === 'new_issue' ? [] : validConditions,
           }),
           toast_text: alertForm.toastText,
           toast_image_data: alertImageData,
           toast_image_name: alertImageName,
           remove_toast_image: alertImageRemoved,
+          display_issue_type: alertForm.displayIssueType || null,
+          display_field: alertForm.displayField || null,
           retry_minutes: Math.max(Number(alertForm.retryMinutes) || 0, 0),
           is_active: alertForm.isActive,
         }),
       });
       setAlertRules(result.rules ?? []);
-      setAlertForm(emptyAlertForm());
+      setAlertForm(emptyAlertForm(alertForm.jqlId));
       setMessageBuilderExpanded(false);
       setAlertImageData(null);
       setAlertImageName('');
@@ -2010,6 +2104,7 @@ export default function App() {
       setAlertImageRemoved(false);
       setNewAlertOpen(false);
       setExpandedAlertId(null);
+      setExpandedJqlId(null);
       setAlertValidationShown(false);
       setJqlMessage('Alerta guardada correctamente.');
       showUiToast('Alerta guardada correctamente.');
@@ -2048,6 +2143,7 @@ export default function App() {
       if (expandedAlertId === id) {
         setExpandedAlertId(null);
       }
+      setExpandedJqlId(null);
       await refreshAlertRules();
       showUiToast('Alerta eliminada correctamente.');
     } catch (error) {
@@ -2059,11 +2155,14 @@ export default function App() {
     const stored = parseStoredAlertRule(rule, alertFieldDefinitions);
     setAlertForm({
       id: rule.id,
+      jqlId: rule.jql_id,
       name: rule.name ?? '',
-      event: stored.event,
+      event: rule.alert_type ?? stored.event,
       retryMinutes: Number(rule.retry_minutes ?? 0),
       conditions: stored.conditions,
       toastText: rule.toast_text ?? '',
+      displayIssueType: rule.display_issue_type ?? '',
+      displayField: rule.display_field ?? '',
       isActive: Boolean(rule.is_active),
     });
     setAlertImageData(null);
@@ -2078,8 +2177,8 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleNewAlert = () => {
-    setAlertForm(emptyAlertForm());
+  const handleNewAlert = (jqlId) => {
+    setAlertForm(emptyAlertForm(jqlId));
     setMessageBuilderExpanded(false);
     setAlertValidationShown(false);
     setAlertImageData(null);
@@ -2101,6 +2200,7 @@ export default function App() {
     setAlertImageRemoved(false);
     setNewAlertOpen(false);
     setExpandedAlertId(null);
+    setExpandedJqlId(null);
     setJqlMessage(null);
   };
 
@@ -2126,11 +2226,14 @@ export default function App() {
               <span>Evento</span>
               <select
                 value={alertForm.event}
-                onChange={(event) => setAlertForm((current) => ({ ...current, event: event.target.value }))}
+                onChange={(event) => setAlertForm((current) => ({
+                  ...current,
+                  event: event.target.value,
+                  conditions: event.target.value === 'new_issue' ? [] : current.conditions,
+                }))}
               >
-                <option value="created">Incidencia nueva</option>
-                <option value="updated">Incidencia actualizada</option>
-                <option value="removed">Incidencia eliminada</option>
+                <option value="new_issue">Nueva incidencia</option>
+                <option value="attribute_changed">Cambio de atributo</option>
               </select>
             </label>
             <label className="alert-field">
@@ -2162,7 +2265,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="alert-form-section alert-conditions-section">
+        {alertForm.event === 'attribute_changed' ? <section className="alert-form-section alert-conditions-section">
           <header className="alert-form-section-heading">
             <span>2</span>
             <h4>Condiciones</h4>
@@ -2196,6 +2299,37 @@ export default function App() {
                 <div className="condition-row">
                   <span className="condition-index" aria-hidden="true">{index + 1}</span>
                   <select
+                    value={condition.issueType ?? ''}
+                    disabled={condition.field === 'estadoGeneral'}
+                    aria-label={`Tipo de incidencia de la condición ${index + 1}`}
+                    onChange={(event) => setAlertForm((current) => ({
+                      ...current,
+                      conditions: current.conditions.map((item, itemIndex) => {
+                        if (itemIndex !== index) return item;
+                        if (event.target.value === 'Otros') {
+                          return {
+                            ...item,
+                            issueType: 'Otros',
+                            field: 'estadoGeneral',
+                            operator: '=',
+                            value: '',
+                          };
+                        }
+                        return {
+                          ...item,
+                          issueType: event.target.value,
+                          field: item.field === 'estadoGeneral' ? 'status' : item.field,
+                          operator: item.field === 'estadoGeneral' ? '=' : item.operator,
+                          value: item.field === 'estadoGeneral' ? '' : item.value,
+                        };
+                      }),
+                    }))}
+                  >
+                    <option value="">Seleccione tipo de incidencia</option>
+                    {graphIssueTypes.map((issueType) => <option value={issueType} key={issueType}>{issueType}</option>)}
+                    <option value="Otros">Otros</option>
+                  </select>
+                  <select
                     value={condition.field}
                     aria-label={`Campo de la condición ${index + 1}`}
                     onChange={(event) => setAlertForm((current) => ({
@@ -2204,6 +2338,7 @@ export default function App() {
                         ? {
                           ...item,
                           field: event.target.value,
+                          issueType: event.target.value === 'estadoGeneral' ? 'Otros' : item.issueType,
                           operator: event.target.value === 'assignee' && item.operator === '='
                             ? 'LIKE'
                             : operatorsForField(event.target.value).some((option) => option.value === item.operator)
@@ -2253,6 +2388,7 @@ export default function App() {
               onClick={() => setAlertForm((current) => ({
                 ...current,
                 conditions: [...current.conditions, {
+                  issueType: graphIssueTypes[0] ?? '',
                   field: 'status',
                   operator: '=',
                   value: '',
@@ -2264,29 +2400,42 @@ export default function App() {
               Agregar condición
             </button>
           </div>
-        </section>
+        </section> : null}
 
         <section className="alert-form-section alert-content-section">
           <header className="alert-form-section-heading">
-            <span>3</span>
+            <span>{alertForm.event === 'attribute_changed' ? 3 : 2}</span>
             <h4>Contenido de la notificación</h4>
           </header>
           <div className="alert-message-insert">
-            <span>Insertar dato de Jira</span>
-            <select value={messageIssueType} onChange={(event) => setMessageIssueType(event.target.value)}>
-              <option value="">Tipo de incidencia</option>
+            <span>Mostrar en notificación (opcional)</span>
+            <select
+              value={alertForm.displayIssueType}
+              onChange={(event) => setAlertForm((current) => ({
+                ...current,
+                displayIssueType: event.target.value,
+                displayField: '',
+              }))}
+            >
+              <option value="">Seleccione</option>
+              <option value={JQL_SOURCE_ISSUE_OPTION}>{JQL_SOURCE_ISSUE_LABEL}</option>
               {graphIssueTypes.map((issueType) => (
                 <option value={issueType} key={issueType}>{issueType}</option>
               ))}
+              <option value="Otros">Otros</option>
             </select>
-            <select value={messageField} onChange={(event) => setMessageField(event.target.value)}>
-              {Object.entries(alertMessageFields).map(([value, label]) => (
-                <option value={value} key={value}>{label}</option>
-              ))}
+            <select
+              value={alertForm.displayField}
+              disabled={!alertForm.displayIssueType}
+              onChange={(event) => setAlertForm((current) => ({ ...current, displayField: event.target.value }))}
+            >
+              <option value="">Seleccione</option>
+              {alertForm.displayIssueType === 'Otros'
+                ? <option value="estado_general">Estado General</option>
+                : Object.entries(alertMessageFields).map(([value, label]) => (
+                  <option value={value} key={value}>{label}</option>
+                ))}
             </select>
-            <button type="button" onClick={insertAlertMessageField} disabled={!messageIssueType}>
-              Insertar
-            </button>
           </div>
           <div className="alert-content-grid">
             <label className="alert-message-builder">
@@ -2391,12 +2540,35 @@ export default function App() {
   const handleAddJql = () => {
     jqlDirtyRef.current = true;
     setJqlQueries((current) => [...current, '']);
+    setJqlDefinitionIds((current) => [...current, null]);
     setJqlMessage(null);
   };
 
+  const handleJqlQueryChange = (index, value) => {
+    const jqlId = jqlDefinitionIds[index];
+    const hasAlerts = alertRules.some((rule) => rule.jql_id === jqlId);
+    if (hasAlerts && !warnedJqlEditIdsRef.current.has(jqlId)) {
+      const confirmed = window.confirm(
+        'Este JQL tiene alertas asociadas. Cambiar la consulta modificará su alcance en la próxima sincronización. ¿Deseas continuar?',
+      );
+      if (!confirmed) return;
+      warnedJqlEditIdsRef.current.add(jqlId);
+    }
+    jqlDirtyRef.current = true;
+    setJqlQueries((current) => current.map((item, currentIndex) => (
+      currentIndex === index ? value : item
+    )));
+  };
+
   const handleRemoveJql = (index) => {
+    const jqlId = jqlDefinitionIds[index];
+    const alertCount = alertRules.filter((rule) => rule.jql_id === jqlId).length;
+    if (alertCount > 0 && !window.confirm(`Este JQL tiene ${alertCount} alerta(s) asociada(s). Al guardar se eliminarán también. ¿Deseas continuar?`)) {
+      return;
+    }
     jqlDirtyRef.current = true;
     setJqlQueries((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setJqlDefinitionIds((current) => current.filter((_, currentIndex) => currentIndex !== index));
     setJqlMessage(null);
   };
 
@@ -2405,33 +2577,6 @@ export default function App() {
     autoSyncDirtyRef.current = true;
     setAutoSyncEnabled(nextValue);
     setStatusMessage(null);
-  };
-
-  const handleAlertRetryToggle = async (event) => {
-    const nextValue = event.target.checked;
-    alertRetryDirtyRef.current = true;
-    alertRetryEnabledRef.current = nextValue;
-    setAlertRetryEnabled(nextValue);
-    setAlertRetrySaving(true);
-
-    try {
-      const result = await api('/api/settings', {
-        method: 'PUT',
-        body: JSON.stringify({ alertRetryEnabled: nextValue }),
-      });
-      alertRetryDirtyRef.current = false;
-      const savedValue = Boolean(result.alertRetryEnabled);
-      alertRetryEnabledRef.current = savedValue;
-      setAlertRetryEnabled(savedValue);
-      showUiToast('Reenvio de toast de alertas actualizado.');
-    } catch (error) {
-      alertRetryDirtyRef.current = false;
-      alertRetryEnabledRef.current = !nextValue;
-      setAlertRetryEnabled(!nextValue);
-      setJqlMessage(`No se pudo cambiar el reenvio de toast: ${error.message}`);
-    } finally {
-      setAlertRetrySaving(false);
-    }
   };
 
   const handleDatabaseReset = async () => {
@@ -2536,7 +2681,7 @@ export default function App() {
               const attributeOptions = groupKey === '__other'
                 ? [{ field: 'estadoGeneral', label: 'Estado General' }]
                 : [
-                  ...conditionFields,
+                  ...gridFieldOptions.filter((field) => !field.projectGroup && !gridSubtaskFields.some((subtaskField) => subtaskField.field === field.field)),
                   ...(gridSubtaskIssueTypes.has(groupType) ? gridSubtaskFields : []),
                 ];
               return (
@@ -2637,30 +2782,33 @@ export default function App() {
                 {gridConditionValidationErrors.map((error) => <div key={error}>{error}</div>)}
               </div>
             ) : null}
-            {gridForm.conditions.flatMap((condition, index) => [
-              index > 0 ? (
+            {gridForm.conditions.map((condition, index) => (
+              <Fragment key={`grid-condition-group-${index}`}>
+              <div className="grid-builder-row">
+                <span className="grid-row-number">{index + 1}</span>
                 <select
-                  className="grid-condition-connector"
-                  key={`grid-condition-connector-${index}`}
-                  value={condition.connector ?? 'AND'}
+                  value={condition.issueType ?? ''}
+                  disabled={condition.field === 'estadoGeneral'}
                   onChange={(event) => setGridForm((current) => ({
                     ...current,
-                    conditions: current.conditions.map((item, itemIndex) => itemIndex === index
-                      ? { ...item, connector: event.target.value }
-                      : item),
+                    conditions: current.conditions.map((item, itemIndex) => {
+                      if (itemIndex !== index) return item;
+                      if (event.target.value === 'Otros') {
+                        return { ...item, issueType: 'Otros', field: 'estadoGeneral', operator: '=', value: '' };
+                      }
+                      return {
+                        ...item,
+                        issueType: event.target.value,
+                        field: item.field === 'estadoGeneral' ? '' : item.field,
+                      };
+                    }),
                   }))}
                 >
-                  <option value="AND">AND</option>
-                  <option value="OR">OR</option>
-                </select>
-              ) : null,
-              <div className="grid-builder-row" key={`grid-condition-${index}`}>
-                <span className="grid-row-number">{index + 1}</span>
-                <select value={condition.issueType ?? ''} disabled={condition.field === 'estadoGeneral'} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, issueType: event.target.value } : item) }))}>
                   <option value="">Seleccione tipo de incidencia</option>
                   {gridIssueTypes.map((type) => <option value={type} key={type}>{type}</option>)}
+                  <option value="Otros">Otros</option>
                 </select>
-                <select value={condition.field} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, field: event.target.value, issueType: event.target.value === 'estadoGeneral' ? null : item.issueType } : item) }))}>
+                <select value={condition.field} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, field: event.target.value, issueType: event.target.value === 'estadoGeneral' ? 'Otros' : item.issueType === 'Otros' ? '' : item.issueType } : item) }))}>
                   <option value="">Seleccione atributo</option>
                   {gridConditionFieldOptions.map((field) => <option value={field.field} key={field.field}>{field.label}</option>)}
                 </select>
@@ -2676,9 +2824,26 @@ export default function App() {
                 ) : (
                   <input value={condition.value ?? ''} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))} placeholder="Valor" />
                 )}
+                {index < gridForm.conditions.length - 1 ? (
+                  <select
+                    className="grid-condition-connector"
+                    value={gridForm.conditions[index + 1].connector ?? 'AND'}
+                    onChange={(event) => setGridForm((current) => ({
+                      ...current,
+                      conditions: current.conditions.map((item, itemIndex) => itemIndex === index + 1
+                        ? { ...item, connector: event.target.value }
+                        : item),
+                    }))}
+                    aria-label={`Conector entre las condiciones ${index + 1} y ${index + 2}`}
+                  >
+                    <option value="AND">AND</option>
+                    <option value="OR">OR</option>
+                  </select>
+                ) : <span className="grid-condition-connector-spacer" aria-hidden="true" />}
                 <button type="button" className="jql-delete" onClick={() => setGridForm((current) => ({ ...current, conditions: current.conditions.filter((_, itemIndex) => itemIndex !== index) }))} aria-label="Eliminar condición"><LineIcon name="trash" /></button>
               </div>
-            ])}
+              </Fragment>
+            ))}
             <button type="button" className="jql-add unified-add-button" onClick={() => setGridForm((current) => ({ ...current, conditions: [...current.conditions, { issueType: '', field: '', operator: '', value: '', connector: current.conditions.length ? 'AND' : undefined }] }))}><LineIcon name="plus" /> Agregar condición</button>
           </div>
           <div className="grid-form-actions">
@@ -2686,7 +2851,7 @@ export default function App() {
               <LineIcon name="save" />
               Guardar
             </button>
-            <button type="button" className="secondary-button" onClick={closeGridBuilder}>Cancelar</button>
+            <button type="button" className="secondary-button grid-cancel-button" onClick={closeGridBuilder}>Cancelar</button>
             {gridForm.id ? (
               <button type="button" className="danger-button grid-delete-button" onClick={() => handleDeleteGrid(gridForm.id)}>
                 <LineIcon name="trash" />
@@ -2697,8 +2862,13 @@ export default function App() {
     </div>
   );
 
-  const renderGridConfiguration = () => (
-    <div className="settings-card dashboard-card dashboard-grids">
+  const renderGridConfiguration = () => {
+    const gridsToRender = gridFormOpen
+      ? (gridForm.id ? grids.filter((grid) => grid.id === gridForm.id) : [])
+      : grids;
+
+    return (
+      <div className="settings-card dashboard-card dashboard-grids">
       <div className="section-heading grid-panel-heading">
         <div>
           <div className="grid-panel-title">
@@ -2715,21 +2885,25 @@ export default function App() {
       <div className="grid-configured-list">
         {gridFormOpen && !gridForm.id ? (
           <div className="grid-configured-row is-expanded is-new-grid">
-            <div className="grid-configured-name grid-new-summary">
-              <span className="grid-summary-icon"><LineIcon name="grid" /></span>
-              <span className="grid-summary-title">Nuevo grid</span>
-              <span className="grid-visibility-status">Sin guardar</span>
-              <span className="grid-accordion-chevron is-expanded" aria-hidden="true"><LineIcon name="chevron" /></span>
+            <div className="grid-editor-heading">
+              <span className="grid-editor-title">Nuevo grid</span>
             </div>
             {renderGridBuilder()}
           </div>
         ) : null}
-        {grids.length === 0 && !gridFormOpen ? <p className="grid-empty-state">No hay grids configurados.</p> : grids.map((grid) => {
+        {grids.length === 0 && !gridFormOpen ? <p className="grid-empty-state">No hay grids configurados.</p> : gridsToRender.map((grid) => {
           const expanded = expandedGridId === grid.id && gridFormOpen;
-          const fieldCount = grid.columns?.length ?? 0;
+          const fieldCount = new Set((grid.columns ?? []).map((column) => (
+            column.field === 'estadoGeneral' ? '__other' : (column.issueType || '__empty')
+          ))).size;
           const conditionCount = grid.conditions?.length ?? 0;
           return (
             <div className={`grid-configured-row${expanded ? ' is-expanded' : ''}`} key={grid.id}>
+              {expanded ? (
+                <div className="grid-editor-heading">
+                  <span className="grid-editor-title">{gridForm.name || grid.name}</span>
+                </div>
+              ) : (
               <button
                 type="button"
                 className="grid-configured-name"
@@ -2752,13 +2926,15 @@ export default function App() {
                 </span>
                 <span className={`grid-accordion-chevron${expanded ? ' is-expanded' : ''}`} aria-hidden="true"><LineIcon name="chevron" /></span>
               </button>
+              )}
               {expanded ? renderGridBuilder() : null}
             </div>
           );
         })}
       </div>
-    </div>
-  );
+      </div>
+    );
+  };
 
   const renderGridTab = () => {
     const columns = gridData?.grid?.columns ?? [];
@@ -2784,7 +2960,6 @@ export default function App() {
     registerGridVisualValues(gridVisualRegistryRef.current, rows, columns);
     return (
       <section className="grid-tab-view">
-        <div className="grid-tab-heading"><div><p className="eyebrow">Jira Notifications</p><h1>{gridData?.grid?.name ?? grids.find((grid) => grid.id === activeTab)?.name}</h1><p className="copy">Información agrupada por ProjectGroup.</p></div></div>
         <div className={`grid-table-wrap${gridLoading ? ' is-loading' : ''}${horizontalScrollRequired ? ' has-horizontal-overflow' : ''}`} ref={gridTableWrapRef} aria-busy={gridLoading}>
           <table className="project-grid" style={{ minWidth: `${tableMinimumWidth}px` }}>
             <colgroup>
@@ -2836,7 +3011,10 @@ export default function App() {
                             </div>
                           );
                         })
-                        : groupColumns.map((column) => {
+                        : (
+                          <div className={`grid-issue-cell-content${groupColumns.some((column) => column.field === REPORTED_TIMES_FIELD) ? ' has-reported-times' : ''}`}>
+                            <div className="grid-issue-cell-details">
+                        {groupColumns.filter((column) => column.field !== REPORTED_TIMES_FIELD).map((column) => {
                           const rawValue = row[`${column.issueType}::${column.field}`] ?? '';
                           const isSubtaskCount = gridSubtaskFields.some((field) => field.field === column.field);
                           const hasVisibleValue = isSubtaskCount
@@ -2898,6 +3076,13 @@ export default function App() {
                             </ClampedGridText>
                           );
                         })}
+                            </div>
+                            {groupColumns.filter((column) => column.field === REPORTED_TIMES_FIELD).map((column) => {
+                              const entries = row[`${column.issueType}::${column.field}`] ?? [];
+                              return <ReportedTimesValue entries={entries} key={`${column.issueType}-${column.field}`} />;
+                            })}
+                          </div>
+                        )}
                     </td>
                   ))}
                 </tr>
@@ -2992,11 +3177,38 @@ export default function App() {
 
   return (
     <main className="app-shell">
+      {syncInProgress ? (
+        <div className="sync-watermark" aria-hidden="true">
+          {Array.from({ length: 12 }, (_, index) => (
+            <span key={`sync-watermark-${index}`}>SINCRONIZANDO</span>
+          ))}
+        </div>
+      ) : null}
       <section className="hero">
         <div className="app-header-bar">
           <div className="app-tabs-scroll">
             <nav className="app-tabs" aria-label="Navegacion de la aplicacion">
-              {grids.filter((grid) => grid.visible !== false).map((grid) => <button type="button" className={activeTab === grid.id ? 'app-tab is-active' : 'app-tab'} onClick={() => { setHeaderAlertsOpen(false); setGridVisiblePageSize(Number(grid.pageSize) || 10); setGridSort(null); setActiveTab(grid.id); setGridPage(1); }} key={grid.id}>{grid.name}</button>)}
+              {grids.filter((grid) => grid.visible !== false).map((grid) => (
+                <button
+                  type="button"
+                  className={activeTab === grid.id ? 'app-tab is-active' : 'app-tab'}
+                  onClick={() => {
+                    setHeaderAlertsOpen(false);
+                    setGridVisiblePageSize(Number(grid.pageSize) || 10);
+                    setGridSort(null);
+                    setActiveTab(grid.id);
+                    setGridPage(1);
+                  }}
+                  key={grid.id}
+                >
+                  <span className="app-tab-label">{grid.name}</span>
+                  {Number.isFinite(gridRecordCounts[grid.id]) ? (
+                    <span className="app-tab-count" aria-label={`${gridRecordCounts[grid.id]} registros`}>
+                      {gridRecordCounts[grid.id]}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
             </nav>
           </div>
           <div className="app-header-status-panel">
@@ -3060,9 +3272,7 @@ export default function App() {
                           )}
                           {Number(alert.retry_minutes ?? 0) > 0 ? (
                             <small className="alerts-retry-countdown">
-                              Proximo Toast: {alertRetryEnabled
-                                ? (formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente')
-                                : 'reenvio de toast apagado'}
+                              Proximo Toast: {formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente'}
                             </small>
                           ) : null}
                         </span>
@@ -3132,7 +3342,7 @@ export default function App() {
           </header>
           <div className="dashboard-grid">
         <fieldset disabled={syncInProgress} className="dashboard-editable-panels">
-        <div className="settings-card dashboard-card dashboard-alert">
+        {false ? <div className="settings-card dashboard-card dashboard-alert">
           <div className="alert-rules-toolbar">
             <div className="alert-rules-title">
               <h2>Reglas de notificación</h2>
@@ -3282,6 +3492,7 @@ export default function App() {
                 <>
                   <select value={messageIssueType} onChange={(event) => setMessageIssueType(event.target.value)}>
                     <option value="">Tipo de incidencia</option>
+                    <option value={JQL_SOURCE_ISSUE_OPTION}>{JQL_SOURCE_ISSUE_LABEL}</option>
                     {graphIssueTypes.map((issueType) => (
                       <option value={issueType} key={issueType}>{issueType}</option>
                     ))}
@@ -3310,7 +3521,7 @@ export default function App() {
             <small className="alert-message-help">Puedes combinar texto libre y varios datos de la BD en el orden que prefieras.</small>
           </div>
           <div className="settings-actions">
-            <button type="button" onClick={handleSaveAlert} disabled={alertSaving}>
+            <button type="button" className="save-action-button alert-save-button" onClick={handleSaveAlert} disabled={alertSaving}>
               {alertSaving ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
@@ -3366,91 +3577,130 @@ export default function App() {
               ))}
             </div>
           ) : !newAlertOpen ? <p className="alerts-rules-empty">Aún no hay alertas configuradas.</p> : null}
-        </div>
+        </div> : null}
 
-        <div className="settings-card dashboard-card dashboard-jql">
+        <div className="settings-card dashboard-card dashboard-jql dashboard-alert">
           <h2>Consultas JQL</h2>
           <p className="copy">Cada consulta se ejecuta en cada sincronización. Puedes escribirla en varias líneas.</p>
           <div className="jql-list">
-            {jqlQueries.map((query, index) => (
-              <div className="jql-row" key={`jql-${index}`}>
-                <div className="jql-editor-shell">
+            {jqlQueries.map((query, index) => {
+              const jqlId = jqlDefinitionIds[index];
+              const rules = alertRules.filter((rule) => rule.jql_id === jqlId);
+              const jqlKey = jqlId ?? `draft-${index}`;
+              const isExpanded = expandedJqlId === jqlKey;
+              const toggleAssociatedAlerts = () => {
+                if (isExpanded) {
+                  setExpandedJqlId(null);
+                  setExpandedAlertId(null);
+                  return;
+                }
+
+                setExpandedAlertId(null);
+                setExpandedJqlId(jqlKey);
+                if (rules.length === 1) {
+                  handleEditAlert(rules[0]);
+                }
+              };
+              if (expandedJqlId && expandedJqlId !== jqlKey) return null;
+
+              return <div className="jql-definition-card" key={jqlId ?? `jql-${index}`}>
+                <div className={`jql-row${rules.length > 0 ? ' has-alerts' : ''}`}>
+                  <div className="jql-editor-shell">
                   <span className="jql-line-numbers" aria-hidden="true">
-                    {(query || ' ').split('\n').map((_, lineIndex) => <i key={lineIndex}>{lineIndex + 1}</i>)}
+                    <i>{index + 1}</i>
                   </span>
                   <AutoResizeTextarea
                     value={query}
-                    onChange={(event) => {
-                      jqlDirtyRef.current = true;
-                      setJqlQueries((current) => current.map((item, currentIndex) => (
-                        currentIndex === index ? event.target.value : item
-                      )));
-                    }}
+                    onChange={(event) => handleJqlQueryChange(index, event.target.value)}
+                    disabled={(newAlertOpen && alertForm.jqlId === jqlId)
+                      || alertRules.some((rule) => rule.jql_id === jqlId && expandedAlertId === rule.id)}
                     spellCheck="false"
                     placeholder="project = ABC ORDER BY created DESC"
                     aria-label={`Consulta JQL ${index + 1}`}
                   />
+                  </div>
+                  <div className="jql-row-actions">
+                    <button
+                      type="button"
+                      className="jql-delete"
+                      onClick={() => handleRemoveJql(index)}
+                      aria-label={`Eliminar consulta JQL ${index + 1}`}
+                      title="Eliminar consulta"
+                    >
+                      <LineIcon name="trash" />
+                    </button>
+                    <button
+                      type="button"
+                      className="jql-alert-add"
+                      onClick={() => {
+                        setExpandedJqlId(jqlId);
+                        handleNewAlert(jqlId);
+                      }}
+                      disabled={!jqlId || syncInProgress}
+                      aria-label={`Crear alerta para la consulta JQL ${index + 1}`}
+                      title="Crear alerta"
+                    >
+                      <LineIcon name="bell" />
+                      <span aria-hidden="true">+</span>
+                    </button>
+                    {rules.length > 0 ? <button
+                      type="button"
+                      className="jql-alert-list"
+                      onClick={toggleAssociatedAlerts}
+                      disabled={!jqlId}
+                      aria-expanded={isExpanded}
+                      aria-label={`Ver ${rules.length} ${rules.length === 1 ? 'alerta' : 'alertas'} de la consulta JQL ${index + 1}`}
+                      title="Ver Alertas"
+                    >
+                      <LineIcon name="list" />
+                      <span>{rules.length}</span>
+                    </button> : <span className="jql-alert-list-placeholder" aria-hidden="true" />}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className="jql-delete"
-                  onClick={() => handleRemoveJql(index)}
-                  aria-label={`Eliminar consulta JQL ${index + 1}`}
-                  title="Eliminar consulta"
-                >
-                  <LineIcon name="trash" />
-                </button>
-              </div>
-            ))}
+                {isExpanded && (rules.length > 0 || (newAlertOpen && alertForm.jqlId === jqlId)) ? <div className="jql-associated-alerts">
+                  {newAlertOpen && alertForm.jqlId === jqlId ? (
+                    <div className="new-alert-panel">
+                      <div className="alert-accordion-header">
+                        <span className="alert-accordion-chevron is-open" aria-hidden="true" />
+                        <h3>Alerta</h3>
+                        <span className={`alert-rule-status${alertForm.isActive ? ' is-active' : ''}`}>
+                          {alertForm.isActive ? 'Activa' : 'Inactiva'}
+                        </span>
+                      </div>
+                      {renderAlertForm(true)}
+                    </div>
+                  ) : null}
+                  {!newAlertOpen && rules.length === 1 ? renderAlertForm(false) : rules.map((rule) => <div className="saved-alert-accordion" key={rule.id}>
+                    <div
+                      className="saved-alert saved-alert-toggle"
+                      onClick={() => expandedAlertId === rule.id ? setExpandedAlertId(null) : handleEditAlert(rule)}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={expandedAlertId === rule.id}
+                    >
+                      <span className="alert-accordion-chevron" aria-hidden="true" />
+                      <span className="saved-alert-name">{rule.name}</span>
+                      <span className={`alert-rule-status${rule.is_active ? ' is-active' : ''}`}>
+                        {rule.is_active ? 'Activa' : 'Inactiva'}
+                      </span>
+                    </div>
+                    {expandedAlertId === rule.id ? renderAlertForm(false) : null}
+                  </div>)}
+                </div> : null}
+              </div>;
+            })}
           </div>
-          <button type="button" className="jql-add unified-add-button" onClick={handleAddJql}>
+          {!expandedJqlId ? <button type="button" className="jql-add unified-add-button" onClick={handleAddJql}>
             <LineIcon name="plus" />
             Agregar JQL
-          </button>
-          <div className="settings-actions jql-save-actions">
+          </button> : null}
+          {!expandedJqlId ? <div className="settings-actions jql-save-actions">
             <button type="button" className="save-action-button" onClick={handleSaveJql} disabled={jqlSaving}>
               <LineIcon name="save" />
               {jqlSaving ? 'Guardando...' : 'Guardar'}
             </button>
             {jqlMessage ? <span className="settings-message">{jqlMessage}</span> : null}
-          </div>
-          <div className="jql-sync-settings">
-            <label className="settings-toggle jql-auto-sync-toggle">
-              <input
-                type="checkbox"
-                checked={autoSyncEnabled}
-                onChange={handleAutoSyncToggle}
-              />
-              <span className="jql-switch-control" aria-hidden="true" />
-              <span className="jql-toggle-label">Sincronización automática</span>
-            </label>
-            <div className="jql-sync-footer">
-              <div className="sync-interval-row">
-                <label htmlFor="sync-interval-minutes">Cada</label>
-                <input
-                  id="sync-interval-minutes"
-                  type="number"
-                  min="1"
-                  max="9999"
-                  step="1"
-                  value={syncIntervalMinutes}
-                  onChange={(event) => {
-                    syncIntervalDirtyRef.current = true;
-                    setSyncIntervalMinutes(event.target.value.replace(/\D/g, '').slice(0, 4));
-                  }}
-                  onFocus={() => { syncIntervalDirtyRef.current = true; }}
-                />
-                <span>minutos</span>
-              </div>
-              <div className="settings-actions">
-                <button type="button" className="save-action-button" onClick={handleSaveJql} disabled={jqlSaving}>
-                  <LineIcon name="save" />
-                  {jqlSaving ? 'Guardando...' : 'Guardar'}
-                </button>
-                {jqlMessage ? <span className="settings-message">{jqlMessage}</span> : null}
-              </div>
-            </div>
-          </div>
+          </div> : null}
         </div>
         {renderGridConfiguration()}
         </fieldset>
@@ -3516,6 +3766,7 @@ export default function App() {
           <div className="settings-actions">
             <button
               type="button"
+              className="sql-execute-button"
               onClick={handleExecuteSql}
               disabled={sqlExecuting || (syncInProgress && !/^select\b/i.test((sqlQueries[selectedSqlIndex] ?? '').trim()))}
             >
@@ -3543,7 +3794,7 @@ export default function App() {
           <div className={`toast-banner dashboard-toast ${sessionToastType === 'success' ? 'toast-success' : 'toast-warning'}`}>
             <span>{sessionToast}</span>
             {sessionToastType === 'warning' ? (
-              <button type="button" onClick={handleLogin} disabled={loginInProgress || syncInProgress}>
+              <button type="button" className="action-login toast-login-button" onClick={handleLogin} disabled={loginInProgress || syncInProgress}>
                 {loginInProgress ? 'Esperando inicio de sesion...' : 'Iniciar sesion'}
               </button>
             ) : null}
@@ -3653,20 +3904,7 @@ export default function App() {
 
           <div className="alerts-panel">
             <div className="alerts-header">
-              <div className="alerts-heading">
-                <h3>Alertas no leídas</h3>
-                <label className="alerts-toggle alerts-retry-toggle">
-                  <input
-                    type="checkbox"
-                    checked={alertRetryEnabled}
-                    onChange={handleAlertRetryToggle}
-                    disabled={alertRetrySaving}
-                  />
-                  <span className="alerts-switch-control" aria-hidden="true" />
-                  <span className="alerts-retry-label">Reenvío de Toast</span>
-                  <small>{alertRetryEnabled ? 'Activo' : 'Apagado'}</small>
-                </label>
-              </div>
+              <div className="alerts-heading"><h3>Alertas no leídas</h3></div>
               {(alertsSummary?.unreadCount ?? 0) >= 1 ? (
                 <span className="alerts-badge">{alertsSummary.unreadCount}</span>
               ) : null}
@@ -3691,9 +3929,7 @@ export default function App() {
                       )}
                       {Number(alert.retry_minutes ?? 0) > 0 ? (
                         <small className="alerts-retry-countdown">
-                          Proximo Toast: {alertRetryEnabled
-                            ? (formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente')
-                            : 'reenvio de toast apagado'}
+                          Proximo Toast: {formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente'}
                         </small>
                       ) : null}
                     </span>

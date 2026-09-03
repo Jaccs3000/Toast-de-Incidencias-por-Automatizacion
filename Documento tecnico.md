@@ -46,8 +46,8 @@ El proyecto usara JavaScript. No se usara Python.
 - **Sincronizacion**: coordina el flujo completo.
 - **Grafo**: construye ProjectGroups siguiendo `graph.json`.
 - **Persistencia**: lee y escribe en DuckDB.
-- **Motor SQL**: ejecuta reglas SQL configuradas por el usuario.
-- **Alertas**: crea, guarda y controla alertas y reenvios.
+- **SQL temporal**: permite consultas locales de diagnostico controladas.
+- **Alertas**: evalua las reglas asociadas a cada JQL y controla sus reenvios.
 - **Notificaciones**: intenta mostrar notificaciones nativas de Windows mediante Web Notifications API y usa Toast interno como respaldo.
 - **Interfaz**: muestra estado, configuracion y alertas.
 - **Logs**: registra la actividad tecnica.
@@ -56,7 +56,7 @@ El proyecto usara JavaScript. No se usara Python.
 
 La app obtiene datos desde Jira con endpoints REST y no almacena el JSON completo. Solo persiste los campos configurados y necesarios para funcionar.
 
-Cada sincronizacion parte de una o varias consultas JQL configuradas en `config/app.json`. La interfaz permite administrarlas por bloques, incluso si una consulta ocupa varias lineas. Se ejecutan mediante `POST /rest/api/3/search/jql` y sus resultados solo sirven como punto de entrada para construir los ProjectGroups.
+Cada sincronizacion parte de una o varias consultas JQL persistidas en DuckDB y reflejadas en `config/app.json`. Cada JQL tiene un identificador estable, admite varias alertas y se ejecuta mediante `POST /rest/api/3/search/jql`. Sus resultados sirven como punto de entrada para construir los ProjectGroups.
 
 Si una incidencia enlaza varias ramas `Testing`, cada rama produce un ProjectGroup independiente. Las ramas pueden compartir incidencias, pero no se consolidan solo por tener incidencias en comun. Solo se elimina un duplicado cuando dos grupos tienen exactamente el mismo conjunto de incidencias.
 
@@ -145,6 +145,8 @@ Tablas principales:
 - `JIRA_PROJECT_GROUPS`
 - `JIRA_PROJECT_GROUP_ISSUES`
 - `JIRA_RELATIONSHIPS`
+- `JQL_DEFINITIONS`
+- `JQL_PROJECT_GROUPS`
 - `ALERT_RULES`
 - `ALERTS`
 - `SYNC_CHANGES`
@@ -157,8 +159,10 @@ Propuesta minima de uso:
 - `JIRA_PROJECT_GROUPS`: una fila por `ProjectGroup`.
 - `JIRA_PROJECT_GROUP_ISSUES`: tabla puente entre grupos e incidencias.
 - `JIRA_RELATIONSHIPS`: relaciones descubiertas entre incidencias.
-- `ALERT_RULES`: reglas SQL del usuario.
-- `ALERTS`: alertas generadas por reglas.
+- `JQL_DEFINITIONS`: consultas JQL con identificador estable y orden visual.
+- `JQL_PROJECT_GROUPS`: origen de cada ProjectGroup e incidencia raiz por JQL.
+- `ALERT_RULES`: alertas configuradas dentro de cada JQL.
+- `ALERTS`: ocurrencias generadas, leidas o pendientes.
 - `SYNC_CHANGES`: cambios detectados en la sincronizacion actual: nuevas, actualizadas y ausentes.
 - `SETTINGS`: configuracion interna de la app.
 - `SYNC_STATUS`: estado de la ultima sincronizacion.
@@ -169,7 +173,8 @@ Propuesta de flujo de uso:
 - `JIRA_RELATIONSHIPS` almacena las relaciones descubiertas durante la sincronizacion.
 - `JIRA_PROJECT_GROUPS` almacena el grupo ya consolidado.
 - `JIRA_PROJECT_GROUP_ISSUES` relaciona cada grupo con sus incidencias.
-- `ALERT_RULES` se consulta para saber que reglas estan activas.
+- `JQL_PROJECT_GROUPS` conserva la relacion muchos-a-muchos sin duplicar incidencias.
+- `ALERT_RULES` se consulta por JQL para saber que alertas estan activas.
 - `ALERTS` registra lo que debe mostrarse y reenviarse.
 - `SYNC_STATUS` mantiene un unico registro con el estado operativo de la app.
 
@@ -225,9 +230,8 @@ Propuesta de `app.json`:
 - `version`: version de configuracion.
 - `syncIntervalSeconds`: tiempo entre sincronizaciones automaticas, en segundos.
 - `queryDelaySeconds`: espera entre consultas, en segundos.
-- `jqlQueries`: lista de consultas JQL, una cadena por cada consulta.
+- `jqlQueries`: copia de compatibilidad; la definicion con ID se mantiene en DuckDB.
 - `logRetentionDays`: retencion de logs en dias.
-- `startMinimized`: si la app arranca minimizada.
 - `enableToasts`: si las notificaciones Toast estan activas.
 - `autoSyncEnabled`: activa o apaga la sincronizacion automatica. La sincronizacion manual sigue disponible.
 
@@ -336,7 +340,8 @@ La sincronizacion sigue este orden:
 4. Calcular campos derivados.
 5. Comparar con lo persistido.
 6. Actualizar DuckDB dentro de una transaccion.
-7. Ejecutar reglas SQL y generar alertas.
+7. Actualizar la relacion JQL, incidencia raiz y ProjectGroup.
+8. Evaluar las alertas de cada JQL.
 
 Si la sesion no es valida, el proceso termina con error controlado despues del primer paso y no abre el navegador de login.
 
@@ -356,21 +361,20 @@ Regla operativa:
 - despues se compara con lo guardado;
 - solo al final se persiste todo dentro de una transaccion.
 
-Propuesta de evaluacion de reglas SQL:
-
-- primero se obtiene el nuevo estado desde Jira;
-- luego se compara contra el estado guardado en DuckDB;
-- esa comparacion determina que cambio;
-- despues de persistir el estado consolidado, se evaluan las reglas SQL sobre el resultado final y, cuando haga falta, sobre los cambios detectados;
-- si una regla devuelve filas, se generan alertas.
+La comparacion de alertas usa el espejo anterior y el nuevo resultado dentro de la misma transaccion. Las ocurrencias se guardan antes del `COMMIT`, pero los Toast solo se solicitan despues de confirmarlo. Cualquier error revierte incidencias, ProjectGroups, origenes JQL y alertas.
 
 ### 10. Alertas y notificaciones
 
-La interfaz incluye un constructor visual de alertas. El usuario selecciona el evento (`Incidencia nueva`, `Incidencia actualizada` o `Incidencia eliminada`), el campo, el operador, el valor y el texto del Toast. La app genera el SQL internamente y no exige escribir SQL para las reglas comunes.
+Las alertas se crean dentro de un JQL. El JQL queda visible en solo lectura mientras se crea o edita una alerta y puede contener varias reglas colapsables.
 
-Cada regla SQL devuelve posibles alertas. Cada fila de resultado representa una alerta potencial para una incidencia especifica.
+Tipos:
 
-Antes de crear una nueva alerta, la app verifica si ya existe una alerta no leida para la misma regla e incidencia.
+- `new_issue`: la incidencia raiz y su ProjectGroup no existian antes y ahora llegan por ese JQL.
+- `attribute_changed`: el mismo origen JQL ya existia y una expresion del ProjectGroup cambia de falsa a verdadera.
+
+Las expresiones admiten condiciones `AND` y `OR` sobre cualquier tipo de incidencia y atributo persistido, incluido `Estado General`. Cada regla tambien guarda texto, imagen opcional, estado activo, minutos de reenvio y un par opcional `tipo de incidencia + atributo` para anexarlo al Toast entre corchetes.
+
+Antes de crear una ocurrencia, la app valida su identidad estable: regla, JQL, ProjectGroup e incidencia raiz. Si esa identidad ya existe, leida o no, no se crea otra.
 
 Si no existe:
 
@@ -378,13 +382,13 @@ Si no existe:
 - se muestra un Toast;
 - queda disponible en la campana de notificaciones.
 
-Cada alerta puede reenviarse segun el numero de sincronizaciones configurado para la regla.
+Cada alerta puede reenviarse segun sus propios minutos configurados. `0` significa sin reenvio y no existe un interruptor global.
 
 La misma incidencia no se notifica dos veces dentro de la misma regla. Reglas distintas pueden generar alertas distintas para la misma incidencia.
 
 Regla operativa:
 
-- una alerta existe por combinacion de regla e incidencia;
+- una alerta existe por combinacion de regla, JQL, ProjectGroup e incidencia raiz;
 - si la alerta sigue no leida, puede reenviarse segun la configuracion;
 - si se marca como leida, deja de reenviarse;
 - la persistencia de la alerta no depende de que el Toast se haya mostrado en ese momento.
@@ -392,11 +396,15 @@ Regla operativa:
 Propuesta minima de `ALERT_RULES`:
 
 - `id`
+- `jql_id`
+- `alert_type`
 - `name`
-- `sql`
 - `toast_text`
 - `toast_image`
-- `retry_syncs`
+- `condition_config`
+- `display_issue_type`
+- `display_field`
+- `retry_minutes`
 - `is_active`
 - `created`
 - `updated`
@@ -404,6 +412,7 @@ Propuesta minima de `ALERT_RULES`:
 Propuesta minima de `ALERTS`:
 
 - `id`
+- `identity_key`
 - `rule_id`
 - `issue_id`
 - `project_group_id`
@@ -411,8 +420,7 @@ Propuesta minima de `ALERTS`:
 - `created`
 - `updated`
 - `last_notified_at`
-- `retry_count`
-- `next_retry_sync`
+- `next_retry_at`
 - `payload_json`
 
 ### 11. Interfaz
@@ -422,8 +430,7 @@ La primera version tendra una sola pantalla con:
 - estado de la aplicacion;
 - sincronizacion manual;
 - cancelacion de sincronizacion;
-- administracion de consultas JQL;
-- administracion de reglas SQL;
+- administracion de consultas JQL y sus alertas asociadas;
 - parametros generales;
 - campana de alertas no leidas.
 

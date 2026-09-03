@@ -1,3 +1,5 @@
+import { collapseReportedTimeColumns } from '../../../shared/grids/reportedTimes.js';
+
 export class GridsRepository {
   constructor(persistence) {
     this.persistence = persistence;
@@ -41,6 +43,32 @@ export class GridsRepository {
       grid.created,
       grid.updated,
     ]);
+  }
+
+  async migrateLegacyReportedTimeColumns() {
+    const grids = await this.list();
+    let migrated = 0;
+
+    for (const grid of grids) {
+      let columns;
+      try {
+        columns = JSON.parse(grid.columns_json ?? '[]');
+      } catch {
+        // Leave malformed definitions untouched so they remain diagnosable by the UI.
+        continue;
+      }
+
+      const normalizedColumns = collapseReportedTimeColumns(columns);
+      if (JSON.stringify(normalizedColumns) === JSON.stringify(columns)) continue;
+
+      await this.persistence.exec(
+        'UPDATE GRID_DEFINITIONS SET columns_json = ?, updated = ? WHERE id = ?',
+        [JSON.stringify(normalizedColumns), new Date().toISOString(), grid.id],
+      );
+      migrated += 1;
+    }
+
+    return migrated;
   }
 
   async remove(id) {

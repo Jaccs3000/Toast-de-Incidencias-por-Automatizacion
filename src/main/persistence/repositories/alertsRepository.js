@@ -35,9 +35,10 @@ export class AlertsRepository {
   async listRules() {
     const rows = await this.persistence.query(
       `
-      SELECT id, name, sql, toast_text, toast_image, condition_config, retry_minutes, is_active, created, updated
+      SELECT id, jql_id, alert_type, name, sql, toast_text, toast_image, condition_config,
+             display_issue_type, display_field, retry_minutes, is_active, created, updated
       FROM ALERT_RULES
-      ORDER BY name ASC
+      ORDER BY jql_id ASC, created ASC, name ASC
       `,
     );
 

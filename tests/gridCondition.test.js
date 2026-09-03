@@ -9,6 +9,13 @@ test('matches abbreviated assignee names without accents or casing', () => {
   );
 });
 
+test('matches abbreviated assignee names with contiene', () => {
+  assert.equal(
+    gridConditionMatches('Jesús Antonio Clavijo Castellar', 'LIKE', 'jesus clavijo', 'assignee'),
+    true,
+  );
+});
+
 test('matches abbreviated reporter names with words in their original order', () => {
   assert.equal(
     gridConditionMatches('María del Carmen Pérez Gómez', '=', 'MARIA PEREZ', 'reporter'),
