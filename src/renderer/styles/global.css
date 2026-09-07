@@ -140,12 +140,13 @@ body {
 .app-header-status-panel {
   position: relative;
   display: flex;
-  min-width: min(440px, 42vw);
-  flex: 0 0 auto;
+  width: min(610px, 54vw);
+  min-width: min(570px, 54vw);
+  flex: 0 1 auto;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   margin: 12px 18px 12px 0;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border: 1px solid rgba(171, 184, 255, .34);
   border-radius: 14px;
   background: linear-gradient(145deg, rgba(35, 48, 91, .92), rgba(20, 30, 63, .9));
@@ -195,7 +196,18 @@ body {
 }
 
 .header-refresh-button {
-  color: #9eb5ff;
+  border-color: rgba(66, 195, 255, .9);
+  background: linear-gradient(180deg, rgba(21, 137, 222, .38), rgba(11, 76, 157, .3));
+  color: #57d5ff;
+  box-shadow: inset 0 1px 0 rgba(202, 245, 255, .2), 0 0 18px rgba(35, 178, 255, .42);
+}
+
+.header-refresh-button:hover:not(:disabled),
+.header-refresh-button:focus-visible {
+  border-color: #a8f1ff;
+  background: linear-gradient(180deg, rgba(28, 165, 255, .58), rgba(12, 94, 192, .48));
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(225, 252, 255, .34), 0 0 24px rgba(35, 190, 255, .68);
 }
 
 .header-settings-button.is-active {
@@ -209,9 +221,41 @@ body {
   color: #d0c9ff;
 }
 
+.header-shutdown-button {
+  border-color: rgba(255, 112, 135, .72);
+  background: linear-gradient(180deg, rgba(145, 36, 62, .34), rgba(91, 24, 43, .24));
+  color: #ff9aac;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 16px rgba(245, 78, 107, .14);
+}
+
+.header-shutdown-button:hover:not(:disabled),
+.header-shutdown-button:focus-visible {
+  border-color: #ff9aac;
+  background: linear-gradient(180deg, rgba(184, 47, 78, .5), rgba(116, 27, 53, .38));
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 0 20px rgba(245, 78, 107, .3);
+}
+
+.header-restart-button {
+  margin-left: 10px;
+  color: #ffbd6b;
+}
+
+.header-restart-button:not(:disabled) .line-icon {
+  transition: transform .28s ease;
+}
+
+.header-restart-button:hover:not(:disabled) .line-icon {
+  transform: rotate(180deg);
+}
+
 .header-alerts-anchor {
   position: relative;
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding-right: 13px;
+  border-right: 1px solid rgba(171, 184, 255, .28);
 }
 
 .header-alert-button {
@@ -341,23 +385,35 @@ body {
 
 .header-sync-summary {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
-  gap: 10px;
+  gap: 0;
   color: #d5dcff;
   font-size: .78rem;
   line-height: 1.25;
   white-space: nowrap;
 }
 
-.header-sync-summary > span + span {
-  padding-left: 10px;
-  border-left: 1px solid rgba(171, 184, 255, .28);
+.header-sync-timing {
+  display: grid;
+  min-width: 145px;
+  flex: 0 0 auto;
+  gap: 5px;
+  padding: 0 12px;
+  border-right: 1px solid rgba(171, 184, 255, .28);
 }
 
 .header-sync-result {
+  flex: 0 1 132px;
+  min-width: 0;
+  padding-right: 12px;
+  border-right: 1px solid rgba(171, 184, 255, .28);
   color: #83e7aa;
   font-weight: 750;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .header-sync-result.sync-status-pulsing {
@@ -378,19 +434,23 @@ body {
 }
 
 .header-sync-login-link {
+  max-width: 100%;
   appearance: none;
   border: 0;
   padding: 0;
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 1rem;
+  font-size: inherit;
   font-weight: 850;
-  line-height: 1.25;
+  line-height: inherit;
+  text-align: left;
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
   cursor: pointer;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .header-sync-login-link:hover:not(:disabled),
@@ -488,8 +548,9 @@ body {
 
 @media (max-width: 980px) {
   .app-header-status-panel {
-    min-width: min(360px, 48vw);
-    gap: 10px;
+    width: min(560px, 58vw);
+    min-width: min(485px, 58vw);
+    gap: 9px;
     margin-right: 10px;
     padding-inline: 10px;
   }
@@ -501,12 +562,25 @@ body {
   }
 
   .header-sync-summary {
-    gap: 7px;
     font-size: .7rem;
   }
 
-  .header-sync-summary > span + span {
-    padding-left: 7px;
+  .header-alerts-anchor {
+    padding-right: 10px;
+  }
+
+  .header-sync-timing {
+    min-width: 124px;
+    gap: 4px;
+    padding: 0 10px;
+  }
+
+  .header-sync-result {
+    padding-right: 10px;
+  }
+
+  .header-restart-button {
+    margin-left: 8px;
   }
 }
 
@@ -522,9 +596,11 @@ body {
 
   .app-header-status-panel {
     order: 2;
+    width: auto;
     min-width: 0;
     margin: 10px 12px 12px;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .header-sync-summary {
@@ -532,9 +608,19 @@ body {
     white-space: normal;
   }
 
-  .header-sync-summary > span + span {
-    padding-left: 0;
-    border-left: 0;
+  .header-sync-timing {
+    min-width: 0;
+    padding: 0;
+    border-right: 0;
+  }
+
+  .header-sync-result {
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .header-restart-button {
+    margin-left: 0;
   }
 }
 
@@ -712,7 +798,7 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .configuration-workspace .status-summary-card .actions-ready {
-  grid-template-columns: minmax(0, .9fr) minmax(0, 1.05fr) minmax(0, 1.45fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .configuration-workspace .status-summary-card .actions button {
   display: inline-flex;
@@ -1014,7 +1100,7 @@ body {
 }
 @container status-summary (max-width: 500px) {
   .configuration-workspace .status-summary-card .actions-ready {
-    grid-template-columns: minmax(0, .82fr) minmax(0, .9fr) minmax(0, 1.25fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .configuration-workspace .status-summary-card .actions-ready .action-shutdown {
     grid-column: auto;
@@ -1313,6 +1399,7 @@ body {
 
 .time-reports-heading .copy {
   margin-top: 8px;
+  white-space: nowrap;
 }
 
 .time-reports-filters {
@@ -1342,19 +1429,37 @@ body {
   flex: 1;
 }
 
-.time-reports-date-control .line-icon {
+.time-reports-date-picker-trigger {
   position: absolute;
-  z-index: 1;
-  top: 0;
-  right: 0;
-  width: 42px;
-  height: 100%;
-  padding: 11px;
-  border-left: 1px solid rgba(142, 162, 255, .28);
-  border-radius: 0 9px 9px 0;
+  z-index: 2;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  width: 40px;
+  height: calc(100% - 2px);
+  place-items: center;
+  padding: 10px;
+  border: 0;
+  border-radius: 0 8px 8px 0;
+  background: transparent;
   box-sizing: border-box;
   color: #9fb3ff;
-  pointer-events: none;
+  cursor: pointer;
+}
+
+.time-reports-date-picker-trigger:hover {
+  background: rgba(103, 125, 230, .16);
+  color: #e3e8ff;
+}
+
+.time-reports-date-picker-trigger:focus-visible {
+  outline: 2px solid rgba(157, 172, 255, .7);
+  outline-offset: -3px;
+}
+
+.time-reports-date-picker-trigger .line-icon {
+  width: 100%;
+  height: 100%;
 }
 
 .dashboard-time-reports .time-reports-filters input {
@@ -1563,7 +1668,7 @@ body {
 .time-reports-table td {
   padding: 10px 9px;
   border-bottom: 1px solid rgba(142, 162, 255, .14);
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
 }
 
@@ -1576,6 +1681,16 @@ body {
   white-space: nowrap;
 }
 
+.time-reports-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.time-reports-select-all input {
+  margin: 0;
+}
+
 .time-reports-table tr:last-child td {
   border-bottom: 0;
 }
@@ -1584,6 +1699,38 @@ body {
   width: 16px;
   height: 16px;
   accent-color: #62d9a1;
+}
+
+.time-reports-corrections-cell {
+  white-space: nowrap;
+}
+
+.time-reports-group-cell input[type="checkbox"] {
+  margin: 0;
+}
+
+.time-reports-corrections-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.time-reports-corrections-option > span {
+  grid-column: 2;
+  text-align: center;
+}
+
+.time-reports-corrections-option input[type="checkbox"] {
+  grid-column: 3;
+  margin: 0;
+  justify-self: end;
 }
 
 .time-report-issue-key {
@@ -1621,6 +1768,10 @@ body {
 }
 
 @media (max-width: 760px) {
+  .time-reports-heading .copy {
+    white-space: normal;
+  }
+
   .time-reports-filters {
     grid-template-columns: 1fr 1fr;
   }
@@ -5192,7 +5343,7 @@ h1 {
 }
 
 .configuration-workspace .status-summary-card .actions-ready {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -5217,7 +5368,7 @@ h1 {
 }
 
 .configuration-workspace .status-summary-card .actions-with-login {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .configuration-workspace .status-summary-card .actions-with-login .action-login {
@@ -5611,20 +5762,51 @@ h1 {
   color: #ffe5ad !important;
 }
 
+/* The report search becomes the same vivid cancellation control used by synchronization. */
+body .configuration-workspace .dashboard-time-reports .time-reports-search-button {
+  min-width: 178px !important;
+  border-color: #8295ff !important;
+  background: linear-gradient(180deg, rgba(93, 112, 237, .34), rgba(47, 63, 173, .2)) !important;
+  color: #d7ddff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 0 18px rgba(89, 108, 242, .14) !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-search-button.is-syncing {
+  border-color: #61e89a !important;
+  background: linear-gradient(180deg, rgba(57, 206, 123, .42), rgba(21, 125, 73, .3)) !important;
+  color: #eafff1 !important;
+  animation: action-sync-pulse 1.45s ease-in-out infinite;
+  cursor: wait;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .configuration-workspace .dashboard-time-reports .time-reports-search-button.is-syncing {
+    animation: none;
+  }
+}
+
 /* Keep time-report controls above the shared button palette. */
 body .configuration-workspace .dashboard-time-reports .time-reports-filters input {
   min-height: 42px !important;
 }
 
-body .configuration-workspace .dashboard-time-reports .time-reports-date-control .line-icon {
-  top: 0 !important;
-  right: 0 !important;
-  width: 42px !important;
-  height: 42px !important;
-  padding: 11px !important;
-  border-left: 1px solid rgba(142, 162, 255, .28) !important;
-  border-radius: 0 9px 9px 0 !important;
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger {
+  top: 1px !important;
+  right: 1px !important;
+  display: grid !important;
+  width: 40px !important;
+  height: 40px !important;
+  min-height: 0 !important;
+  padding: 10px !important;
+  border: 0 !important;
+  border-radius: 0 8px 8px 0 !important;
+  background: transparent !important;
   box-sizing: border-box !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger:hover {
+  background: rgba(103, 125, 230, .16) !important;
+  color: #e3e8ff !important;
 }
 
 body .configuration-workspace .dashboard-time-reports .time-reports-inline-search {
@@ -5875,11 +6057,11 @@ body .configuration-workspace .dashboard-status .alerts-read-button {
 }
 
 .configuration-workspace .status-summary-card .actions-ready {
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
 .configuration-workspace .status-summary-card .actions-with-login {
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 }
 
 .configuration-workspace .status-summary-card .actions > button > span,
@@ -6285,6 +6467,33 @@ body .configuration-workspace .dashboard-sql .action-database-reset {
   border-color: #b6c0ff !important;
   background: rgba(25, 36, 72, .78) !important;
   color: #eef1ff !important;
+}
+
+/* Active cancellation controls must remain easy to spot while work is running. */
+@keyframes active-stop-button-blink {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 0 16px rgba(77, 238, 143, .28) !important;
+  }
+
+  50% {
+    opacity: .58;
+    filter: brightness(1.2);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 28px rgba(77, 238, 143, .58) !important;
+  }
+}
+
+body .configuration-workspace .dashboard-status .sync-button.is-syncing,
+body .configuration-workspace .dashboard-time-reports .time-reports-search-button.is-syncing {
+  animation: active-stop-button-blink .95s ease-in-out infinite !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .configuration-workspace .dashboard-status .sync-button.is-syncing,
+  body .configuration-workspace .dashboard-time-reports .time-reports-search-button.is-syncing {
+    animation: none !important;
+  }
 }
 
 .configuration-workspace .save-action-button,

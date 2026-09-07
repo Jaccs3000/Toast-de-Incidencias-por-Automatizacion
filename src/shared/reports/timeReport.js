@@ -2,6 +2,23 @@ function normalizeDate(value) {
   return String(value ?? '').trim();
 }
 
+export function calculateSecondFriday(fromDate) {
+  const value = normalizeDate(fromDate);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day) {
+    return '';
+  }
+
+  const daysUntilFriday = (5 - date.getUTCDay() + 7) % 7;
+  date.setUTCDate(date.getUTCDate() + daysUntilFriday + 7);
+  return date.toISOString().slice(0, 10);
+}
+
 export function validateTimeReportRange(fromDate, toDate) {
   const from = normalizeDate(fromDate);
   const to = normalizeDate(toDate);
@@ -56,14 +73,25 @@ function tempoWorklogId(worklog) {
 
 export function enrichTempoWorklogs(worklogs, auditEvents) {
   const events = Array.isArray(auditEvents) ? auditEvents : [];
+  const eventsByWorklogId = new Map();
+  for (const event of events) {
+    const tempoId = String(event?.entity?.entity_id ?? '');
+    if (!tempoId) continue;
+    const relatedEvents = eventsByWorklogId.get(tempoId) ?? [];
+    relatedEvents.push(event);
+    eventsByWorklogId.set(tempoId, relatedEvents);
+  }
+  for (const relatedEvents of eventsByWorklogId.values()) {
+    relatedEvents.sort((left, right) => String(left?.timestamp ?? '')
+      .localeCompare(String(right?.timestamp ?? '')));
+  }
+
   return (Array.isArray(worklogs) ? worklogs : []).map((worklog) => {
     const tempoId = tempoWorklogId(worklog);
     if (!tempoId) return worklog;
 
     let tempoAuthorId = null;
-    const relatedEvents = events
-      .filter((event) => String(event?.entity?.entity_id ?? '') === tempoId)
-      .sort((left, right) => String(left?.timestamp ?? '').localeCompare(String(right?.timestamp ?? '')));
+    const relatedEvents = eventsByWorklogId.get(tempoId) ?? [];
     for (const event of relatedEvents) {
       for (const change of Array.isArray(event?.changes) ? event.changes : []) {
         if (change?.field === 'workerId' && change.new) {

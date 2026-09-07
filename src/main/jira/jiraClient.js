@@ -70,11 +70,87 @@ function extractTempoToken(iframeHtml) {
   }
 }
 
+function splitIntoChunks(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function wait(delayMs, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Request canceled.', 'AbortError'));
+      return;
+    }
+
+    const timer = setTimeout(resolve, delayMs);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new DOMException('Request canceled.', 'AbortError'));
+    }, { once: true });
+  });
+}
+
+async function withRateLimitRetry(request, {
+  signal = null,
+  maxRetries = 3,
+  retryBaseDelayMs = 250,
+} = {}) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await request();
+    } catch (error) {
+      if (error?.status !== 429 || attempt >= maxRetries) throw error;
+      const retryAfterSeconds = error?.retryAfterSeconds === null
+        || error?.retryAfterSeconds === undefined
+        ? Number.NaN
+        : Number(error.retryAfterSeconds);
+      const delayMs = Number.isFinite(retryAfterSeconds)
+        ? Math.max(retryAfterSeconds * 1000, 0)
+        : retryBaseDelayMs * (2 ** attempt);
+      attempt += 1;
+      await wait(delayMs, signal);
+    }
+  }
+}
+
+function isUnsupportedPageSizeError(error) {
+  return error?.status === 400 || error?.status === 413;
+}
+
+function isUnavailableBulkChangelogError(error) {
+  return [400, 403, 404, 405, 501].includes(Number(error?.status));
+}
+
+function normalizeChangelogCreated(value) {
+  if (typeof value === 'number' || /^\d+$/.test(String(value ?? '').trim())) {
+    const timestamp = Number(value);
+    if (Number.isFinite(timestamp)) {
+      const milliseconds = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+      const date = new Date(milliseconds);
+      if (!Number.isNaN(date.getTime())) return date.toISOString();
+    }
+  }
+  return value;
+}
+
+function normalizeBulkChangelogHistory(history) {
+  if (!history || typeof history !== 'object') return history;
+  return {
+    ...history,
+    created: normalizeChangelogCreated(history.created),
+  };
+}
+
 export class JiraClient {
   constructor({ baseUrl, headers = {} } = {}) {
     this.baseUrl = baseUrl ? baseUrl.replace(/\/$/, '') : '';
     this.headers = headers;
     this.tempoContext = null;
+    this.bulkChangelogAvailability = null;
     this.resetMetrics();
   }
 
@@ -93,6 +169,7 @@ export class JiraClient {
   }
 
   getRequestCategory(pathname) {
+    if (pathname.includes('/rest/api/3/changelog/')) return 'changelog';
     if (pathname.includes('/rest/api/3/issue/')) return 'issue';
     if (pathname.includes('/rest/api/3/search/')) return 'jql';
     if (pathname.includes('/rest/api/3/myself')) return 'myself';
@@ -109,6 +186,7 @@ export class JiraClient {
 
     this.headers = headers;
     this.tempoContext = null;
+    this.bulkChangelogAvailability = null;
   }
 
   buildUrl(pathname) {
@@ -169,6 +247,50 @@ export class JiraClient {
     }
 
     return this.request(`/rest/api/3/issue/${encodeURIComponent(issueKey)}`, options);
+  }
+
+  async fetchSessionImageData(imageUrl, options = {}) {
+    let source;
+    try {
+      source = new URL(String(imageUrl ?? ''));
+    } catch {
+      throw new Error('La URL del icono de Jira no es valida.');
+    }
+    if (!['http:', 'https:'].includes(source.protocol)) {
+      throw new Error('La URL del icono de Jira no es valida.');
+    }
+
+    const jiraOrigin = new URL(this.baseUrl).origin;
+    if (source.origin !== jiraOrigin) {
+      throw new Error('El icono no pertenece al sitio Jira configurado.');
+    }
+
+    const response = await fetch(source, {
+      headers: {
+        Accept: 'image/*',
+        ...this.headers,
+      },
+      signal: options.signal ?? AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      const error = new Error(`No se pudo obtener el icono de Jira (${response.status}).`);
+      error.status = response.status;
+      throw error;
+    }
+
+    const contentType = String(response.headers.get('content-type') ?? '')
+      .split(';', 1)[0]
+      .trim()
+      .toLocaleLowerCase();
+    if (!contentType.startsWith('image/')) {
+      throw new Error('Jira no devolvio una imagen valida para el icono.');
+    }
+
+    const image = Buffer.from(await response.arrayBuffer());
+    if (image.length === 0 || image.length > 256 * 1024) {
+      throw new Error('El icono de Jira tiene un tamano no permitido.');
+    }
+    return `data:${contentType};base64,${image.toString('base64')}`;
   }
 
   async bulkFetchIssues(issueIdsOrKeys, options = {}) {
@@ -260,17 +382,39 @@ export class JiraClient {
 
     const worklogs = [];
     let startAt = 0;
-    const maxResults = 100;
+    let maxResults = Math.min(Math.max(Number(options.maxResults) || 1000, 1), 1000);
+    const fallbackMaxResults = Math.min(maxResults, 100);
+    let retriedWithFallback = false;
     const expand = options.expandProperties === true ? '&expand=properties' : '';
     while (true) {
-      const page = await this.request(
-        `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/worklog?startAt=${startAt}&maxResults=${maxResults}${expand}`,
-        { signal: options.signal },
-      );
-      worklogs.push(...(Array.isArray(page?.worklogs) ? page.worklogs : []));
-      const total = Number(page?.total ?? worklogs.length);
-      if (!page?.worklogs?.length || worklogs.length >= total) break;
-      startAt += Number(page?.maxResults ?? maxResults) || maxResults;
+      let page;
+      try {
+        page = await withRateLimitRetry(
+          () => this.request(
+            `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/worklog?startAt=${startAt}&maxResults=${maxResults}${expand}`,
+            { signal: options.signal },
+          ),
+          options,
+        );
+      } catch (error) {
+        if (startAt === 0 && !retriedWithFallback && maxResults > fallbackMaxResults
+          && isUnsupportedPageSizeError(error)) {
+          maxResults = fallbackMaxResults;
+          retriedWithFallback = true;
+          continue;
+        }
+        throw error;
+      }
+
+      const pageWorklogs = Array.isArray(page?.worklogs) ? page.worklogs : [];
+      worklogs.push(...pageWorklogs);
+      const totalValue = Number(page?.total);
+      const total = Number.isFinite(totalValue) ? totalValue : null;
+      if (!pageWorklogs.length || page?.isLast === true || (total !== null && worklogs.length >= total)) break;
+      const increment = pageWorklogs.length;
+      const nextStartAt = startAt + increment;
+      if (nextStartAt <= startAt) break;
+      startAt = nextStartAt;
     }
     return worklogs;
   }
@@ -331,22 +475,32 @@ export class JiraClient {
         const query = lastEvaluatedKey
           ? `?lastEvaluatedKey=${encodeURIComponent(lastEvaluatedKey)}`
           : '';
-        const response = await fetch(
-          `${context.origin}/rest/audit/worklog/${encodeURIComponent(issueId)}/${query}`,
-          {
-            headers: {
-              Accept: 'application/json',
-              Authorization: `Tempo-Bearer ${context.token}`,
-              'Tempo-User-TimeZone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        const response = await withRateLimitRetry(async () => {
+          const response = await fetch(
+            `${context.origin}/rest/audit/worklog/${encodeURIComponent(issueId)}/${query}`,
+            {
+              headers: {
+                Accept: 'application/json',
+                Authorization: `Tempo-Bearer ${context.token}`,
+                'Tempo-User-TimeZone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+              },
+              signal: options.signal ?? AbortSignal.timeout(30000),
             },
-            signal: options.signal ?? AbortSignal.timeout(30000),
-          },
-        );
-        if (!response.ok) {
-          const error = new Error(`Tempo worklog audit failed (${response.status}).`);
-          error.status = response.status;
-          throw error;
-        }
+          );
+          if (!response.ok) {
+            const error = new Error(`Tempo worklog audit failed (${response.status}).`);
+            error.status = response.status;
+            const retryAfterHeader = response.headers.get('retry-after');
+            const retryAfter = retryAfterHeader === null ? Number.NaN : Number(retryAfterHeader);
+            error.retryAfterSeconds = Number.isFinite(retryAfter) ? retryAfter : null;
+            throw error;
+          }
+          return response;
+        }, {
+          signal: options.signal,
+          maxRetries: 3,
+          retryBaseDelayMs: 250,
+        });
         const body = await response.json();
         if (Array.isArray(body?.results)) results.push(...body.results);
         lastEvaluatedKey = body?.metadata?.next ? body.metadata.lastEvaluatedKey : null;
@@ -379,30 +533,51 @@ export class JiraClient {
     if (toDate) body.to = toDate;
 
     const load = async (currentContext) => {
-      const response = await fetch(
-        `${currentContext.origin}/rest/tempo-timesheets/4/worklogs/search`,
-        {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            Authorization: `Tempo-Bearer ${currentContext.token}`,
-            'Tempo-User-TimeZone': body.userTimeZone,
-            'x-atlassian-force-account-id': 'true',
-          },
-          body: JSON.stringify(body),
-          signal: signal ?? AbortSignal.timeout(30000),
-        },
-      );
-      if (!response.ok) {
-        const text = await response.text();
-        const error = new Error(`Tempo worklog search failed (${response.status}): ${text}`);
-        error.status = response.status;
-        throw error;
-      }
-      const result = await response.json();
-      if (Array.isArray(result)) return result;
-      return Array.isArray(result?.worklogs) ? result.worklogs : [];
+      const worklogs = [];
+      let nextPageToken = null;
+      const seenPageTokens = new Set();
+      do {
+        const requestBody = { ...body };
+        if (nextPageToken) requestBody.nextPageToken = nextPageToken;
+        const response = await withRateLimitRetry(async () => {
+          const response = await fetch(
+            `${currentContext.origin}/rest/tempo-timesheets/4/worklogs/search`,
+            {
+              method: 'POST',
+              headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                Authorization: `Tempo-Bearer ${currentContext.token}`,
+                'Tempo-User-TimeZone': body.userTimeZone,
+                'x-atlassian-force-account-id': 'true',
+              },
+              body: JSON.stringify(requestBody),
+              signal: signal ?? AbortSignal.timeout(30000),
+            },
+          );
+          if (!response.ok) {
+            const text = await response.text();
+            const error = new Error(`Tempo worklog search failed (${response.status}): ${text}`);
+            error.status = response.status;
+            const retryAfterHeader = response.headers.get('retry-after');
+            const retryAfter = retryAfterHeader === null ? Number.NaN : Number(retryAfterHeader);
+            error.retryAfterSeconds = Number.isFinite(retryAfter) ? retryAfter : null;
+            throw error;
+          }
+          return response;
+        }, { signal, maxRetries: 3, retryBaseDelayMs: 250 });
+        const result = await response.json();
+        if (Array.isArray(result)) {
+          worklogs.push(...result);
+          nextPageToken = null;
+        } else {
+          worklogs.push(...(Array.isArray(result?.worklogs) ? result.worklogs : []));
+          const candidateToken = result?.nextPageToken ?? null;
+          nextPageToken = candidateToken && !seenPageTokens.has(candidateToken) ? candidateToken : null;
+          if (candidateToken) seenPageTokens.add(candidateToken);
+        }
+      } while (nextPageToken);
+      return worklogs;
     };
 
     try {
@@ -419,18 +594,115 @@ export class JiraClient {
 
     const values = [];
     let startAt = 0;
-    const maxResults = 100;
+    let maxResults = Math.min(Math.max(Number(options.maxResults) || 1000, 1), 1000);
+    const fallbackMaxResults = Math.min(maxResults, 100);
+    let retriedWithFallback = false;
     while (true) {
-      const page = await this.request(
-        `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/changelog?startAt=${startAt}&maxResults=${maxResults}`,
-        options,
-      );
-      values.push(...(Array.isArray(page?.values) ? page.values : []));
-      const total = Number(page?.total ?? values.length);
-      if (!page?.values?.length || values.length >= total || page?.isLast === true) break;
-      startAt += Number(page?.maxResults ?? maxResults) || maxResults;
+      let page;
+      try {
+        page = await withRateLimitRetry(
+          () => this.request(
+            `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/changelog?startAt=${startAt}&maxResults=${maxResults}`,
+            { signal: options.signal },
+          ),
+          options,
+        );
+      } catch (error) {
+        if (startAt === 0 && !retriedWithFallback && maxResults > fallbackMaxResults
+          && isUnsupportedPageSizeError(error)) {
+          maxResults = fallbackMaxResults;
+          retriedWithFallback = true;
+          continue;
+        }
+        throw error;
+      }
+
+      const pageValues = Array.isArray(page?.values) ? page.values : [];
+      values.push(...pageValues);
+      const totalValue = Number(page?.total);
+      const total = Number.isFinite(totalValue) ? totalValue : null;
+      if (!pageValues.length || values.length >= (total ?? Number.POSITIVE_INFINITY) || page?.isLast === true) break;
+      const increment = pageValues.length;
+      const nextStartAt = startAt + increment;
+      if (nextStartAt <= startAt) break;
+      startAt = nextStartAt;
     }
     return values;
+  }
+
+  async listBulkIssueChangelogs(issueIdsOrKeys, options = {}) {
+    const issueReferences = [...new Set((Array.isArray(issueIdsOrKeys) ? issueIdsOrKeys : [])
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean))];
+    if (issueReferences.length === 0) return [];
+
+    const fieldIds = Array.isArray(options.fieldIds) && options.fieldIds.length > 0
+      ? options.fieldIds.slice(0, 10)
+      : ['assignee', 'status'];
+    const maxResults = Math.min(Math.max(Number(options.maxResults) || 1000, 1), 1000);
+    if (this.bulkChangelogAvailability === false) {
+      const error = new Error('Jira bulk changelog endpoint is unavailable for this session.');
+      error.status = 404;
+      throw error;
+    }
+    const grouped = new Map();
+
+    try {
+      for (const batch of splitIntoChunks(issueReferences, 1000)) {
+        let nextPageToken = null;
+        const seenPageTokens = new Set();
+        do {
+          const body = {
+            issueIdsOrKeys: batch,
+            fieldIds,
+            maxResults,
+          };
+          if (nextPageToken) body.nextPageToken = nextPageToken;
+
+          const page = await withRateLimitRetry(
+            () => this.request('/rest/api/3/changelog/bulkfetch', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(body),
+              signal: options.signal,
+            }),
+            options,
+          );
+
+          for (const issueChangeLog of Array.isArray(page?.issueChangeLogs) ? page.issueChangeLogs : []) {
+            const issueId = String(issueChangeLog?.issueId ?? '').trim();
+            if (!issueId) continue;
+            const current = grouped.get(issueId) ?? new Map();
+            for (const history of Array.isArray(issueChangeLog?.changeHistories)
+              ? issueChangeLog.changeHistories
+              : []) {
+              const normalized = normalizeBulkChangelogHistory(history);
+              const historyId = String(normalized?.id ?? '');
+              const identity = historyId || JSON.stringify(normalized);
+              current.set(identity, normalized);
+            }
+            grouped.set(issueId, current);
+          }
+
+          const candidateToken = page?.nextPageToken ?? null;
+          nextPageToken = candidateToken && !seenPageTokens.has(candidateToken)
+            ? candidateToken
+            : null;
+          if (candidateToken) seenPageTokens.add(candidateToken);
+        } while (nextPageToken);
+      }
+      this.bulkChangelogAvailability = true;
+    } catch (error) {
+      if (isUnavailableBulkChangelogError(error)) this.bulkChangelogAvailability = false;
+      throw error;
+    }
+
+    return [...grouped.entries()].map(([issueId, histories]) => ({
+      issueId,
+      changeHistories: [...histories.values()],
+    }));
   }
 
   async listProjects(options = {}) {

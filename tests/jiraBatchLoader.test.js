@@ -37,6 +37,19 @@ test('groups pending issue keys and deduplicates shared requests', async () => {
   assert.equal(loader.getStats().deduplicatedLoads, 1);
 });
 
+test('matches bulk-fetched issues by Jira ID as well as issue key', async () => {
+  const jira = {
+    async bulkFetchIssues() {
+      return { issues: [makeIssue('ABC-1')], issueErrors: [] };
+    },
+  };
+  const loader = new JiraBatchLoader({ jira, flushDelayMs: 0 });
+
+  const issue = await loader.load('1');
+
+  assert.equal(issue.key, 'ABC-1');
+});
+
 test('splits more than 100 issue keys into bounded batches', async () => {
   const calls = [];
   const jira = {
@@ -107,4 +120,67 @@ test('retries a rate-limited batch using Jira retry metadata', async () => {
   assert.equal(issue.key, 'ABC-1');
   assert.equal(calls, 2);
   assert.equal(loader.getStats().retries, 1);
+});
+
+test('falls back to individual reads when Jira rejects the bulk endpoint', async () => {
+  const bulkCalls = [];
+  const individualCalls = [];
+  const jira = {
+    async bulkFetchIssues(keys) {
+      bulkCalls.push(keys);
+      const error = new Error('Bulk endpoint rejected');
+      error.status = 400;
+      throw error;
+    },
+    async getIssue(key) {
+      individualCalls.push(key);
+      return makeIssue(key);
+    },
+  };
+  const loader = new JiraBatchLoader({ jira, flushDelayMs: 0, fallbackConcurrency: 2 });
+
+  const [first, second] = await Promise.all([loader.load('ABC-1'), loader.load('ABC-2')]);
+
+  assert.equal(bulkCalls.length, 1);
+  assert.deepEqual(individualCalls.sort(), ['ABC-1', 'ABC-2']);
+  assert.equal(first.key, 'ABC-1');
+  assert.equal(second.key, 'ABC-2');
+  assert.deepEqual(loader.getStats(), {
+    batchRequests: 1,
+    requestedKeys: 2,
+    returnedIssues: 2,
+    maxBatchSize: 2,
+    cacheHits: 0,
+    deduplicatedLoads: 0,
+    flushes: 1,
+    retries: 0,
+    fallbackBatches: 1,
+    fallbackIssueRequests: 2,
+  });
+});
+
+test('keeps using individual reads after the bulk endpoint is rejected once', async () => {
+  let bulkCalls = 0;
+  const individualCalls = [];
+  const jira = {
+    async bulkFetchIssues() {
+      bulkCalls += 1;
+      const error = new Error('Bulk endpoint rejected');
+      error.status = 404;
+      throw error;
+    },
+    async getIssue(key) {
+      individualCalls.push(key);
+      return makeIssue(key);
+    },
+  };
+  const loader = new JiraBatchLoader({ jira, flushDelayMs: 0 });
+
+  await loader.load('ABC-1');
+  await loader.load('ABC-2');
+
+  assert.equal(bulkCalls, 1);
+  assert.deepEqual(individualCalls, ['ABC-1', 'ABC-2']);
+  assert.equal(loader.getStats().fallbackBatches, 1);
+  assert.equal(loader.getStats().fallbackIssueRequests, 2);
 });

@@ -3,6 +3,7 @@ import { validateAlertConditionConfig } from '../shared/alerts/alertConditionVal
 import { requiresVisibleJiraLogin } from '../shared/auth/sessionRequirement.js';
 import { REPORTED_TIMES_FIELD } from '../shared/grids/reportedTimes.js';
 import { compactPersonName } from '../shared/people/compactPersonName.js';
+import { calculateSecondFriday } from '../shared/reports/timeReport.js';
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -555,6 +556,7 @@ function LineIcon({ name }) {
   const paths = {
     sync: <><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.6 9a7 7 0 0 1 11.7-2L20 8.5" /><path d="M17.4 15a7 7 0 0 1-11.7 2L4 15.5" /></>,
     refresh: <><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" /><path d="M21 3v5h-5" /></>,
+    restart: <><path d="M21 12a9 9 0 0 0-15.5-6.2L3 8.3" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 15.5 6.2L21 15.7" /><path d="M21 21v-5h-5" /></>,
     sliders: <><path d="M4 6h7M16 6h4M4 12h3M12 12h8M4 18h11M20 18h0" /><circle cx="14" cy="6" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="17" cy="18" r="2" /></>,
     search: <><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4 4" /></>,
     bell: <><path d="M18 10a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 22h4" /></>,
@@ -1012,6 +1014,7 @@ export default function App() {
   const [startupError, setStartupError] = useState(null);
   const [loginInProgress, setLoginInProgress] = useState(false);
   const [shutdownRequested, setShutdownRequested] = useState(false);
+  const [restartRequested, setRestartRequested] = useState(false);
   const [servicesStopped, setServicesStopped] = useState(false);
   const [jqlQueries, setJqlQueries] = useState([]);
   const [jqlDefinitionIds, setJqlDefinitionIds] = useState([]);
@@ -1035,9 +1038,13 @@ export default function App() {
   const [timeReportUser, setTimeReportUser] = useState(null);
   const [timeReport, setTimeReport] = useState(null);
   const [timeReportLoading, setTimeReportLoading] = useState(false);
+  const [timeReportCanceling, setTimeReportCanceling] = useState(false);
   const [timeReportGenerating, setTimeReportGenerating] = useState(false);
   const [timeReportMessage, setTimeReportMessage] = useState(null);
   const [timeReportDownloadUrl, setTimeReportDownloadUrl] = useState(null);
+  const timeReportFromDateInputRef = useRef(null);
+  const timeReportToDateInputRef = useRef(null);
+  const timeReportCancelRequestedRef = useRef(false);
   const [sessionToast, setSessionToast] = useState(null);
   const [sessionToastType, setSessionToastType] = useState('warning');
   const [alertToast, setAlertToast] = useState(null);
@@ -1146,6 +1153,15 @@ export default function App() {
   const appState = bootstrapContext?.appState ?? 'booting';
   const sessionIsValid = Boolean(session?.ok);
   const sessionExpired = session?.ok === false;
+  const jiraSessionUser = session?.account?.accountId && session?.account?.displayName
+    ? {
+      accountId: session.account.accountId,
+      displayName: session.account.displayName,
+      emailAddress: session.account.emailAddress ?? null,
+    }
+    : null;
+  const timeReportUserForSearch = timeReportUser
+    ?? (!timeReportUserQuery.trim() ? jiraSessionUser : null);
   const rawSyncStatus = syncStatus?.last_status ?? 'Sincronizacion no iniciada';
   const syncHasError = !sessionExpired && /error|fallo|falló|no se pudo|requiere/i.test(String(rawSyncStatus));
   const syncResultLabel = sessionExpired
@@ -1837,6 +1853,12 @@ export default function App() {
       refreshGridData(activeTab, gridPage, gridVisiblePageSize);
     }
   }, [activeTab, gridPage, gridVisiblePageSize, gridSort, bootstrapContext?.syncStatus?.last_success_at]);
+
+  useEffect(() => {
+    if (configSection !== 'time-reports' || !jiraSessionUser) return;
+    setTimeReportUser((current) => current ?? jiraSessionUser);
+    setTimeReportUserQuery((current) => current.trim() ? current : jiraSessionUser.displayName);
+  }, [configSection, jiraSessionUser?.accountId, jiraSessionUser?.displayName]);
 
   useEffect(() => {
     if (!visibleGridCountSignature) {
@@ -2712,11 +2734,11 @@ export default function App() {
     }
   };
 
-  const handleTimeReportUserSearch = async () => {
+  const searchTimeReportUsers = async () => {
     const query = timeReportUserQuery.trim();
     if (query.length < 2) {
       setTimeReportMessage({ type: 'error', text: 'Escribe al menos dos caracteres para buscar el usuario.' });
-      return;
+      return null;
     }
     try {
       const result = await api(`/api/time-reports/users?query=${encodeURIComponent(query)}`);
@@ -2726,40 +2748,115 @@ export default function App() {
       setTimeReportUser(singleUser);
       if (singleUser) setTimeReportUserQuery(singleUser.displayName);
       setTimeReportMessage(users.length ? null : { type: 'error', text: 'No se encontraron usuarios.' });
+      return singleUser;
     } catch (error) {
       setTimeReportMessage({ type: 'error', text: `No se pudo buscar el usuario: ${error.message}` });
+      return null;
     }
+  };
+
+  const handleTimeReportUserSearch = async () => {
+    await searchTimeReportUsers();
   };
 
   const handleTimeReportClear = () => {
     setTimeReportDates({ fromDate: '', toDate: '' });
-    setTimeReportUserQuery('');
+    setTimeReportUserQuery(jiraSessionUser?.displayName ?? '');
     setTimeReportUsers([]);
-    setTimeReportUser(null);
+    setTimeReportUser(jiraSessionUser);
     setTimeReport(null);
     setTimeReportMessage(null);
     setTimeReportDownloadUrl(null);
   };
 
+  const handleTimeReportSelectAll = (event) => {
+    const selected = event.target.checked;
+    setTimeReport((current) => current
+      ? { ...current, issues: current.issues.map((issue) => ({ ...issue, selected })) }
+      : current);
+  };
+
+  const handleTimeReportCorrectionsToggle = (issueId, includeCorrections) => {
+    setTimeReport((current) => current
+      ? {
+        ...current,
+        issues: current.issues.map((issue) => String(issue.issueId) === String(issueId)
+          ? { ...issue, includeCorrections }
+          : issue),
+      }
+      : current);
+  };
+
+  const handleTimeReportGroupToggle = (issueId, grouped) => {
+    setTimeReport((current) => current
+      ? {
+        ...current,
+        issues: current.issues.map((issue) => String(issue.issueId) === String(issueId)
+          ? { ...issue, grouped }
+          : issue),
+      }
+      : current);
+  };
+
+  const openTimeReportDatePicker = (inputRef, event) => {
+    event.preventDefault();
+    const input = inputRef.current;
+    if (!input) return;
+
+    input.focus({ preventScroll: true });
+    try {
+      if (typeof input.showPicker === 'function') {
+        input.showPicker();
+      } else {
+        input.click();
+      }
+    } catch {
+      input.click();
+    }
+  };
+
   const handleTimeReportSearch = async () => {
-    if (!timeReportUser) {
-      setTimeReportMessage({ type: 'error', text: 'Busca y selecciona un usuario Jira.' });
+    if (timeReportLoading) {
+      if (timeReportCanceling) return;
+      timeReportCancelRequestedRef.current = true;
+      setTimeReportCanceling(true);
+      try {
+        await api('/api/time-reports/search/cancel', { method: 'POST', body: '{}' });
+        showUiToast('Deteniendo b\u00fasqueda de incidencias...');
+      } catch (error) {
+        timeReportCancelRequestedRef.current = false;
+        setTimeReportCanceling(false);
+        setTimeReportMessage({ type: 'error', text: `No se pudo detener la b\u00fasqueda: ${error.message}` });
+      }
       return;
     }
+
+    let selectedUser = timeReportUserForSearch;
+    if (!selectedUser) {
+      selectedUser = await searchTimeReportUsers();
+      if (!selectedUser) return;
+    }
     setTimeReportLoading(true);
+    setTimeReportCanceling(false);
+    timeReportCancelRequestedRef.current = false;
     setTimeReportMessage(null);
     setTimeReportDownloadUrl(null);
     try {
       const result = await api('/api/time-reports/search', {
         method: 'POST',
-        body: JSON.stringify({ ...timeReportDates, user: timeReportUser }),
+        body: JSON.stringify({ ...timeReportDates, user: selectedUser }),
       });
       setTimeReport(result.report);
       setTimeReportMessage({ type: 'success', text: `${result.report.issues.length} incidencia(s) encontrada(s).` });
     } catch (error) {
       setTimeReport(null);
-      setTimeReportMessage({ type: 'error', text: `No se pudo consultar el reporte: ${error.message}` });
+      const canceled = timeReportCancelRequestedRef.current || /busqueda de incidencias detenida/i.test(error.message);
+      setTimeReportMessage(canceled
+        ? { type: 'success', text: 'B\u00fasqueda de incidencias detenida.' }
+        : { type: 'error', text: `No se pudo consultar el reporte: ${error.message}` });
     } finally {
+      timeReportCancelRequestedRef.current = false;
+      setTimeReportCanceling(false);
       setTimeReportLoading(false);
     }
   };
@@ -2784,9 +2881,23 @@ export default function App() {
       }
     }
     try {
+      const includeCorrectionsIssueIds = timeReport.issues
+        .filter((issue) => Array.isArray(issue.corrections)
+          && issue.corrections.length > 0
+          && issue.grouped !== true
+          && issue.includeCorrections !== false)
+        .map((issue) => issue.issueId);
+      const groupedIssueIds = timeReport.issues
+        .filter((issue) => issue.grouped === true)
+        .map((issue) => issue.issueId);
       const result = await api('/api/time-reports/pdf', {
         method: 'POST',
-        body: JSON.stringify({ reportId: timeReport.id, selectedIssueIds }),
+        body: JSON.stringify({
+          reportId: timeReport.id,
+          selectedIssueIds,
+          includeCorrectionsIssueIds,
+          groupedIssueIds,
+        }),
       });
       setTimeReportDownloadUrl(result.downloadUrl);
       setTimeReportMessage({ type: 'success', text: `PDF creado con ${result.pages} pagina(s).` });
@@ -2803,6 +2914,14 @@ export default function App() {
     }
   };
 
+  const closeApplicationWindow = () => {
+    closeSessionNotification();
+    clearToastTimer();
+    servicesStoppedRef.current = true;
+    setServicesStopped(true);
+    window.setTimeout(() => window.close(), 300);
+  };
+
   const handleShutdown = async () => {
     setShutdownRequested(true);
     try {
@@ -2810,12 +2929,18 @@ export default function App() {
     } catch {
       // The backend is expected to close immediately after accepting the request.
     }
+    closeApplicationWindow();
+  };
 
-    closeSessionNotification();
-    clearToastTimer();
-    servicesStoppedRef.current = true;
-    setServicesStopped(true);
-    window.setTimeout(() => window.close(), 300);
+  const handleRestart = async () => {
+    setRestartRequested(true);
+    try {
+      await api('/api/restart', { method: 'POST', body: '{}' });
+      closeApplicationWindow();
+    } catch (error) {
+      setRestartRequested(false);
+      showUiToast(`No se pudo reiniciar la aplicacion: ${error.message}`, 'error');
+    }
   };
 
   const closeGridBuilder = () => {
@@ -2829,7 +2954,7 @@ export default function App() {
     const selectedCount = issues.filter((issue) => issue.selected).length;
     return (
       <div className="settings-card dashboard-card dashboard-time-reports">
-        <fieldset disabled={syncInProgress || timeReportLoading || timeReportGenerating} className="time-report-fieldset">
+        <fieldset disabled={syncInProgress || timeReportGenerating} className="time-report-fieldset">
         <div className="time-reports-heading">
           <div>
             <h2>Informe de tiempos</h2>
@@ -2840,23 +2965,52 @@ export default function App() {
           <label>
             <span>Desde</span>
             <span className="time-reports-date-control">
-              <LineIcon name="calendar" />
               <input
+                ref={timeReportFromDateInputRef}
                 type="date"
                 value={timeReportDates.fromDate}
-                onChange={(event) => setTimeReportDates((current) => ({ ...current, fromDate: event.target.value }))}
+                disabled={timeReportLoading}
+                onChange={(event) => {
+                  const fromDate = event.target.value;
+                  setTimeReportDates((current) => ({
+                    ...current,
+                    fromDate,
+                    toDate: calculateSecondFriday(fromDate),
+                  }));
+                }}
               />
+              <button
+                type="button"
+                className="time-reports-date-picker-trigger"
+                onClick={(event) => openTimeReportDatePicker(timeReportFromDateInputRef, event)}
+                disabled={timeReportLoading}
+                aria-label="Abrir calendario de fecha inicial"
+                title="Abrir calendario"
+              >
+                <LineIcon name="calendar" />
+              </button>
             </span>
           </label>
           <label>
             <span>Hasta</span>
             <span className="time-reports-date-control">
-              <LineIcon name="calendar" />
               <input
+                ref={timeReportToDateInputRef}
                 type="date"
                 value={timeReportDates.toDate}
+                disabled={timeReportLoading}
                 onChange={(event) => setTimeReportDates((current) => ({ ...current, toDate: event.target.value }))}
               />
+              <button
+                type="button"
+                className="time-reports-date-picker-trigger"
+                onClick={(event) => openTimeReportDatePicker(timeReportToDateInputRef, event)}
+                disabled={timeReportLoading}
+                aria-label="Abrir calendario de fecha final"
+                title="Abrir calendario"
+              >
+                <LineIcon name="calendar" />
+              </button>
             </span>
           </label>
           <label className="time-reports-user-field">
@@ -2866,7 +3020,8 @@ export default function App() {
                 <input
                   type="text"
                   value={timeReportUserQuery}
-                  placeholder="Ejemplo: Jesus Clavijo"
+                  placeholder="Nombre del usuario"
+                  disabled={timeReportLoading}
                   onChange={(event) => {
                     setTimeReportUserQuery(event.target.value);
                     setTimeReportUser(null);
@@ -2878,6 +3033,7 @@ export default function App() {
                   type="button"
                   className="time-reports-inline-search"
                   onClick={handleTimeReportUserSearch}
+                  disabled={timeReportLoading}
                   aria-label="Buscar usuario Jira"
                   title="Buscar usuario Jira"
                 >
@@ -2894,6 +3050,7 @@ export default function App() {
                 type="button"
                 key={user.accountId}
                 className={timeReportUser?.accountId === user.accountId ? 'is-selected' : ''}
+                disabled={timeReportLoading}
                 onClick={() => {
                   setTimeReportUser(user);
                   setTimeReportUserQuery(user.displayName);
@@ -2907,9 +3064,14 @@ export default function App() {
           </div>
         ) : null}
         <div className="time-reports-toolbar">
-          <button type="button" className="primary-button" onClick={handleTimeReportSearch} disabled={timeReportLoading}>
-            <LineIcon name="search" />
-            {timeReportLoading ? 'Buscando...' : 'Buscar incidencias'}
+          <button
+            type="button"
+            className={timeReportLoading ? 'sync-button time-reports-search-button is-syncing' : 'sync-button time-reports-search-button'}
+            onClick={handleTimeReportSearch}
+            disabled={timeReportCanceling}
+          >
+            <LineIcon name="sync" />
+            <span>{timeReportLoading ? (timeReportCanceling ? 'Deteniendo b\u00fasqueda...' : 'Detener b\u00fasqueda') : 'Buscar incidencias'}</span>
           </button>
           <button type="button" className="secondary-button time-reports-clear-button" onClick={handleTimeReportClear} disabled={timeReportLoading || timeReportGenerating}>
             <LineIcon name="refresh" />
@@ -2922,23 +3084,51 @@ export default function App() {
             {issues.length > 0 ? (
               <div className="time-reports-table-wrap">
                 <table className="time-reports-table">
-                  <thead><tr><th>Incluir</th><th>Incidencia</th><th>Resumen</th><th>Estado</th><th>Tiempo reportado en Sprint</th><th>Tiempo Total</th><th>Correcciones</th></tr></thead>
+                  <thead><tr><th><span className="time-reports-select-all"><input
+                    type="checkbox"
+                    checked={issues.length > 0 && selectedCount === issues.length}
+                    ref={(element) => {
+                      if (element) element.indeterminate = selectedCount > 0 && selectedCount < issues.length;
+                    }}
+                    disabled={timeReportLoading || timeReportGenerating || issues.length === 0}
+                    onChange={handleTimeReportSelectAll}
+                    aria-label="Seleccionar todas las incidencias"
+                  /><span>Incluir</span></span></th><th>Incidencia</th><th>Resumen</th><th>Estado</th><th>Tiempo reportado en Sprint</th><th>Tiempo Total</th><th>Correcciones</th><th>Agrupar</th></tr></thead>
                   <tbody>{issues.map((issue) => (
                     <tr key={issue.issueId}>
-                      <td><input type="checkbox" checked={issue.selected} onChange={(event) => setTimeReport((current) => ({ ...current, issues: current.issues.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item) }))} aria-label={`Incluir ${issue.issueKey}`} /></td>
+                      <td><input type="checkbox" checked={issue.selected} disabled={timeReportLoading} onChange={(event) => setTimeReport((current) => ({ ...current, issues: current.issues.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item) }))} aria-label={`Incluir ${issue.issueKey}`} /></td>
                       <td className="time-report-issue-key">{issue.issueKey}</td>
                       <td>{issue.summary}</td>
                       <td>{issue.status}</td>
                       <td>{formatTimeReportDuration(issue.rangeSeconds)}</td>
                       <td>{formatTimeReportDuration(issue.totalSeconds)}</td>
-                      <td>{issue.corrections?.length ?? 0}</td>
+                      <td className="time-reports-corrections-cell">
+                        {(() => {
+                          const correctionCount = Array.isArray(issue.corrections) ? issue.corrections.length : 0;
+                          if (correctionCount === 0) return '0';
+                          return (
+                            <label className="time-reports-corrections-option">
+                              <span>{correctionCount}</span>
+                              <input
+                                type="checkbox"
+                                checked={issue.grouped !== true && issue.includeCorrections !== false}
+                                disabled={timeReportLoading || timeReportGenerating || issue.grouped === true}
+                                onChange={(event) => handleTimeReportCorrectionsToggle(issue.issueId, event.target.checked)}
+                                aria-label={`Incluir correcciones de ${issue.issueKey}`}
+                                title={issue.grouped ? 'Las incidencias agrupadas no incluyen correcciones.' : 'Incluir correcciones en el PDF'}
+                              />
+                            </label>
+                          );
+                        })()}
+                      </td>
+                      <td className="time-reports-group-cell"><input type="checkbox" checked={issue.grouped === true} disabled={timeReportLoading || timeReportGenerating} onChange={(event) => handleTimeReportGroupToggle(issue.issueId, event.target.checked)} aria-label={`Agrupar ${issue.issueKey} en el PDF`} /></td>
                     </tr>
                   ))}</tbody>
                 </table>
               </div>
             ) : <p className="time-reports-empty">No hay incidencias con tiempo reportado por este usuario en el rango.</p>}
             <div className="time-reports-actions">
-              <button type="button" className="save-action-button" onClick={handleTimeReportPdf} disabled={timeReportGenerating || issues.length === 0 || selectedCount === 0}>
+              <button type="button" className="save-action-button" onClick={handleTimeReportPdf} disabled={timeReportLoading || timeReportGenerating || issues.length === 0 || selectedCount === 0}>
                 <LineIcon name="file" />
                 {timeReportGenerating ? 'Creando PDF...' : 'Crear PDF'}
               </button>
@@ -3600,8 +3790,6 @@ export default function App() {
               ) : null}
             </div>
             <div className="header-sync-summary" aria-live="polite">
-              <span>Ultima: {formatBogotaDate(syncStatus?.last_finished_at)}</span>
-              <span>Proxima: {autoSyncEnabled ? (syncInProgress ? 'En curso' : formatCountdown(syncStatus?.next_sync_at, countdownNow)) : 'Apagada'}</span>
               <span className={`header-sync-result${syncInProgress ? ' sync-status-pulsing' : ''}${sessionExpired ? ' session-required' : ''}${syncHasError ? ' sync-error' : ''}`}>
                 {sessionExpired ? (
                   <button
@@ -3615,7 +3803,31 @@ export default function App() {
                   </button>
                 ) : (syncInProgress ? 'Sincronizando...' : syncResultLabel)}
               </span>
+              <div className="header-sync-timing">
+                <span>Ultima: {formatBogotaDate(syncStatus?.last_finished_at)}</span>
+                <span>Proxima: {autoSyncEnabled ? (syncInProgress ? 'En curso' : formatCountdown(syncStatus?.next_sync_at, countdownNow)) : 'Apagada'}</span>
+              </div>
             </div>
+            <button
+              type="button"
+              className="header-tool-button header-restart-button"
+              onClick={handleRestart}
+              disabled={shutdownRequested || restartRequested || syncInProgress}
+              aria-label={restartRequested ? 'Reiniciando aplicacion' : 'Reiniciar aplicacion'}
+              title={restartRequested ? 'Reiniciando aplicacion...' : 'Reiniciar aplicacion'}
+            >
+              <LineIcon name="restart" />
+            </button>
+            <button
+              type="button"
+              className="header-tool-button header-shutdown-button"
+              onClick={handleShutdown}
+              disabled={shutdownRequested || restartRequested || syncInProgress}
+              aria-label={shutdownRequested ? 'Deteniendo aplicacion' : 'Detener aplicacion'}
+              title={shutdownRequested ? 'Deteniendo aplicacion...' : 'Detener aplicacion'}
+            >
+              <LineIcon name="power" />
+            </button>
           </div>
         </div>
         {activeTab === 'config' ? <div className="configuration-layout">
@@ -4202,10 +4414,6 @@ export default function App() {
                   {syncCanceling ? 'Deteniendo sincronización...' : 'Detener sincronización'}
                 </span>
               ) : <span>Sincronizar</span>}
-            </button>
-            <button className="action-shutdown" type="button" onClick={handleShutdown} disabled={shutdownRequested || syncInProgress}>
-              <LineIcon name="power" />
-              <span>{shutdownRequested ? 'Deteniendo servicios...' : 'Detener app'}</span>
             </button>
             <button className="action-save save-action-button" type="button" onClick={handleSaveStatus} disabled={statusSaving || syncInProgress}>
               <LineIcon name="save" />

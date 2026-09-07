@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { bootstrapApp } from './app/bootstrap.js';
 import { saveAppConfig } from './config/configLoader.js';
 import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
@@ -22,6 +23,7 @@ import {
 const PORT = Number(process.env.PORT ?? 3000);
 const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
 const TIME_REPORT_EXPORTS_DIR = path.resolve(process.cwd(), 'exports');
+const RESTART_LAUNCHER_PATH = path.resolve(process.cwd(), 'scripts', 'restart-app.mjs');
 const JQL_SOURCE_ISSUE_OPTION = '__jql_source_issue__';
 const MAX_ALERT_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALERT_IMAGE_TYPES = {
@@ -219,10 +221,19 @@ function toPublicSession(session) {
     return null;
   }
 
+  const account = session.account && typeof session.account === 'object'
+    ? {
+      accountId: session.account.accountId ?? session.account.accountID ?? null,
+      displayName: session.account.displayName ?? session.account.name ?? null,
+      emailAddress: session.account.emailAddress ?? null,
+    }
+    : null;
+
   return {
     ok: Boolean(session.ok),
     reason: session.reason ?? null,
     details: session.details ?? null,
+    account: session.ok && account?.accountId && account?.displayName ? account : null,
   };
 }
 
@@ -249,6 +260,9 @@ const state = await createAppState();
 let syncInProgress = false;
 let syncAbortController = null;
 let syncCancellationRequested = false;
+let timeReportSearchInProgress = false;
+let timeReportAbortController = null;
+let timeReportCancellationRequested = false;
 let syncTimer = null;
 let alertRetryTimer = null;
 let alertRetryInProgress = false;
@@ -722,13 +736,49 @@ async function handleTimeReportSearch(req, res) {
     return;
   }
   if (!reportSessionIsReady(res)) return;
-  const body = await readBody(req);
-  const result = await state.runtime.timeReports.search({
-    fromDate: body?.fromDate,
-    toDate: body?.toDate,
-    user: body?.user,
-  });
-  json(res, 200, { ok: true, report: result });
+  if (timeReportSearchInProgress) {
+    json(res, 409, { ok: false, error: 'Ya hay una busqueda de incidencias en curso.' });
+    return;
+  }
+
+  timeReportAbortController = new AbortController();
+  timeReportCancellationRequested = false;
+  timeReportSearchInProgress = true;
+  try {
+    const body = await readBody(req);
+    const result = await state.runtime.timeReports.search({
+      fromDate: body?.fromDate,
+      toDate: body?.toDate,
+      user: body?.user,
+      signal: timeReportAbortController.signal,
+    });
+    json(res, 200, { ok: true, report: result });
+  } catch (error) {
+    if (timeReportCancellationRequested || error?.name === 'AbortError') {
+      log('time report search canceled');
+      if (!res.writableEnded && !res.destroyed) {
+        json(res, 409, { ok: false, canceled: true, error: 'Busqueda de incidencias detenida.' });
+      }
+      return;
+    }
+    throw error;
+  } finally {
+    timeReportSearchInProgress = false;
+    timeReportAbortController = null;
+    timeReportCancellationRequested = false;
+  }
+}
+
+async function handleTimeReportSearchCancel(res) {
+  if (!timeReportSearchInProgress || !timeReportAbortController) {
+    json(res, 409, { ok: false, error: 'No hay una busqueda de incidencias activa.' });
+    return;
+  }
+
+  timeReportCancellationRequested = true;
+  timeReportAbortController.abort();
+  log('time report search cancellation requested');
+  json(res, 200, { ok: true, message: 'Se solicito detener la busqueda de incidencias.' });
 }
 
 async function handleTimeReportPdf(req, res) {
@@ -741,13 +791,15 @@ async function handleTimeReportPdf(req, res) {
   const result = await state.runtime.timeReports.generatePdf({
     reportId: body?.reportId,
     selectedIssueIds: body?.selectedIssueIds,
+    includeCorrectionsIssueIds: body?.includeCorrectionsIssueIds,
+    groupedIssueIds: body?.groupedIssueIds,
   });
   json(res, 200, {
     ok: true,
     reportId: result.reportId,
     pages: result.pages,
     fileName: result.fileName,
-    downloadUrl: `/api/time-reports/file?name=${encodeURIComponent(result.fileName)}`,
+    downloadUrl: `/api/time-reports/file?name=${encodeURIComponent(result.fileName)}&v=${Date.now()}`,
   });
 }
 
@@ -767,7 +819,8 @@ async function handleTimeReportFile(res, url) {
     res.writeHead(200, {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${fileName}"`,
-      'Cache-Control': 'no-store',
+      'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate',
+      Pragma: 'no-cache',
     });
     res.end(content);
   } catch {
@@ -1193,15 +1246,10 @@ async function handleAlertRead(req, res) {
   json(res, 200, { ok: true });
 }
 
-function handleShutdown(res) {
-  if (syncInProgress) {
-    json(res, 409, { ok: false, error: 'No se pueden detener los servicios durante una sincronizacion.' });
-    return;
-  }
-  json(res, 200, { ok: true, message: 'Servicios en proceso de apagado.' });
+function scheduleShutdown() {
+  if (shuttingDown) return false;
+  shuttingDown = true;
   setTimeout(async () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
     stopAutoSyncTimer();
     stopAlertRetryTimer();
     try {
@@ -1210,6 +1258,48 @@ function handleShutdown(res) {
       server.close(() => process.exit(0));
     }
   }, 100);
+  return true;
+}
+
+function handleShutdown(res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se pueden detener los servicios durante una sincronizacion.' });
+    return;
+  }
+  if (shuttingDown) {
+    json(res, 409, { ok: false, error: 'Los servicios ya se estan deteniendo.' });
+    return;
+  }
+  json(res, 200, { ok: true, message: 'Servicios en proceso de apagado.' });
+  scheduleShutdown();
+}
+
+async function handleRestart(res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede reiniciar la aplicacion durante una sincronizacion.' });
+    return;
+  }
+  if (shuttingDown) {
+    json(res, 409, { ok: false, error: 'Los servicios ya se estan deteniendo.' });
+    return;
+  }
+
+  try {
+    await fs.access(RESTART_LAUNCHER_PATH);
+    const restartLauncher = spawn(process.execPath, [RESTART_LAUNCHER_PATH], {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    restartLauncher.unref();
+    log('restart launcher started', `pid=${restartLauncher.pid}`);
+    json(res, 200, { ok: true, message: 'La aplicacion se reiniciara.' });
+    scheduleShutdown();
+  } catch (error) {
+    log('restart launcher could not start', error.message);
+    json(res, 500, { ok: false, error: 'No se pudo iniciar el reinicio de la aplicacion.' });
+  }
 }
 
 async function runSyncCycle({ automatic = false } = {}) {
@@ -1327,6 +1417,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/time-reports/search/cancel') {
+      await readBody(req).catch(() => ({}));
+      await handleTimeReportSearchCancel(res);
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/time-reports/pdf') {
       await handleTimeReportPdf(req, res);
       return;
@@ -1391,6 +1487,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/shutdown') {
       await readBody(req).catch(() => ({}));
       handleShutdown(res);
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/restart') {
+      await readBody(req).catch(() => ({}));
+      await handleRestart(res);
       return;
     }
 

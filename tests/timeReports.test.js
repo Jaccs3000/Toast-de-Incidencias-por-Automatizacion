@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   aggregateUserWorklogs,
+  calculateSecondFriday,
   enrichTempoWorklogs,
   extractFirstLifecycleDates,
   formatReportDuration,
@@ -9,8 +10,18 @@ import {
 import { TimeReportsService } from '../src/main/reports/timeReportsService.js';
 import { buildTimeReportHtml, launchPdfBrowser } from '../src/main/reports/timeReportPdfGenerator.js';
 import { Persistence } from '../src/main/persistence/persistence.js';
+import { JiraClient } from '../src/main/jira/jiraClient.js';
 
 const userId = 'account-jesus';
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+test('calculates the second Friday from the selected start date', () => {
+  assert.equal(calculateSecondFriday('2026-08-31'), '2026-09-11');
+  assert.equal(calculateSecondFriday('2026-09-04'), '2026-09-11');
+  assert.equal(calculateSecondFriday('2026-09-06'), '2026-09-18');
+  assert.equal(calculateSecondFriday(''), '');
+  assert.equal(calculateSecondFriday('2026-02-30'), '');
+});
 
 test('filters user suggestions using every search term', async () => {
   const service = new TimeReportsService({
@@ -122,11 +133,272 @@ test('formats report durations compactly', () => {
   assert.equal(formatReportDuration(null), '');
 });
 
+test('embeds Jira type icons with the active session headers', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    return {
+      ok: true,
+      headers: new Headers({ 'content-type': 'image/png' }),
+      async arrayBuffer() { return new Uint8Array([1, 2, 3]).buffer; },
+    };
+  };
+
+  try {
+    const jira = new JiraClient({
+      baseUrl: 'https://jira.example.test',
+      headers: { Cookie: 'session=active' },
+    });
+    const result = await jira.fetchSessionImageData('https://jira.example.test/secure/viewavatar?avatarId=1');
+
+    assert.equal(result, 'data:image/png;base64,AQID');
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].options.headers.Cookie, 'session=active');
+    await assert.rejects(
+      () => jira.fetchSessionImageData('https://outside.example.test/icon.png'),
+      /no pertenece al sitio Jira configurado/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('paginates and normalizes bulk issue changelogs', async () => {
+  const calls = [];
+  const pages = [
+    {
+      issueChangeLogs: [{
+        issueId: '1',
+        changeHistories: [{ id: 'history-1', created: 1788433200, items: [] }],
+      }],
+      nextPageToken: 'next-page',
+    },
+    {
+      issueChangeLogs: [{
+        issueId: '1',
+        changeHistories: [{ id: 'history-2', created: '2026-09-02T10:00:00.000-0500', items: [] }],
+      }],
+    },
+  ];
+  const jira = new JiraClient({ baseUrl: 'https://jira.example.test' });
+  jira.request = async (pathname, options) => {
+    calls.push({ pathname, body: JSON.parse(options.body) });
+    return pages.shift();
+  };
+
+  const result = await jira.listBulkIssueChangelogs(['1'], {
+    fieldIds: ['assignee', 'status'],
+    maxResults: 1000,
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].pathname, '/rest/api/3/changelog/bulkfetch');
+  assert.deepEqual(calls[0].body, {
+    issueIdsOrKeys: ['1'], fieldIds: ['assignee', 'status'], maxResults: 1000,
+  });
+  assert.equal(calls[1].body.nextPageToken, 'next-page');
+  assert.deepEqual(result.map((entry) => entry.issueId), ['1']);
+  assert.equal(result[0].changeHistories.length, 2);
+  assert.equal(result[0].changeHistories[0].created, '2026-09-03T11:00:00.000Z');
+});
+
+test('requests larger Jira worklog pages without skipping records', async () => {
+  const calls = [];
+  const jira = new JiraClient({ baseUrl: 'https://jira.example.test' });
+  jira.request = async (pathname) => {
+    calls.push(pathname);
+    return calls.length === 1
+      ? { worklogs: [{ id: '1' }, { id: '2' }], total: 3, maxResults: 1000 }
+      : { worklogs: [{ id: '3' }], total: 3, maxResults: 1000 };
+  };
+
+  const result = await jira.listIssueWorklogs('ABC-1', { expandProperties: true });
+
+  assert.deepEqual(result.map((worklog) => worklog.id), ['1', '2', '3']);
+  assert.match(calls[0], /startAt=0&maxResults=1000&expand=properties/);
+  assert.match(calls[1], /startAt=2&maxResults=1000&expand=properties/);
+});
+
+test('falls back to the compatible Jira worklog page size after a 400', async () => {
+  const calls = [];
+  const jira = new JiraClient({ baseUrl: 'https://jira.example.test' });
+  jira.request = async (pathname) => {
+    calls.push(pathname);
+    if (pathname.includes('maxResults=1000')) {
+      const error = new Error('Unsupported page size');
+      error.status = 400;
+      throw error;
+    }
+    return { worklogs: [{ id: '1' }], total: 1 };
+  };
+
+  const result = await jira.listIssueWorklogs('ABC-1');
+
+  assert.deepEqual(result.map((worklog) => worklog.id), ['1']);
+  assert.equal(calls.length, 2);
+  assert.match(calls[1], /maxResults=100/);
+});
+
+test('retries a rate-limited Jira worklog page without duplicating it', async () => {
+  let calls = 0;
+  const jira = new JiraClient({ baseUrl: 'https://jira.example.test' });
+  jira.request = async () => {
+    calls += 1;
+    if (calls === 1) {
+      const error = new Error('Rate limited');
+      error.status = 429;
+      error.retryAfterSeconds = 0;
+      throw error;
+    }
+    return { worklogs: [{ id: '1' }], total: 1 };
+  };
+
+  const result = await jira.listIssueWorklogs('ABC-1', { retryBaseDelayMs: 0 });
+
+  assert.deepEqual(result.map((worklog) => worklog.id), ['1']);
+  assert.equal(calls, 2);
+});
+
+test('requests larger Jira changelog pages while preserving all histories', async () => {
+  const calls = [];
+  const jira = new JiraClient({ baseUrl: 'https://jira.example.test' });
+  jira.request = async (pathname) => {
+    calls.push(pathname);
+    return calls.length === 1
+      ? { values: [{ id: 'history-1' }, { id: 'history-2' }], total: 3, maxResults: 1000 }
+      : { values: [{ id: 'history-3' }], total: 3, maxResults: 1000 };
+  };
+
+  const result = await jira.listIssueChangelog('ABC-1');
+
+  assert.deepEqual(result.map((history) => history.id), ['history-1', 'history-2', 'history-3']);
+  assert.match(calls[0], /startAt=0&maxResults=1000/);
+  assert.match(calls[1], /startAt=2&maxResults=1000/);
+});
+
+test('does not repeat an unavailable bulk changelog request during the session', async () => {
+  let calls = 0;
+  const jira = new JiraClient({ baseUrl: 'https://jira.example.test' });
+  jira.request = async () => {
+    calls += 1;
+    const error = new Error('Unsupported endpoint');
+    error.status = 400;
+    throw error;
+  };
+
+  await assert.rejects(() => jira.listBulkIssueChangelogs(['ABC-1']));
+  await assert.rejects(() => jira.listBulkIssueChangelogs(['ABC-2']));
+
+  assert.equal(calls, 1);
+});
+
+test('limits and paginates the Tempo worklog search', async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, body: JSON.parse(options.body) });
+    const page = requests.length === 1
+      ? { worklogs: [{ workerId: userId, originTaskId: '1', timeSpentSeconds: 3600 }], nextPageToken: 'next-page' }
+      : { worklogs: [{ workerId: userId, originTaskId: '2', timeSpentSeconds: 1800 }] };
+    return { ok: true, async json() { return page; } };
+  };
+
+  try {
+    const jira = new JiraClient({ baseUrl: 'https://jira.example.test' });
+    jira.getTempoContext = async () => ({ origin: 'https://tempo.example.test', token: 'tempo-token' });
+    const result = await jira.searchTempoWorklogs({
+      accountId: userId,
+      fromDate: '2026-09-01',
+      toDate: '2026-09-04',
+      issueKey: 'ABC-1',
+    });
+
+    assert.equal(result.length, 2);
+    assert.equal(requests.length, 2);
+    assert.deepEqual(requests[0].body, {
+      accountIds: [userId],
+      userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      from: '2026-09-01',
+      to: '2026-09-04',
+    });
+    assert.equal(requests[1].body.nextPageToken, 'next-page');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('uses bulk lifecycle data and falls back to individual changelogs', async () => {
+  const issue = {
+    issueId: '1',
+    issueKey: 'ABC-1',
+    assigneeAccountId: userId,
+    created: '2026-09-01T08:00:00.000-0500',
+    resolutiondate: null,
+  };
+  let individualCalls = 0;
+  let bulkReferences;
+  const service = new TimeReportsService({
+    jira: {
+      async listBulkIssueChangelogs(references) {
+        bulkReferences = references;
+        return [{
+          issueId: '1',
+          changeHistories: [{
+            created: '2026-09-01T09:00:00.000-0500',
+            author: { accountId: userId },
+            items: [{ field: 'status', toString: 'En Progreso' }],
+          }],
+        }];
+      },
+      async listIssueChangelog() {
+        individualCalls += 1;
+        return [];
+      },
+    },
+    logs: { async warn() {} },
+  });
+
+  const bulkResult = await service.loadLifecycleDates([issue], userId);
+
+  assert.equal(bulkResult.mode, 'bulk');
+  assert.equal(bulkResult.individualRequests, 0);
+  assert.equal(issue.startedAt, '2026-09-01T09:00:00.000-0500');
+  assert.equal(individualCalls, 0);
+  assert.deepEqual(bulkReferences, ['ABC-1']);
+
+  const fallbackIssue = { ...issue, issueId: '2', issueKey: 'ABC-2', startedAt: undefined };
+  const fallbackService = new TimeReportsService({
+    jira: {
+      async listBulkIssueChangelogs() {
+        const error = new Error('Not supported');
+        error.status = 404;
+        throw error;
+      },
+      async listIssueChangelog() {
+        return [{
+          created: '2026-09-02T09:00:00.000-0500',
+          author: { accountId: userId },
+          items: [{ field: 'status', toString: 'En Progreso' }],
+        }];
+      },
+    },
+    logs: { async warn() {} },
+  });
+
+  const fallbackResult = await fallbackService.loadLifecycleDates([fallbackIssue], userId);
+
+  assert.equal(fallbackResult.mode, 'individual-fallback');
+  assert.equal(fallbackResult.individualRequests, 1);
+  assert.equal(fallbackIssue.startedAt, '2026-09-02T09:00:00.000-0500');
+});
+
 test('renders the selected user total and correction-only continuation pages', () => {
   const corrections = Array.from({ length: 7 }, (_, index) => ({
     correctionKey: `ABC-${index + 10}`,
     summary: `Correccion ${index + 1}`,
     status: 'Cerrado',
+    projectIconUrl: 'https://example.test/project.png',
   }));
   const html = buildTimeReportHtml({
     fromDate: '2026-09-01',
@@ -139,6 +411,7 @@ test('renders the selected user total and correction-only continuation pages', (
       status: 'En Progreso',
       issueType: 'Testing',
       projectIconUrl: 'https://example.test/project.png',
+      issueTypeIconUrl: 'https://example.test/issue-type.png',
       assignee: 'Jesus Antonio Clavijo Castellar',
       reporter: 'Heider Alberto Neira Perez',
       totalSeconds: 5400,
@@ -163,21 +436,202 @@ test('renders the selected user total and correction-only continuation pages', (
   assert.match(html, /report-icon-stopwatch/);
   assert.match(html, /report-icon-project/);
   assert.match(html, /jira-issue-icon/);
+  assert.match(html, /jira-issue-type-icon/);
+  assert.match(html, /\.jira-issue-type-icon img \{ object-fit:contain; padding:2px/);
   assert.match(html, /width:22px; height:22px; flex:0 0 22px/);
   assert.match(html, /https:\/\/example\.test\/project\.png/);
+  assert.match(html, /https:\/\/example\.test\/issue-type\.png/);
   assert.match(html, />Jesus Clavijo</);
   assert.match(html, />Heider Neira</);
   assert.match(html, />Leonardo Tester</);
   assert.match(html, />Probando en TEST</);
+  assert.match(html, /class="report-details-grid"/);
+  assert.match(html, /class="report-divider report-divider-general"/);
+  assert.match(html, /class="report-divider report-divider-dates"/);
+  assert.match(html, /grid-template-rows:minmax\(54px, auto\) minmax\(54px, auto\) 9px/);
+  assert.match(html, /\.report-divider \{ min-width:0; align-self:center;/);
+  assert.match(html, /class="general-state status-other"/);
+  assert.match(html, /\.correction-status \{ justify-self:end; width:88px/);
   assert.doesNotMatch(html, />Jesus Antonio Clavijo Castellar</);
   assert.match(html, /\.status, \.correction-status/);
   assert.match(html, /issue-heading/);
   assert.match(html, /correction-status status-closed/);
+  assert.doesNotMatch(html, /<div class="time-panel"/);
   assert.doesNotMatch(html, /time-ring|Total usuario|>Restante</);
   assert.doesNotMatch(html, /27h 45m/);
   const continuation = html.slice(html.indexOf('Correcciones 2'));
   assert.match(continuation, /ABC-16/);
   assert.doesNotMatch(continuation, /Planeado/);
+});
+
+test('renders grouped issues in a paginated grid without individual correction pages', () => {
+  const groupedIssues = Array.from({ length: 13 }, (_, index) => ({
+    selected: true,
+    grouped: true,
+    issueKey: `GRP-${index + 1}`,
+    issueType: 'Tarea',
+    summary: `Asunto agrupado ${index + 1}`,
+    rangeSeconds: (index + 1) * 3600,
+    status: index % 2 === 0 ? 'Cerrado' : 'En Progreso',
+    corrections: [{ correctionKey: `COR-${index + 1}`, summary: 'No debe mostrarse', status: 'Cerrado' }],
+  }));
+  const html = buildTimeReportHtml({
+    fromDate: '2026-09-01',
+    toDate: '2026-09-04',
+    userDisplayName: 'Jesus Clavijo',
+    issues: [{
+      selected: true,
+      issueKey: 'IND-1',
+      issueType: 'Tarea',
+      summary: 'Incidencia individual',
+      status: 'Creado',
+      corrections: [],
+    }, ...groupedIssues],
+  });
+
+  assert.equal((html.match(/<section class="page/g) ?? []).length, 3);
+  assert.equal((html.match(/class="page grouped-issues-page"/g) ?? []).length, 2);
+  assert.match(html, /Tiempos adicionales en el Sprint/);
+  assert.match(html, /<th>Incidencia<\/th><th>Tipo Incidencia<\/th><th>Asunto<\/th><th>Tiempo Sprint<\/th><th>Estado<\/th>/);
+  assert.match(html, /GRP-13/);
+  assert.match(html, />13h<\/td>/);
+  assert.doesNotMatch(html, /No debe mostrarse/);
+});
+
+test('embeds selected type icons before generating the PDF', async () => {
+  let generatedReport;
+  const snapshot = {
+    id: 'report-icons',
+    issues: [
+      {
+        issueId: '1', issueKey: 'ABC-1', selected: true,
+        issueTypeIconUrl: 'https://jira.example.test/icon-a.png', corrections: [],
+      },
+      {
+        issueId: '2', issueKey: 'ABC-2', selected: false,
+        issueTypeIconUrl: 'https://jira.example.test/icon-b.png', corrections: [],
+      },
+    ],
+  };
+  const fetchedUrls = [];
+  const persistence = {
+    timeReports: {
+      async getSnapshot() { return snapshot; },
+      async setSelection() {},
+      async markGenerated() {},
+    },
+  };
+  const service = new TimeReportsService({
+    persistence,
+    jira: {
+      async fetchSessionImageData(url) {
+        fetchedUrls.push(url);
+        return `data:image/png;base64,${url.endsWith('icon-a.png') ? 'AQID' : 'BAUG'}`;
+      },
+    },
+    logs: { async info() {} },
+    pdfGenerator: {
+      async generate(report) {
+        generatedReport = report;
+        return { fileName: 'report.pdf', filePath: 'C:/report.pdf', pages: 1 };
+      },
+    },
+  });
+
+  await service.generatePdf({ reportId: 'report-icons', selectedIssueIds: ['1'] });
+
+  assert.deepEqual(fetchedUrls, ['https://jira.example.test/icon-a.png']);
+  assert.equal(generatedReport.issues[0].issueTypeIconUrl, 'data:image/png;base64,AQID');
+  assert.equal(generatedReport.issues[1].issueTypeIconUrl, 'https://jira.example.test/icon-b.png');
+});
+
+test('includes corrections only for the issues selected for correction details', async () => {
+  let generatedReport;
+  const snapshot = {
+    id: 'report-corrections',
+    issues: [
+      {
+        issueId: '1', issueKey: 'ABC-1', selected: true,
+        corrections: [{ correctionKey: 'ABC-101', summary: 'Correccion 1', status: 'Cerrado' }],
+      },
+      {
+        issueId: '2', issueKey: 'ABC-2', selected: true,
+        corrections: [{ correctionKey: 'ABC-201', summary: 'Correccion 2', status: 'Por Probar' }],
+      },
+    ],
+  };
+  const persistence = {
+    timeReports: {
+      async getSnapshot() { return snapshot; },
+      async setSelection() {},
+      async markGenerated() {},
+    },
+  };
+  const service = new TimeReportsService({
+    persistence,
+    jira: {},
+    pdfGenerator: {
+      async generate(report) {
+        generatedReport = report;
+        return { fileName: 'report.pdf', filePath: 'C:/report.pdf', pages: 2 };
+      },
+    },
+  });
+
+  await service.generatePdf({
+    reportId: 'report-corrections',
+    selectedIssueIds: ['1', '2'],
+    includeCorrectionsIssueIds: ['1'],
+  });
+
+  assert.equal(generatedReport.issues[0].corrections.length, 1);
+  assert.equal(generatedReport.issues[1].corrections.length, 0);
+});
+
+test('groups selected issues and omits their corrections from the PDF', async () => {
+  let generatedReport;
+  const snapshot = {
+    id: 'report-grouped',
+    issues: [
+      {
+        issueId: '1', issueKey: 'ABC-1', selected: true,
+        corrections: [{ correctionKey: 'ABC-101', summary: 'Correccion 1', status: 'Cerrado' }],
+      },
+      {
+        issueId: '2', issueKey: 'ABC-2', selected: true,
+        corrections: [{ correctionKey: 'ABC-201', summary: 'Correccion 2', status: 'Por Probar' }],
+      },
+    ],
+  };
+  const persistence = {
+    timeReports: {
+      async getSnapshot() { return snapshot; },
+      async setSelection() {},
+      async markGenerated() {},
+    },
+  };
+  const service = new TimeReportsService({
+    persistence,
+    jira: {},
+    pdfGenerator: {
+      async generate(report) {
+        generatedReport = report;
+        return { fileName: 'report.pdf', filePath: 'C:/report.pdf', pages: 2 };
+      },
+    },
+  });
+
+  await service.generatePdf({
+    reportId: 'report-grouped',
+    selectedIssueIds: ['1', '2'],
+    includeCorrectionsIssueIds: ['1', '2'],
+    groupedIssueIds: ['2'],
+  });
+
+  assert.equal(generatedReport.issues[0].grouped, false);
+  assert.equal(generatedReport.issues[0].corrections.length, 1);
+  assert.equal(generatedReport.issues[1].grouped, true);
+  assert.equal(generatedReport.issues[1].corrections.length, 0);
 });
 
 test('prefers installed browsers when creating a PDF and keeps a concise launch error', async () => {
@@ -308,6 +762,8 @@ test('builds a report from exact worklogs and graph corrections only', async () 
 });
 
 test('uses Tempo worklog search to group the selected user by Jira issue', async () => {
+  let tempoSearchOptions;
+  const worklogCalls = [];
   const persistence = {
     timeReports: {
       async clear() {},
@@ -334,14 +790,24 @@ test('uses Tempo worklog search to group the selected user by Jira issue', async
   };
   const jira = {
     async searchIssues() { return { issues: [{ key: 'ABC-1' }] }; },
-    async searchTempoWorklogs() {
+    async searchTempoWorklogs(options) {
+      tempoSearchOptions = options;
       return [
         { workerId: userId, originTaskId: '1', started: '2026-09-02 09:00:00.000', timeSpentSeconds: 3600 },
-        { workerId: userId, originTaskId: '1', started: '2026-08-30 09:00:00.000', timeSpentSeconds: 1800 },
         { workerId: userId, originTaskId: '2', started: '2026-09-04 09:00:00.000', timeSpentSeconds: 7200 },
         { workerId: 'other-user', originTaskId: '3', started: '2026-09-02 09:00:00.000', timeSpentSeconds: 9000 },
       ];
     },
+    async listIssueWorklogs(issueReference) {
+      worklogCalls.push(issueReference);
+      return issueReference === '1'
+        ? [
+          { author: { accountId: userId }, startDate: '2026-09-02', timeSpentSeconds: 3600 },
+          { author: { accountId: userId }, startDate: '2026-08-30', timeSpentSeconds: 1800 },
+        ]
+        : [{ author: { accountId: userId }, startDate: '2026-09-04', timeSpentSeconds: 7200 }];
+    },
+    async listTempoWorklogAudit() { return []; },
     async bulkFetchIssues(ids) {
       return {
         issues: ids.map((id) => ({
@@ -367,5 +833,185 @@ test('uses Tempo worklog search to group the selected user by Jira issue', async
   assert.deepEqual(result.issues.map((issue) => [issue.rangeSeconds, issue.totalSeconds]), [
     [3600, 5400],
     [7200, 7200],
+  ]);
+  assert.equal(tempoSearchOptions.fromDate, '2026-09-01');
+  assert.equal(tempoSearchOptions.toDate, '2026-09-04');
+  assert.deepEqual(worklogCalls.sort(), ['1', '2']);
+});
+
+test('cancels a time report search without persisting partial results', async () => {
+  let created = false;
+  let notifyWorklogStarted;
+  const worklogStarted = new Promise((resolve) => { notifyWorklogStarted = resolve; });
+  const persistence = {
+    timeReports: {
+      async clear() {},
+      async create() {
+        created = true;
+        return 'report-canceled';
+      },
+      async getSnapshot() { return null; },
+    },
+    async query() { return []; },
+  };
+  const jira = {
+    async searchIssues() { return { issues: [{ key: 'ABC-1' }] }; },
+    async searchTempoWorklogs() {
+      return [{
+        workerId: userId,
+        originTaskId: '1',
+        started: '2026-09-02 09:00:00.000',
+        timeSpentSeconds: 3600,
+      }];
+    },
+    async listIssueWorklogs(issueReference, { signal }) {
+      assert.equal(issueReference, '1');
+      notifyWorklogStarted();
+      await new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          reject(new DOMException('Time report search canceled.', 'AbortError'));
+        }, { once: true });
+      });
+      return [];
+    },
+    async bulkFetchIssues(ids) {
+      return {
+        issues: ids.map((id) => ({
+          id,
+          key: `ABC-${id}`,
+          fields: {
+            project: { key: 'ABC' },
+            issuetype: { name: 'Testing' },
+            summary: `Incidencia ${id}`,
+            status: { name: 'En Progreso' },
+          },
+        })),
+      };
+    },
+    async listBulkIssueChangelogs() { return []; },
+    async listIssueChangelog() { return []; },
+  };
+  const service = new TimeReportsService({ persistence, jira, logs: { info: async () => {} } });
+  const controller = new AbortController();
+  const search = service.search({
+    fromDate: '2026-09-01',
+    toDate: '2026-09-04',
+    user: { accountId: userId, displayName: 'Jesus Clavijo' },
+    signal: controller.signal,
+  });
+  const rejected = assert.rejects(search, { name: 'AbortError' });
+
+  await worklogStarted;
+  controller.abort();
+
+  await rejected;
+  assert.equal(created, false);
+});
+
+test('clears the temporary report if cancellation reaches the persistence boundary', async () => {
+  let clearCount = 0;
+  let created = false;
+  const controller = new AbortController();
+  const persistence = {
+    timeReports: {
+      async clear() { clearCount += 1; },
+      async create() {
+        created = true;
+        controller.abort();
+        return 'report-canceled-after-create';
+      },
+      async getSnapshot() {
+        throw new Error('The snapshot must not be read after cancellation.');
+      },
+    },
+    async query() { return []; },
+  };
+  const jira = {
+    async searchIssues() { return { issues: [{ key: 'ABC-1' }] }; },
+    async searchTempoWorklogs() { return []; },
+    async bulkFetchIssues() { return { issues: [] }; },
+  };
+  const service = new TimeReportsService({ persistence, jira });
+
+  await assert.rejects(() => service.search({
+    fromDate: '2026-09-01',
+    toDate: '2026-09-04',
+    user: { accountId: userId, displayName: 'Jesus Clavijo' },
+    signal: controller.signal,
+  }), { name: 'AbortError' });
+
+  assert.equal(created, true);
+  assert.equal(clearCount, 2);
+});
+
+test('overlaps historical worklogs with lifecycle requests without changing totals', async () => {
+  let saved;
+  let completedHistoricalIssues = 0;
+  let lifecycleStartedWhileHistoryWasRunning = false;
+  const persistence = {
+    timeReports: {
+      async clear() {},
+      async create(value) {
+        saved = value;
+        return 'report-overlap';
+      },
+      async getSnapshot() {
+        return {
+          id: 'report-overlap',
+          issues: saved.issues.map((issue) => ({ ...issue, selected: true, corrections: [] })),
+        };
+      },
+    },
+    async query() { return []; },
+  };
+  const jira = {
+    async searchIssues() { return { issues: [{ key: 'ABC-1' }] }; },
+    async searchTempoWorklogs() {
+      return [
+        { workerId: userId, originTaskId: '1', started: '2026-09-02 09:00:00.000', timeSpentSeconds: 3600 },
+        { workerId: userId, originTaskId: '2', started: '2026-09-02 10:00:00.000', timeSpentSeconds: 1800 },
+      ];
+    },
+    async listIssueWorklogs(issueReference) {
+      await delay(40);
+      completedHistoricalIssues += 1;
+      return [{
+        author: { accountId: userId },
+        startDate: '2026-09-02',
+        timeSpentSeconds: issueReference === '1' ? 3600 : 1800,
+      }];
+    },
+    async bulkFetchIssues(ids) {
+      return {
+        issues: ids.map((id) => ({
+          id,
+          key: `ABC-${id}`,
+          fields: {
+            project: { key: 'ABC' },
+            issuetype: { name: 'Testing' },
+            summary: `Incidencia ${id}`,
+            status: { name: 'En Progreso' },
+          },
+        })),
+      };
+    },
+    async listBulkIssueChangelogs() {
+      lifecycleStartedWhileHistoryWasRunning = completedHistoricalIssues < 2;
+      return [];
+    },
+    async listIssueChangelog() { return []; },
+  };
+
+  const service = new TimeReportsService({ persistence, jira, logs: { info: async () => {} } });
+  const result = await service.search({
+    fromDate: '2026-09-01',
+    toDate: '2026-09-04',
+    user: { accountId: userId, displayName: 'Jesus Clavijo' },
+  });
+
+  assert.equal(lifecycleStartedWhileHistoryWasRunning, true);
+  assert.deepEqual(result.issues.map((issue) => [issue.issueKey, issue.rangeSeconds, issue.totalSeconds]), [
+    ['ABC-1', 3600, 3600],
+    ['ABC-2', 1800, 1800],
   ]);
 });
