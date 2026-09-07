@@ -3,6 +3,11 @@ import { gridConditionMatches } from '../../shared/grids/gridCondition.js';
 const JQL_SOURCE_ISSUE_OPTION = '__jql_source_issue__';
 
 function formatToastValue(field, value) {
+  if (field === 'timeConsumedPercent') {
+    const percentage = Number(value);
+    return Number.isFinite(percentage) ? `${Number(percentage.toFixed(2))}%` : value;
+  }
+
   if (!['created', 'updated', 'resolutiondate'].includes(field) || !value) {
     return value;
   }
@@ -33,6 +38,10 @@ function composeToastMessage(baseMessage, displayValue) {
   const base = String(baseMessage ?? '').trim();
   const value = String(displayValue ?? '').trim();
   return value ? `${base}\n• ${value}` : base;
+}
+
+function retryMinutesForAlert(alert) {
+  return Math.max(Number(alert?.rule?.retry_minutes ?? alert?.retry_minutes ?? 0) || 0, 0);
 }
 
 export class AlertsService {
@@ -83,6 +92,7 @@ export class AlertsService {
       'Estimacion': 'timeestimate',
       'Tiempo empleado': 'timespent',
       'Tiempo restante': 'timeremaining',
+      'Tiempo consumido (%)': 'timeConsumedPercent',
     };
     const tokenPattern = /\[\[([^:]+)::([^\]]+)\]\]/g;
     const tokens = [...text.matchAll(tokenPattern)];
@@ -202,7 +212,8 @@ export class AlertsService {
       nextRetryAt: new Date(Date.now() + Math.max(Number(rule.retry_minutes ?? 0) || 0, 0) * 60000).toISOString(),
     });
 
-    if (notify && this.toast?.show) {
+    // Alerts with a configured retry wait for their first countdown to finish.
+    if (notify && retryMinutesForAlert({ rule }) === 0 && this.toast?.show) {
       await this.toast.show({
         title: rule.toast_text ?? 'Alerta Jira',
         message: rule.toast_text ?? 'Se detectó una alerta en Jira.',
@@ -743,6 +754,18 @@ export class AlertsService {
   async notifyCreated(createdAlerts = []) {
     for (const alert of createdAlerts) {
       try {
+        const retryMinutes = retryMinutesForAlert(alert);
+        if (!alert.isRetry && retryMinutes > 0) {
+          await this.logs?.info?.('Alert toast deferred until retry countdown is due', {
+            alertId: alert.alertId,
+            ruleId: alert.rule?.id,
+            issueId: alert.issueId,
+            retryMinutes,
+            nextRetryAt: alert.nextRetryAt ?? null,
+          });
+          continue;
+        }
+
         if (!this.toast?.show) {
           await this.logs?.warn?.('Toast skipped: toast service unavailable', {
             alertId: alert.alertId,

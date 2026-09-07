@@ -9,6 +9,7 @@ import { SyncService } from '../sync/syncService.js';
 import { AlertsService } from '../alerts/alertsService.js';
 import { ToastService } from '../toast/toastService.js';
 import { WindowsSessionTask } from '../windowsSession/windowsSessionTask.js';
+import { TimeReportsService } from '../reports/timeReportsService.js';
 
 export async function bootstrapApp() {
   const configuration = await loadConfiguration();
@@ -68,6 +69,11 @@ export async function bootstrapApp() {
     logs,
     configuration,
   });
+  const timeReports = new TimeReportsService({
+    persistence,
+    jira,
+    logs,
+  });
 
   return {
     configuration,
@@ -85,6 +91,7 @@ export async function bootstrapApp() {
     windowsSession,
     syncStatus,
     syncService,
+    timeReports,
     schema,
   };
 }

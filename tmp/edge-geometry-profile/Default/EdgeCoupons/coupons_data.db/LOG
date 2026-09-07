@@ -1,0 +1,5 @@
+2026/09/03-11:48:38.070 677c Creating DB C:\Jira Notifications\tmp\edge-geometry-profile\Default\EdgeCoupons/coupons_data.db since it was missing.
+2026/09/03-11:48:38.098 677c Reusing MANIFEST C:\Jira Notifications\tmp\edge-geometry-profile\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/09/03-11:48:39.026 100c Level-0 table #5: started
+2026/09/03-11:48:39.034 100c Level-0 table #5: 683273 bytes OK
+2026/09/03-11:48:39.037 100c Delete type=0 #3

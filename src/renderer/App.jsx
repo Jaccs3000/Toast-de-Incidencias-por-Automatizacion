@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
+import { requiresVisibleJiraLogin } from '../shared/auth/sessionRequirement.js';
 import { REPORTED_TIMES_FIELD } from '../shared/grids/reportedTimes.js';
+import { compactPersonName } from '../shared/people/compactPersonName.js';
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -113,6 +115,16 @@ function formatReportedMinutes(value) {
   return Number(value) < 0 ? `-${formatted}` : formatted;
 }
 
+function formatTimeReportDuration(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return '';
+  const minutes = Math.round(value / 60);
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest}m`;
+  return `${hours}h${rest ? ` ${rest}m` : ''}`;
+}
+
 function ReportedTimesValue({ entries = [] }) {
   if (!Array.isArray(entries) || entries.length === 0) return null;
 
@@ -162,30 +174,6 @@ function formatCountdown(nextSyncAt, now = Date.now()) {
   if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
 
   return parts.join(' ');
-}
-
-function compactPersonName(value) {
-  const words = String(value ?? '').trim().split(/\s+/).filter(Boolean);
-  if (words.length <= 2) return words.join(' ');
-
-  const logicalWords = [];
-  for (let index = 0; index < words.length; index += 1) {
-    const current = words[index];
-    const normalized = current.toLocaleLowerCase('es-CO');
-    if (normalized === 'del' && words[index + 1]) {
-      logicalWords.push(`${current} ${words[index + 1]}`);
-      index += 1;
-    } else if (normalized === 'de' && ['la', 'las', 'los'].includes(words[index + 1]?.toLocaleLowerCase('es-CO')) && words[index + 2]) {
-      logicalWords.push(`${current} ${words[index + 1]} ${words[index + 2]}`);
-      index += 2;
-    } else {
-      logicalWords.push(current);
-    }
-  }
-
-  if (logicalWords.length === 3) return `${logicalWords[0]} ${logicalWords[1]}`;
-  if (logicalWords.length >= 4) return `${logicalWords[0]} ${logicalWords[2]}`;
-  return logicalWords.join(' ');
 }
 
 function compactGridPersonValues(value) {
@@ -495,6 +483,42 @@ function formatAlertRetryCountdown(alert, now = Date.now()) {
   return formatCountdown(new Date(retryDueAt).toISOString(), now);
 }
 
+function alertRetryDueAt(alert) {
+  const retryMinutes = Math.max(Number(alert?.retry_minutes ?? 0) || 0, 0);
+  const lastNotifiedAt = new Date(alert?.last_notified_at ?? alert?.lastNotifiedAt ?? '').getTime();
+  if (retryMinutes <= 0 || !Number.isFinite(lastNotifiedAt)) {
+    return null;
+  }
+
+  const storedRetryAt = new Date(alert?.next_retry_at ?? alert?.nextRetryAt ?? '').getTime();
+  return Number.isFinite(storedRetryAt)
+    ? storedRetryAt
+    : lastNotifiedAt + retryMinutes * 60000;
+}
+
+function shouldShowAlertToast(alert, previousAlert, retryEnabled, now = Date.now()) {
+  const retryMinutes = Math.max(Number(alert?.retry_minutes ?? 0) || 0, 0);
+  if (!previousAlert) {
+    // A retry of zero has no countdown, so the initial alert is still immediate.
+    return retryMinutes === 0;
+  }
+  if (!retryEnabled) {
+    return false;
+  }
+
+  const previousRetryDueAt = alertRetryDueAt({
+    retry_minutes: retryMinutes,
+    lastNotifiedAt: previousAlert.lastNotifiedAt,
+    nextRetryAt: previousAlert.nextRetryAt,
+  });
+  const notificationWasRenewed = Boolean(
+    alert.last_notified_at
+    && previousAlert.lastNotifiedAt
+    && new Date(alert.last_notified_at).getTime() > new Date(previousAlert.lastNotifiedAt).getTime(),
+  );
+  return notificationWasRenewed && Number.isFinite(previousRetryDueAt) && now >= previousRetryDueAt;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -530,7 +554,8 @@ function renderAlertMessage(message, jiraBaseUrl) {
 function LineIcon({ name }) {
   const paths = {
     sync: <><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.6 9a7 7 0 0 1 11.7-2L20 8.5" /><path d="M17.4 15a7 7 0 0 1-11.7 2L4 15.5" /></>,
-    refresh: <><path d="M20 11a8 8 0 0 0-14.8-4L3 10" /><path d="M3 5v5h5" /><path d="M4 13a8 8 0 0 0 14.8 4L21 14" /></>,
+    refresh: <><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" /><path d="M21 3v5h-5" /></>,
+    sliders: <><path d="M4 6h7M16 6h4M4 12h3M12 12h8M4 18h11M20 18h0" /><circle cx="14" cy="6" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="17" cy="18" r="2" /></>,
     search: <><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4 4" /></>,
     bell: <><path d="M18 10a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 22h4" /></>,
     list: <><path d="M9 6h11M9 12h11M9 18h11" /><path d="M4 6h.01M4 12h.01M4 18h.01" /></>,
@@ -545,6 +570,7 @@ function LineIcon({ name }) {
     flag: <><path d="M5 22V4" /><path d="M5 5c4-3 6 3 11 0v9c-5 3-7-3-11 0" /></>,
     trash: <><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 14h8l1-14" /><path d="M10 11v6M14 11v6" /></>,
     save: <><path d="M5 3h12l2 2v16H5z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /></>,
+    file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
     chevron: <path d="m7 9 5 5 5-5" />,
     arrowLeft: <><path d="m15 18-6-6 6-6" /><path d="M9 12h10" /></>,
@@ -615,6 +641,7 @@ const alertFieldLabels = {
   timeestimate: 'Estimacion',
   timespent: 'Tiempo empleado',
   timeremaining: 'Tiempo restante',
+  timeConsumedPercent: 'Tiempo consumido (%)',
 };
 
 const gridSubtaskFields = [
@@ -648,6 +675,7 @@ const alertMessageFields = {
   timespent: 'Tiempo empleado',
   resolutiondate: 'Fecha de resolucion',
   timeremaining: 'Tiempo restante',
+  timeConsumedPercent: 'Tiempo consumido (%)',
 };
 
 const JQL_SOURCE_ISSUE_OPTION = '__jql_source_issue__';
@@ -860,7 +888,7 @@ function calculateGridColumnWidths(columnGroups, availableWidth) {
 function buildAlertSql(alertForm) {
   const eventExpression = `c.change_type = ${sqlText(alertForm.event)}`;
   const conditionExpressions = [];
-  const numericFields = new Set(['timeestimate', 'timespent', 'timeremaining']);
+  const numericFields = new Set(['timeestimate', 'timespent', 'timeremaining', 'timeConsumedPercent']);
   const datetimeFields = new Set(['created', 'updated', 'resolutiondate']);
   const projectGroupFields = new Set(['estadoGeneral']);
   alertForm.conditions
@@ -993,12 +1021,23 @@ export default function App() {
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+  const [alertRetryEnabled, setAlertRetryEnabled] = useState(true);
+  const [alertRetrySaving, setAlertRetrySaving] = useState(false);
   const [syncIntervalMinutes, setSyncIntervalMinutes] = useState(5);
   const [databaseResetting, setDatabaseResetting] = useState(false);
   const [sqlQueries, setSqlQueries] = useState(['SELECT key, issuetype, status FROM JIRA_ISSUES LIMIT 20']);
   const [selectedSqlIndex, setSelectedSqlIndex] = useState(0);
   const [sqlResult, setSqlResult] = useState(null);
   const [sqlExecuting, setSqlExecuting] = useState(false);
+  const [timeReportDates, setTimeReportDates] = useState({ fromDate: '', toDate: '' });
+  const [timeReportUserQuery, setTimeReportUserQuery] = useState('');
+  const [timeReportUsers, setTimeReportUsers] = useState([]);
+  const [timeReportUser, setTimeReportUser] = useState(null);
+  const [timeReport, setTimeReport] = useState(null);
+  const [timeReportLoading, setTimeReportLoading] = useState(false);
+  const [timeReportGenerating, setTimeReportGenerating] = useState(false);
+  const [timeReportMessage, setTimeReportMessage] = useState(null);
+  const [timeReportDownloadUrl, setTimeReportDownloadUrl] = useState(null);
   const [sessionToast, setSessionToast] = useState(null);
   const [sessionToastType, setSessionToastType] = useState('warning');
   const [alertToast, setAlertToast] = useState(null);
@@ -1024,12 +1063,14 @@ export default function App() {
   const alertNotificationProcessingRef = useRef(false);
   const alertNotificationTimerRef = useRef(null);
   const alertsInitializedRef = useRef(false);
+  const alertRetryEnabledRef = useRef(true);
   const servicesStoppedRef = useRef(false);
   const jqlInitializedRef = useRef(false);
   const jqlDirtyRef = useRef(false);
   const warnedJqlEditIdsRef = useRef(new Set());
   const syncIntervalDirtyRef = useRef(false);
   const autoSyncDirtyRef = useRef(false);
+  const alertRetryDirtyRef = useRef(false);
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
@@ -1117,6 +1158,7 @@ export default function App() {
     { id: 'jql', label: 'Consultas JQL y Alertas', icon: 'search', description: 'Define las consultas que determinan las incidencias a sincronizar.' },
     { id: 'grids', label: 'Grids', icon: 'grid', description: 'Crea y administra las pestañas de seguimiento por ProjectGroup.' },
     { id: 'sql', label: 'SQL temporal', icon: 'database', description: 'Consulta o ajusta temporalmente la base de datos local.' },
+    { id: 'time-reports', label: 'Reportes de Tiempos', icon: 'file', description: 'Selecciona incidencias con tiempo reportado y genera un informe PDF.' },
   ];
   const selectedConfigurationSection = configurationSections.find((section) => section.id === configSection)
     ?? configurationSections[0];
@@ -1148,13 +1190,16 @@ export default function App() {
 
   const gridConditionFieldOptions = [
     ...conditionFields
-      .filter((field) => field.field !== 'estadoGeneral')
+      .filter((field) => field.field !== 'estadoGeneral'
+        && field.field !== 'timeConsumedPercent'
+        && !field.alertOnly)
       .map((field) => ({ field: field.field, label: field.label })),
     { field: 'estadoGeneral', label: 'Estado General', projectGroup: true },
   ];
   const gridFieldOptions = [
-    ...conditionFields
-      .filter((field) => !['estadoGeneral', 'timeestimate', 'timespent', 'timeremaining'].includes(field.field)),
+      ...conditionFields
+        .filter((field) => !field.alertOnly
+        && !['estadoGeneral', 'timeestimate', 'timespent', 'timeremaining', 'timeConsumedPercent'].includes(field.field)),
     { field: REPORTED_TIMES_FIELD, label: 'Tiempos reportados' },
     { field: 'estadoGeneral', label: 'Estado General', projectGroup: true },
     ...gridSubtaskFields,
@@ -1436,9 +1481,15 @@ export default function App() {
         inputMode={definition?.type === 'datetime' ? 'numeric' : undefined}
         maxLength={definition?.type === 'datetime' ? 16 : undefined}
         step={definition?.type === 'number' ? 'any' : undefined}
+        min={definition?.type === 'number' && Number.isFinite(Number(definition?.min)) ? definition.min : undefined}
+        max={definition?.type === 'number' && Number.isFinite(Number(definition?.max)) ? definition.max : undefined}
         value={definition?.type === 'datetime' ? formatDateForInput(condition.value) : condition.value}
         onChange={updateValue}
-        placeholder={definition?.type === 'datetime' ? 'dd/mm/aaaa HH:mm' : definition?.type === 'number' ? 'Valor en minutos' : 'Valor'}
+        placeholder={definition?.type === 'datetime'
+          ? 'dd/mm/aaaa HH:mm'
+          : definition?.field === 'timeConsumedPercent'
+            ? 'Porcentaje entre 0 y 100'
+            : definition?.type === 'number' ? 'Valor en minutos' : 'Valor'}
       />
     );
   };
@@ -1664,16 +1715,28 @@ export default function App() {
     if (!autoSyncDirtyRef.current && typeof context?.autoSyncEnabled === 'boolean') {
       setAutoSyncEnabled(context.autoSyncEnabled);
     }
+    if (!alertRetryDirtyRef.current && typeof context?.alertRetryEnabled === 'boolean') {
+      alertRetryEnabledRef.current = context.alertRetryEnabled;
+      setAlertRetryEnabled(context.alertRetryEnabled);
+    }
     if (!syncIntervalDirtyRef.current && Number.isFinite(Number(context?.syncIntervalMinutes))) {
       setSyncIntervalMinutes(Number(context.syncIntervalMinutes));
     }
 
+    const loginRecoveryInProgress = context?.appState === 'syncing' || Boolean(context?.syncStatus?.is_running);
     if (context?.session?.ok) {
       lastSessionNotificationAtRef.current = 0;
       closeSessionNotification();
       setSessionToast(null);
-    } else {
+    } else if (loginRecoveryInProgress) {
+      lastSessionNotificationAtRef.current = 0;
+      closeSessionNotification();
+      setSessionToast(null);
+    } else if (requiresVisibleJiraLogin(context)) {
       notifySessionRequired(context?.syncIntervalSeconds);
+    } else {
+      closeSessionNotification();
+      setSessionToast(null);
     }
 
     return context;
@@ -1688,18 +1751,7 @@ export default function App() {
     const alertsToShow = alertsInitializedRef.current
       ? unreadAlerts.filter((alert) => {
         const previous = knownAlerts.get(alert.id);
-        if (!previous) {
-          // The retry switch must not suppress the first notification of a new alert.
-          return true;
-        }
-
-        // A changed last_notified_at proves the backend sent a new retry.
-        // next_retry_at already points to the following retry at this point.
-        return Boolean(
-          alert.last_notified_at
-          && previous.lastNotifiedAt
-          && new Date(alert.last_notified_at).getTime() > new Date(previous.lastNotifiedAt).getTime(),
-        );
+        return shouldShowAlertToast(alert, previous, alertRetryEnabledRef.current);
       })
       : [];
     enqueueAlertNotifications(alertsToShow);
@@ -2579,8 +2631,36 @@ export default function App() {
     setStatusMessage(null);
   };
 
+  const handleAlertRetryToggle = async (event) => {
+    const nextValue = event.target.checked;
+    alertRetryDirtyRef.current = true;
+    alertRetryEnabledRef.current = nextValue;
+    setAlertRetryEnabled(nextValue);
+    setAlertRetrySaving(true);
+
+    try {
+      const result = await api('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ alertRetryEnabled: nextValue }),
+      });
+      const savedValue = Boolean(result.alertRetryEnabled);
+      alertRetryEnabledRef.current = savedValue;
+      setAlertRetryEnabled(savedValue);
+      alertRetryDirtyRef.current = false;
+      await refreshAlerts();
+      showUiToast('Reenvio de Toast actualizado.');
+    } catch (error) {
+      alertRetryEnabledRef.current = !nextValue;
+      setAlertRetryEnabled(!nextValue);
+      alertRetryDirtyRef.current = false;
+      setJqlMessage(`No se pudo cambiar el reenvio de Toast: ${error.message}`);
+    } finally {
+      setAlertRetrySaving(false);
+    }
+  };
+
   const handleDatabaseReset = async () => {
-    if (!window.confirm('Se borraran los datos locales de Jira y ProjectGroups. La sesion y la configuracion se conservaran. Desea continuar?')) {
+    if (!window.confirm('Se borraran los datos locales de Jira, ProjectGroups y Reportes de Tiempos. La sesion y la configuracion se conservaran. Desea continuar?')) {
       return;
     }
 
@@ -2588,6 +2668,10 @@ export default function App() {
     try {
       await api('/api/database/reset', { method: 'POST', body: '{}' });
       setSyncState(null);
+      setTimeReport(null);
+      setTimeReportUsers([]);
+      setTimeReportUser(null);
+      setTimeReportDownloadUrl(null);
       setJqlMessage('Base de datos reiniciada correctamente.');
       showUiToast('Base de datos local reiniciada.');
       await refreshBootstrapContext();
@@ -2628,6 +2712,97 @@ export default function App() {
     }
   };
 
+  const handleTimeReportUserSearch = async () => {
+    const query = timeReportUserQuery.trim();
+    if (query.length < 2) {
+      setTimeReportMessage({ type: 'error', text: 'Escribe al menos dos caracteres para buscar el usuario.' });
+      return;
+    }
+    try {
+      const result = await api(`/api/time-reports/users?query=${encodeURIComponent(query)}`);
+      const users = result.users ?? [];
+      const singleUser = users.length === 1 ? users[0] : null;
+      setTimeReportUsers(singleUser ? [] : users);
+      setTimeReportUser(singleUser);
+      if (singleUser) setTimeReportUserQuery(singleUser.displayName);
+      setTimeReportMessage(users.length ? null : { type: 'error', text: 'No se encontraron usuarios.' });
+    } catch (error) {
+      setTimeReportMessage({ type: 'error', text: `No se pudo buscar el usuario: ${error.message}` });
+    }
+  };
+
+  const handleTimeReportClear = () => {
+    setTimeReportDates({ fromDate: '', toDate: '' });
+    setTimeReportUserQuery('');
+    setTimeReportUsers([]);
+    setTimeReportUser(null);
+    setTimeReport(null);
+    setTimeReportMessage(null);
+    setTimeReportDownloadUrl(null);
+  };
+
+  const handleTimeReportSearch = async () => {
+    if (!timeReportUser) {
+      setTimeReportMessage({ type: 'error', text: 'Busca y selecciona un usuario Jira.' });
+      return;
+    }
+    setTimeReportLoading(true);
+    setTimeReportMessage(null);
+    setTimeReportDownloadUrl(null);
+    try {
+      const result = await api('/api/time-reports/search', {
+        method: 'POST',
+        body: JSON.stringify({ ...timeReportDates, user: timeReportUser }),
+      });
+      setTimeReport(result.report);
+      setTimeReportMessage({ type: 'success', text: `${result.report.issues.length} incidencia(s) encontrada(s).` });
+    } catch (error) {
+      setTimeReport(null);
+      setTimeReportMessage({ type: 'error', text: `No se pudo consultar el reporte: ${error.message}` });
+    } finally {
+      setTimeReportLoading(false);
+    }
+  };
+
+  const handleTimeReportPdf = async () => {
+    if (!timeReport) return;
+    const selectedIssueIds = timeReport.issues.filter((issue) => issue.selected).map((issue) => issue.issueId);
+    if (selectedIssueIds.length === 0) {
+      setTimeReportMessage({ type: 'error', text: 'Selecciona al menos una incidencia.' });
+      return;
+    }
+    setTimeReportGenerating(true);
+    setTimeReportMessage(null);
+    setTimeReportDownloadUrl(null);
+    const pdfWindow = window.open('about:blank', '_blank');
+    if (pdfWindow) {
+      try {
+        pdfWindow.document.title = 'Creando informe de tiempos';
+        pdfWindow.document.body.textContent = 'Creando informe de tiempos...';
+      } catch {
+        // The browser may return a restricted popup reference.
+      }
+    }
+    try {
+      const result = await api('/api/time-reports/pdf', {
+        method: 'POST',
+        body: JSON.stringify({ reportId: timeReport.id, selectedIssueIds }),
+      });
+      setTimeReportDownloadUrl(result.downloadUrl);
+      setTimeReportMessage({ type: 'success', text: `PDF creado con ${result.pages} pagina(s).` });
+      if (pdfWindow && !pdfWindow.closed) {
+        pdfWindow.location.href = result.downloadUrl;
+      }
+    } catch (error) {
+      if (pdfWindow && !pdfWindow.closed) {
+        pdfWindow.close();
+      }
+      setTimeReportMessage({ type: 'error', text: `No se pudo crear el PDF: ${error.message}` });
+    } finally {
+      setTimeReportGenerating(false);
+    }
+  };
+
   const handleShutdown = async () => {
     setShutdownRequested(true);
     try {
@@ -2647,6 +2822,138 @@ export default function App() {
     setGridFormOpen(false);
     setExpandedGridId(null);
     setOpenGridAttributeGroup(null);
+  };
+
+  const renderTimeReports = () => {
+    const issues = timeReport?.issues ?? [];
+    const selectedCount = issues.filter((issue) => issue.selected).length;
+    return (
+      <div className="settings-card dashboard-card dashboard-time-reports">
+        <fieldset disabled={syncInProgress || timeReportLoading || timeReportGenerating} className="time-report-fieldset">
+        <div className="time-reports-heading">
+          <div>
+            <h2>Informe de tiempos</h2>
+            <p className="copy">Consulta el tiempo reportado por un usuario y prepara un PDF por incidencia.</p>
+          </div>
+        </div>
+        <div className="time-reports-filters">
+          <label>
+            <span>Desde</span>
+            <span className="time-reports-date-control">
+              <LineIcon name="calendar" />
+              <input
+                type="date"
+                value={timeReportDates.fromDate}
+                onChange={(event) => setTimeReportDates((current) => ({ ...current, fromDate: event.target.value }))}
+              />
+            </span>
+          </label>
+          <label>
+            <span>Hasta</span>
+            <span className="time-reports-date-control">
+              <LineIcon name="calendar" />
+              <input
+                type="date"
+                value={timeReportDates.toDate}
+                onChange={(event) => setTimeReportDates((current) => ({ ...current, toDate: event.target.value }))}
+              />
+            </span>
+          </label>
+          <label className="time-reports-user-field">
+            <span>Usuario que reporto el tiempo</span>
+            <div className="time-reports-user-search">
+              <span className="time-reports-user-input">
+                <input
+                  type="text"
+                  value={timeReportUserQuery}
+                  placeholder="Ejemplo: Jesus Clavijo"
+                  onChange={(event) => {
+                    setTimeReportUserQuery(event.target.value);
+                    setTimeReportUser(null);
+                    setTimeReportUsers([]);
+                  }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') handleTimeReportUserSearch(); }}
+                />
+                <button
+                  type="button"
+                  className="time-reports-inline-search"
+                  onClick={handleTimeReportUserSearch}
+                  aria-label="Buscar usuario Jira"
+                  title="Buscar usuario Jira"
+                >
+                  <LineIcon name="search" />
+                </button>
+              </span>
+            </div>
+          </label>
+        </div>
+        {timeReportUsers.length > 1 ? (
+          <div className="time-reports-user-options" role="listbox" aria-label="Usuarios encontrados">
+            {timeReportUsers.map((user) => (
+              <button
+                type="button"
+                key={user.accountId}
+                className={timeReportUser?.accountId === user.accountId ? 'is-selected' : ''}
+                onClick={() => {
+                  setTimeReportUser(user);
+                  setTimeReportUserQuery(user.displayName);
+                  setTimeReportUsers([]);
+                }}
+              >
+                <strong>{user.displayName}</strong>
+                {user.emailAddress ? <small>{user.emailAddress}</small> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="time-reports-toolbar">
+          <button type="button" className="primary-button" onClick={handleTimeReportSearch} disabled={timeReportLoading}>
+            <LineIcon name="search" />
+            {timeReportLoading ? 'Buscando...' : 'Buscar incidencias'}
+          </button>
+          <button type="button" className="secondary-button time-reports-clear-button" onClick={handleTimeReportClear} disabled={timeReportLoading || timeReportGenerating}>
+            <LineIcon name="refresh" />
+            Limpiar
+          </button>
+          {timeReport ? <span>{selectedCount} de {issues.length} seleccionadas</span> : null}
+        </div>
+        {timeReport ? (
+          <div className="time-reports-results">
+            {issues.length > 0 ? (
+              <div className="time-reports-table-wrap">
+                <table className="time-reports-table">
+                  <thead><tr><th>Incluir</th><th>Incidencia</th><th>Resumen</th><th>Estado</th><th>Tiempo reportado en Sprint</th><th>Tiempo Total</th><th>Correcciones</th></tr></thead>
+                  <tbody>{issues.map((issue) => (
+                    <tr key={issue.issueId}>
+                      <td><input type="checkbox" checked={issue.selected} onChange={(event) => setTimeReport((current) => ({ ...current, issues: current.issues.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item) }))} aria-label={`Incluir ${issue.issueKey}`} /></td>
+                      <td className="time-report-issue-key">{issue.issueKey}</td>
+                      <td>{issue.summary}</td>
+                      <td>{issue.status}</td>
+                      <td>{formatTimeReportDuration(issue.rangeSeconds)}</td>
+                      <td>{formatTimeReportDuration(issue.totalSeconds)}</td>
+                      <td>{issue.corrections?.length ?? 0}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            ) : <p className="time-reports-empty">No hay incidencias con tiempo reportado por este usuario en el rango.</p>}
+            <div className="time-reports-actions">
+              <button type="button" className="save-action-button" onClick={handleTimeReportPdf} disabled={timeReportGenerating || issues.length === 0 || selectedCount === 0}>
+                <LineIcon name="file" />
+                {timeReportGenerating ? 'Creando PDF...' : 'Crear PDF'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {timeReportMessage ? (
+          <p className={`time-reports-message is-${timeReportMessage.type}`}>
+            {timeReportMessage.text}
+            {timeReportDownloadUrl ? <a className="time-report-download" href={timeReportDownloadUrl} target="_blank" rel="noreferrer">Abrir PDF</a> : null}
+          </p>
+        ) : null}
+        </fieldset>
+      </div>
+    );
   };
 
   const renderGridBuilder = () => (
@@ -3176,7 +3483,7 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={syncInProgress ? 'app-shell is-syncing' : 'app-shell'}>
       {syncInProgress ? (
         <div className="sync-watermark" aria-hidden="true">
           {Array.from({ length: 12 }, (_, index) => (
@@ -3230,7 +3537,7 @@ export default function App() {
               aria-pressed={activeTab === 'config'}
               title="Configuracion"
             >
-              <LineIcon name="settings" />
+              <LineIcon name="sliders" />
             </button>
             <div className="header-alerts-anchor" ref={headerAlertsRef}>
               <button
@@ -3272,7 +3579,9 @@ export default function App() {
                           )}
                           {Number(alert.retry_minutes ?? 0) > 0 ? (
                             <small className="alerts-retry-countdown">
-                              Proximo Toast: {formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente'}
+                              Proximo Toast: {alertRetryEnabled
+                                ? (formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente')
+                                : 'reenvio apagado'}
                             </small>
                           ) : null}
                         </span>
@@ -3335,7 +3644,6 @@ export default function App() {
         <div className="configuration-workspace" data-section={configSection}>
           <header className="configuration-workspace-heading">
             <div>
-              <p className="eyebrow">Jira Notifications</p>
               <h1>{selectedConfigurationSection.label}</h1>
               <p className="copy">{selectedConfigurationSection.description}</p>
             </div>
@@ -3438,6 +3746,12 @@ export default function App() {
                     ? 'datetime-local'
                     : conditionFields.find((item) => item.field === condition.field)?.type === 'number' ? 'number' : 'text'}
                   step={conditionFields.find((item) => item.field === condition.field)?.type === 'number' ? 'any' : undefined}
+                  min={conditionFields.find((item) => item.field === condition.field)?.type === 'number'
+                    && Number.isFinite(Number(conditionFields.find((item) => item.field === condition.field)?.min))
+                    ? conditionFields.find((item) => item.field === condition.field)?.min : undefined}
+                  max={conditionFields.find((item) => item.field === condition.field)?.type === 'number'
+                    && Number.isFinite(Number(conditionFields.find((item) => item.field === condition.field)?.max))
+                    ? conditionFields.find((item) => item.field === condition.field)?.max : undefined}
                   list={['project', 'issuetype', 'status'].includes(condition.field) ? `jira-catalog-${condition.field}-${index}` : undefined}
                   value={condition.value}
                   onChange={(event) => setAlertForm((current) => ({
@@ -3446,7 +3760,8 @@ export default function App() {
                       ? { ...item, value: event.target.value }
                       : item),
                   }))}
-                  placeholder="Criterios de aceptación"
+                  placeholder={conditionFields.find((item) => item.field === condition.field)?.field === 'timeConsumedPercent'
+                    ? 'Porcentaje entre 0 y 100' : 'Criterios de aceptación'}
                 />
                 <button
                   type="button"
@@ -3641,7 +3956,7 @@ export default function App() {
                       title="Crear alerta"
                     >
                       <LineIcon name="bell" />
-                      <span aria-hidden="true">+</span>
+                      <span className="jql-alert-add-badge" aria-hidden="true" />
                     </button>
                     {rules.length > 0 ? <button
                       type="button"
@@ -3785,6 +4100,8 @@ export default function App() {
           {sqlResult ? <pre className="sql-result">{JSON.stringify(sqlResult, null, 2)}</pre> : null}
         </div>
 
+        {renderTimeReports()}
+
         {uiToast ? (
           <div className={`ui-toast ui-toast-${uiToast.type}`} role="status" aria-live="polite">
             {uiToast.message}
@@ -3904,7 +4221,20 @@ export default function App() {
 
           <div className="alerts-panel">
             <div className="alerts-header">
-              <div className="alerts-heading"><h3>Alertas no leídas</h3></div>
+              <div className="alerts-heading">
+                <h3>Alertas no leídas</h3>
+                <label className="alerts-toggle alerts-retry-toggle">
+                  <input
+                    type="checkbox"
+                    checked={alertRetryEnabled}
+                    onChange={handleAlertRetryToggle}
+                    disabled={alertRetrySaving}
+                  />
+                  <span className="alerts-switch-control" aria-hidden="true" />
+                  <span className="alerts-retry-label">Reenvio de Toast</span>
+                  <small>{alertRetryEnabled ? 'Activo' : 'Apagado'}</small>
+                </label>
+              </div>
               {(alertsSummary?.unreadCount ?? 0) >= 1 ? (
                 <span className="alerts-badge">{alertsSummary.unreadCount}</span>
               ) : null}
@@ -3929,7 +4259,9 @@ export default function App() {
                       )}
                       {Number(alert.retry_minutes ?? 0) > 0 ? (
                         <small className="alerts-retry-countdown">
-                          Proximo Toast: {formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente'}
+                          Proximo Toast: {alertRetryEnabled
+                            ? (formatAlertRetryCountdown(alert, countdownNow) ?? 'pendiente')
+                            : 'reenvio apagado'}
                         </small>
                       ) : null}
                     </span>

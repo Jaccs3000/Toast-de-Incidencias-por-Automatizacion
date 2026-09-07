@@ -114,5 +114,25 @@ export function validateAlertConditionConfig(config, { fields = [], operators = 
     }
   });
 
+  parsed.conditions.forEach((condition, index) => {
+    const field = availableFields.get(condition?.field);
+    const operator = availableOperators.get(condition?.operator);
+    const value = String(condition?.value ?? '').trim();
+    if (!field || field.type !== 'number' || !operator || EMPTY_OPERATORS.has(operator.value) || !isNumberValue(value)) {
+      return;
+    }
+
+    const numericValue = Number(value.replace(',', '.'));
+    const minimum = Number(field.min);
+    const maximum = Number(field.max);
+    const position = `CondiciÃ³n ${index + 1}`;
+    if (Number.isFinite(minimum) && numericValue < minimum) {
+      errors.push(`${position}: "${field.label}" debe ser mayor o igual que ${minimum}.`);
+    }
+    if (Number.isFinite(maximum) && numericValue > maximum) {
+      errors.push(`${position}: "${field.label}" debe ser menor o igual que ${maximum}.`);
+    }
+  });
+
   return { ok: errors.length === 0, errors };
 }

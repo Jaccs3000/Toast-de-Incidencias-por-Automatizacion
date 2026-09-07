@@ -16,7 +16,15 @@
     { "field": "parent", "label": "Incidencia padre", "type": "text" },
     { "field": "timeestimate", "label": "Estimacion", "type": "number" },
     { "field": "timespent", "label": "Tiempo empleado", "type": "number" },
-    { "field": "timeremaining", "label": "Tiempo restante", "type": "number" }
+    { "field": "timeremaining", "label": "Tiempo restante", "type": "number" },
+    {
+      "field": "timeConsumedPercent",
+      "label": "Tiempo consumido (%)",
+      "type": "number",
+      "alertOnly": true,
+      "min": 0,
+      "max": 100
+    }
   ],
   "operators": [
     { "value": "=", "label": "es igual" },

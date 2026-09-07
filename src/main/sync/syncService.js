@@ -1,5 +1,6 @@
 import { JiraBatchLoader } from '../jira/jiraBatchLoader.js';
 import { jiraDescriptionToText } from '../../shared/jira/descriptionText.js';
+import { getConsumedTimePercentage } from '../../shared/time/consumedTime.js';
 
 function secondsToMinutes(value) {
   const seconds = Number(value ?? 0);
@@ -279,7 +280,7 @@ export class SyncService {
   }
 
   async getExistingSnapshot() {
-    return this.persistence.query(
+    const rows = await this.persistence.query(
       `
       SELECT
         pgi.project_group_id,
@@ -305,6 +306,11 @@ export class SyncService {
       JOIN JIRA_ISSUES i ON i.id = pgi.issue_id
       `,
     );
+
+    return (rows ?? []).map((row) => ({
+      ...row,
+      timeConsumedPercent: getConsumedTimePercentage(row.timeestimate, row.timespent),
+    }));
   }
 
   getSnapshotMap(rows = []) {
@@ -320,6 +326,8 @@ export class SyncService {
     for (const group of projectGroups) {
       for (const issue of group.issues ?? []) {
         const member = (group.members ?? []).find((item) => String(item.id) === String(issue.id));
+        const timeestimate = secondsToMinutes(issue.fields?.timeoriginalestimate ?? issue.fields?.timeestimate);
+        const timespent = secondsToMinutes(issue.fields?.timespent);
         snapshot.push({
           project_group_id: group.id,
           id: String(issue.id),
@@ -336,10 +344,10 @@ export class SyncService {
           updated: issue.fields?.updated ?? null,
           resolutiondate: issue.fields?.resolutiondate ?? null,
           parent: issue.fields?.parent?.key ?? null,
-          timeestimate: secondsToMinutes(issue.fields?.timeoriginalestimate ?? issue.fields?.timeestimate),
-          timespent: secondsToMinutes(issue.fields?.timespent),
-          timeremaining: secondsToMinutes(issue.fields?.timeoriginalestimate ?? issue.fields?.timeestimate)
-            - secondsToMinutes(issue.fields?.timespent),
+          timeestimate,
+          timespent,
+          timeremaining: timeestimate - timespent,
+          timeConsumedPercent: getConsumedTimePercentage(timeestimate, timespent),
           issuelinks: typeof issue.fields?.issuelinks === 'string'
             ? issue.fields.issuelinks
             : JSON.stringify(issue.fields?.issuelinks ?? null),
@@ -354,7 +362,8 @@ export class SyncService {
   getChangedFields(before, after) {
     const fields = [
       'project', 'issuetype', 'issuetype_icon_url', 'summary', 'description', 'status', 'reporter',
-      'assignee', 'created', 'updated', 'resolutiondate', 'parent', 'timeestimate', 'timespent', 'timeremaining', 'issuelinks',
+      'assignee', 'created', 'updated', 'resolutiondate', 'parent', 'timeestimate', 'timespent', 'timeremaining',
+      'timeConsumedPercent', 'issuelinks',
     ];
 
     return fields.filter((field) => String(before?.[field] ?? '') !== String(after?.[field] ?? ''));
@@ -566,14 +575,10 @@ export class SyncService {
           await this.logs.info('Jira session recovered automatically through headless continuation');
         } else {
           await this.logs.warn('Synchronization stopped: Jira session invalid');
-          await this.persistence.syncStatus.updateStatus({
-            last_status: 'Requiere inicio de sesión en Jira.',
-            is_running: false,
-            is_canceling: false,
-          });
-
           await this.logs.warn('Jira session is missing or invalid; visible login requires explicit user action');
-          throw new Error(session.reason ?? 'Jira login is required.');
+          const loginRequiredError = new Error(session.reason ?? 'Jira login is required.');
+          loginRequiredError.code = 'JIRA_LOGIN_REQUIRED';
+          throw loginRequiredError;
         }
       }
 
@@ -830,6 +835,7 @@ export class SyncService {
     } catch (error) {
       const finishedAt = new Date().toISOString();
       const canceled = error?.name === 'AbortError';
+      const loginRequired = error?.code === 'JIRA_LOGIN_REQUIRED';
       await this.logs[canceled ? 'warn' : 'error'](canceled ? 'Synchronization cycle canceled' : 'Synchronization cycle failed', {
         message: error.message,
         jiraMetrics: this.jira.getMetrics?.() ?? null,
@@ -837,7 +843,9 @@ export class SyncService {
 
       await this.persistence.syncStatus.updateStatus({
         last_finished_at: finishedAt,
-        last_status: canceled ? 'Sincronización detenida.' : 'Error al sincronizar',
+        last_status: canceled
+          ? 'Sincronización detenida.'
+          : loginRequired ? 'Requiere inicio de sesión en Jira.' : 'Error al sincronizar',
         last_error_message: canceled ? null : error.message,
         is_running: false,
         is_canceling: false,

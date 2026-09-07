@@ -1,0 +1,30 @@
+{
+   "action": {
+      "default_icon": "icons/icon48.png"
+   },
+   "background": {
+      "service_worker": "serviceWorker.js"
+   },
+   "content_scripts": [ {
+      "all_frames": false,
+      "js": [ "background/jquery-3.7.1.min.js", "common/iocm.js", "contentscript.js", "vtIntegration.js", "common/engine.js", "common/axe.js" ],
+      "matches": [ "\u003Call_urls>" ],
+      "run_at": "document_idle"
+   } ],
+   "description": "Edge extension by SmartBear for functional testing of web pages.",
+   "host_permissions": [ "*://*/*" ],
+   "icons": {
+      "128": "icons/icon128.png",
+      "48": "icons/icon48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA30dWa9JNupKtbhWkG41rRaIwM+B4QhGyGY9IsehUyMMVZ7yd3m7XFmdkjl5XWi29drrx4mHSAJXdulGs7tM8NnegYj06MFEeeyAgx7J0PNxg1URxU4lPPZmoOd7+C1xv5GPWhZRb079C33oQuWEnZuzAKGwKJQumMdRSTiBMT/oXnxPd/6FHmFhl6zUmWgaC7NbfUqdLgnTS+deVLVh6D5yx9lLwNonPH0YpYVrrvCPOydNiLkUi+v0YdPU5nhD0STgcwHzW0VsB/c8UnRG6XSnrQLq2L6M1igLshWin6ZWqsPB4LlHidRr08B+e21Z7uT44/TlmELh4EcoUGFB/NQIDAQAB",
+   "manifest_version": 3,
+   "name": "SmartBear Test Extension",
+   "permissions": [ "tabs", "nativeMessaging", "webNavigation", "debugger" ],
+   "update_url": "https://edge.microsoft.com/extensionwebstorebase/v1/crx",
+   "version": "15.0.10",
+   "web_accessible_resources": [ {
+      "matches": [ "\u003Call_urls>" ],
+      "resources": [ "common/engine.js", "common/iocm.js", "common/axe.js", "common/pageBridge.js" ]
+   } ]
+}

@@ -46,7 +46,7 @@ body {
 }
 
 .sync-watermark span {
-  color: rgba(144, 163, 255, 0.075);
+  color: rgba(144, 163, 255, 0.10);
   font-size: clamp(1rem, 1.8vw, 1.8rem);
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -63,6 +63,28 @@ body {
   background: linear-gradient(180deg, rgba(8, 12, 28, 0.97), rgba(6, 10, 22, 0.93));
   backdrop-filter: blur(18px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 24px 72px rgba(0, 0, 0, 0.42);
+}
+
+/* Keep the whole interface visually subdued while synchronization is active. */
+.app-shell.is-syncing .hero {
+  position: relative;
+}
+
+.app-shell.is-syncing .hero::after {
+  content: '';
+  position: absolute;
+  z-index: 15;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(4, 8, 20, .34);
+  backdrop-filter: saturate(.72);
+  pointer-events: none;
+}
+
+/* The active cancellation control remains prominent above the dimming layer. */
+.app-shell.is-syncing .sync-button.is-syncing {
+  position: relative;
+  z-index: 30;
 }
 
 .dashboard-grid {
@@ -612,10 +634,10 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
-  margin: 0 0 28px;
+  margin: 0 0 18px;
 }
-.configuration-workspace-heading h1 { margin: 4px 0 8px; font-size: clamp(2.28rem, 2.54vw, 2.82rem); letter-spacing: -.05em; }
-.configuration-workspace-heading .copy { max-width: 720px; margin: 0; }
+.configuration-workspace-heading h1 { margin: 2px 0 0; font-size: clamp(1.65rem, 2vw, 2.05rem); letter-spacing: -.045em; line-height: 1.08; }
+.configuration-workspace-heading .copy { display: none; }
 
 .configuration-workspace .dashboard-grid { display: block; margin: 0; }
 .configuration-workspace .dashboard-card { display: none; width: 100%; }
@@ -623,7 +645,8 @@ body {
 .configuration-workspace[data-section="jql"] .dashboard-jql,
 .configuration-workspace[data-section="alerts"] .dashboard-alert,
 .configuration-workspace[data-section="grids"] .dashboard-grids,
-.configuration-workspace[data-section="sql"] .dashboard-sql { display: grid; }
+.configuration-workspace[data-section="sql"] .dashboard-sql,
+.configuration-workspace[data-section="time-reports"] .dashboard-time-reports { display: grid; }
 .configuration-workspace .dashboard-status {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   max-width: 1160px;
@@ -634,7 +657,8 @@ body {
 }
 .configuration-workspace .dashboard-jql,
 .configuration-workspace .dashboard-alert,
-.configuration-workspace .dashboard-sql { max-width: 980px; }
+.configuration-workspace .dashboard-sql,
+.configuration-workspace .dashboard-time-reports { max-width: 1180px; }
 .configuration-workspace .dashboard-grids { grid-template-columns: minmax(0, 2.15fr) minmax(280px, .85fr); }
 
 .configuration-workspace .status-summary-card,
@@ -791,41 +815,50 @@ body {
     0 10px 20px rgba(56, 69, 140, .20),
     0 0 18px rgba(142, 155, 255, .08);
 }
-.configuration-workspace .dashboard-status .alerts-list { max-height: 454px; gap: 14px; margin-top: 10px; }
+.configuration-workspace .dashboard-status .alerts-list {
+  max-height: none;
+  gap: 8px;
+  margin-top: 8px;
+  overflow-y: visible;
+  padding-right: 0;
+}
 .configuration-workspace .dashboard-status .alerts-item {
-  min-height: 128px;
-  padding: 12px 16px;
+  min-height: 82px;
+  padding: 8px 10px;
   border: 1px solid rgba(142, 162, 255, .22);
-  border-radius: 14px;
+  border-radius: 11px;
   background: rgba(5, 11, 27, .60);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
 }
-.configuration-workspace .dashboard-status .alerts-item-image { flex-basis: 58px; width: 58px; height: 58px; border-radius: 12px; }
-.configuration-workspace .dashboard-status .alerts-item-message { font-size: .9rem; }
+.configuration-workspace .dashboard-status .alerts-item-image { flex-basis: 42px; width: 42px; height: 42px; border-radius: 9px; }
+.configuration-workspace .dashboard-status .alerts-item-message { font-size: .82rem; }
 .configuration-workspace .dashboard-status .alerts-read-button {
-  width: 58px;
-  height: 58px;
-  border-radius: 13px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   border: 2px solid #8ee572;
   background: transparent;
   color: #8ee572;
-  font-size: 1.6rem;
+  font-size: .95rem;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 0 1px rgba(65, 180, 93, .1), 0 0 16px rgba(67, 211, 112, .12);
 }
 .configuration-workspace .dashboard-status .alerts-item {
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 .configuration-workspace .dashboard-status .alerts-item-message {
-  line-height: 1.34;
+  line-height: 1.25;
+  flex: 1 1 0;
   min-width: 0;
+  width: 0;
+  font-weight: 400;
 }
 .configuration-workspace .dashboard-status .alerts-item > :first-child { margin-right: 2px; }
 .configuration-workspace .dashboard-status .alerts-item > :last-child { margin-left: 4px; }
 .configuration-workspace .dashboard-status .alerts-item-message {
   margin-top: -2px;
 }
-.configuration-workspace .dashboard-status .alerts-retry-countdown { margin-top: 8px; font-size: .84rem; }
+.configuration-workspace .dashboard-status .alerts-retry-countdown { margin-top: 4px; font-size: .72rem; }
 .configuration-workspace .dashboard-status .alerts-retry-toggle {
   display: inline-grid;
   grid-template-columns: 48px auto auto;
@@ -1257,6 +1290,354 @@ body {
 .dashboard-sql {
   grid-area: auto;
   order: 3;
+}
+
+.dashboard-time-reports {
+  grid-area: auto;
+  order: 4;
+}
+
+.time-report-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.time-reports-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.time-reports-heading .copy {
+  margin-top: 8px;
+}
+
+.time-reports-filters {
+  display: grid;
+  grid-template-columns: minmax(150px, .7fr) minmax(150px, .7fr) minmax(280px, 1.6fr);
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.time-reports-filters label {
+  display: grid;
+  gap: 6px;
+  color: #aab6e6;
+  font-size: .74rem;
+  font-weight: 700;
+}
+
+.time-reports-user-search {
+  display: block;
+}
+
+.time-reports-user-input,
+.time-reports-date-control {
+  position: relative;
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.time-reports-date-control .line-icon {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  width: 42px;
+  height: 100%;
+  padding: 11px;
+  border-left: 1px solid rgba(142, 162, 255, .28);
+  border-radius: 0 9px 9px 0;
+  box-sizing: border-box;
+  color: #9fb3ff;
+  pointer-events: none;
+}
+
+.dashboard-time-reports .time-reports-filters input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(142, 162, 255, .24);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, .22);
+  color: #f2f5ff;
+  font: inherit;
+  color-scheme: dark;
+}
+
+.dashboard-time-reports .time-reports-date-control input,
+.dashboard-time-reports .time-reports-user-input input {
+  padding-left: 10px;
+}
+
+.dashboard-time-reports .time-reports-date-control input {
+  padding-right: 49px;
+}
+
+.dashboard-time-reports .time-reports-date-control input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dashboard-time-reports .time-reports-user-input input {
+  padding-right: 49px;
+}
+
+.dashboard-time-reports .time-reports-filters input:focus-visible {
+  border-color: rgba(157, 172, 255, .8);
+  outline: 2px solid rgba(157, 172, 255, .22);
+  outline-offset: 2px;
+}
+
+.time-reports-inline-search {
+  position: absolute;
+  z-index: 2;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  width: 40px;
+  height: calc(100% - 2px);
+  place-items: center;
+  border: 0;
+  border-left: 1px solid rgba(142, 162, 255, .28);
+  border-radius: 0 8px 8px 0;
+  background: transparent;
+  color: #9fb3ff;
+  cursor: pointer;
+}
+
+.time-reports-inline-search:hover { color: #e3e8ff; background: rgba(103, 125, 230, .16); }
+.time-reports-inline-search:focus-visible { outline: 2px solid rgba(157, 172, 255, .7); outline-offset: -3px; }
+
+.time-reports-user-options {
+  display: grid;
+  gap: 6px;
+  max-height: 160px;
+  margin-top: 10px;
+  overflow: auto;
+  padding: 7px;
+  border: 1px solid rgba(142, 162, 255, .24);
+  border-radius: 9px;
+  background: rgba(5, 11, 27, .75);
+}
+
+.time-reports-user-options button {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #e3e8ff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.time-reports-user-options button:hover,
+.time-reports-user-options button.is-selected {
+  border-color: rgba(142, 162, 255, .45);
+  background: rgba(94, 111, 211, .16);
+}
+
+.time-reports-user-options small {
+  color: #8f9dcc;
+}
+
+.time-reports-toolbar,
+.time-reports-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.time-reports-toolbar > span {
+  color: #9eabd7;
+  font-size: .78rem;
+}
+
+.time-reports-toolbar .primary-button,
+.time-reports-actions .save-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-reports-toolbar .line-icon,
+.time-reports-actions .line-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Keep report actions compact while giving them the same visual weight as the rest of the app. */
+.dashboard-time-reports .time-reports-toolbar .primary-button,
+.dashboard-time-reports .time-reports-toolbar .time-reports-clear-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border-radius: 9px;
+  padding: 10px 15px;
+  font-size: .76rem;
+  font-weight: 750;
+  letter-spacing: .01em;
+  line-height: 1;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dashboard-time-reports .time-reports-toolbar .primary-button {
+  min-width: 154px;
+  border: 1px solid rgba(157, 172, 255, .84);
+  background: linear-gradient(180deg, rgba(106, 127, 235, .5), rgba(62, 78, 167, .42));
+  color: #f2f4ff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 18px rgba(84, 103, 222, .14);
+}
+
+.dashboard-time-reports .time-reports-toolbar .time-reports-clear-button {
+  min-width: 96px;
+  border-color: rgba(255, 173, 105, .8);
+  background: linear-gradient(180deg, rgba(240, 154, 79, .3), rgba(157, 77, 36, .28));
+  color: #ffd5b4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 0 18px rgba(224, 122, 55, .13);
+}
+
+.dashboard-time-reports .time-reports-toolbar .primary-button:not(:disabled):hover,
+.dashboard-time-reports .time-reports-toolbar .time-reports-clear-button:not(:disabled):hover {
+  border-color: #b9c5ff;
+  background: linear-gradient(180deg, rgba(123, 142, 246, .58), rgba(70, 87, 183, .5));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 0 20px rgba(84, 103, 222, .24);
+  transform: translateY(-1px);
+}
+
+.dashboard-time-reports .time-reports-toolbar .time-reports-clear-button:not(:disabled):hover {
+  border-color: #ffc081;
+  background: linear-gradient(180deg, rgba(255, 180, 103, .4), rgba(187, 91, 43, .38));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 20px rgba(224, 122, 55, .24);
+}
+
+.dashboard-time-reports .time-reports-toolbar .primary-button:focus-visible,
+.dashboard-time-reports .time-reports-toolbar .time-reports-clear-button:focus-visible {
+  outline: 2px solid rgba(157, 172, 255, .7);
+  outline-offset: 3px;
+}
+
+.dashboard-time-reports .time-reports-toolbar .primary-button:disabled,
+.dashboard-time-reports .time-reports-toolbar .time-reports-clear-button:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+  transform: none;
+}
+
+.dashboard-time-reports .time-reports-toolbar .primary-button .line-icon,
+.dashboard-time-reports .time-reports-toolbar .time-reports-clear-button .line-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+.time-reports-results {
+  margin-top: 18px;
+  border-top: 1px solid rgba(142, 162, 255, .18);
+  padding-top: 16px;
+}
+
+.time-reports-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(142, 162, 255, .22);
+  border-radius: 9px;
+}
+
+.time-reports-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #dfe5ff;
+  font-size: .76rem;
+}
+
+.time-reports-table th,
+.time-reports-table td {
+  padding: 10px 9px;
+  border-bottom: 1px solid rgba(142, 162, 255, .14);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.time-reports-table th {
+  color: #9fabe0;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.time-reports-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.time-reports-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #62d9a1;
+}
+
+.time-report-issue-key {
+  color: #aebaff;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.time-reports-empty,
+.time-reports-message {
+  color: #aab6dc;
+  font-size: .8rem;
+}
+
+.time-reports-message.is-error {
+  color: #ff9ba5;
+}
+
+.time-reports-message.is-success {
+  color: #80e1af;
+}
+
+.time-report-download {
+  display: inline-block;
+  margin-left: 10px;
+  color: #bba4ff;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.time-report-download:hover,
+.time-report-download:focus-visible {
+  color: #e2d7ff;
+}
+
+@media (max-width: 760px) {
+  .time-reports-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .time-reports-user-field {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .time-reports-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .time-reports-user-field {
+    grid-column: auto;
+  }
 }
 
 .dashboard-alert {
@@ -2019,6 +2400,7 @@ h1 {
   position: absolute;
   top: calc(50% - 18px);
   left: calc(50% + 5px);
+  z-index: 2;
   display: grid;
   width: 16px;
   height: 16px;
@@ -2030,7 +2412,15 @@ h1 {
   box-shadow: 0 0 12px rgba(89, 255, 154, .48);
   font-size: 13px;
   font-weight: 900;
+  font-family: "Segoe UI", sans-serif;
   line-height: 1;
+  text-align: center;
+}
+
+.configuration-workspace .dashboard-jql .jql-alert-add-badge::after {
+  content: '+';
+  display: block;
+  transform: translateY(-.5px);
 }
 
 .configuration-workspace .dashboard-jql .jql-alert-list {
@@ -3758,11 +4148,11 @@ h1 {
     "visibility"
     "meta";
   grid-template-columns: minmax(0, 1fr);
-  min-height: 390px;
+  min-height: 273px;
   align-items: center;
   justify-items: center;
-  gap: 18px;
-  padding: 38px 28px 30px;
+  gap: 13px;
+  padding: 27px 20px 21px;
   border: 0;
   border-radius: 11px;
   background: linear-gradient(90deg, rgba(54, 68, 139, .12), rgba(20, 31, 69, .04));
@@ -3780,26 +4170,26 @@ h1 {
 .configuration-workspace .dashboard-grids .grid-summary-icon {
   grid-area: icon;
   display: grid;
-  width: 126px;
-  height: 126px;
+  width: 88px;
+  height: 88px;
   place-items: center;
   border: 1px solid rgba(134, 151, 238, .3);
-  border-radius: 20px;
+  border-radius: 15px;
   background: rgba(90, 108, 203, .13);
   color: #aab7ff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 12px 26px rgba(39, 58, 132, .12);
 }
 
 .configuration-workspace .dashboard-grids .grid-summary-icon .line-icon {
-  width: 66px;
-  height: 66px;
+  width: 46px;
+  height: 46px;
 }
 
 .configuration-workspace .dashboard-grids .grid-summary-title {
   grid-area: title;
   min-width: 0;
   color: #f1f3ff;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 800;
   line-height: 1.16;
   overflow: visible;
@@ -3811,10 +4201,10 @@ h1 {
 .configuration-workspace .dashboard-grids .grid-summary-meta {
   grid-area: meta;
   width: min(100%, 360px);
-  padding-top: 22px;
+  padding-top: 15px;
   border-top: 1px solid rgba(121, 141, 224, .2);
   color: #9da8cf;
-  font-size: 1rem;
+  font-size: .86rem;
   text-align: center;
   white-space: nowrap;
 }
@@ -3822,9 +4212,9 @@ h1 {
 .configuration-workspace .dashboard-grids .grid-visibility-status {
   grid-area: visibility;
   display: inline-flex;
-  min-height: 26px;
+  min-height: 22px;
   align-items: center;
-  padding: 4px 10px;
+  padding: 3px 8px;
   border: 1px solid rgba(79, 209, 137, .26);
   border-radius: 999px;
   background: rgba(48, 180, 105, .16);
@@ -4918,7 +5308,7 @@ h1 {
 }
 
 /* Common action-button geometry across configuration sections. */
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name) {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search) {
   display: inline-flex !important;
   min-height: 46px !important;
   align-items: center !important;
@@ -4933,11 +5323,11 @@ h1 {
   transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):hover:not(:disabled) {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search):hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):focus-visible {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search):focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
@@ -5018,7 +5408,7 @@ h1 {
 }
 
 /* Final button system: every interface button shares this geometry and an explicit color variant. */
-.configuration-workspace button:not(.grid-configured-name) {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search) {
   display: inline-flex !important;
   min-height: 46px !important;
   align-items: center !important;
@@ -5035,25 +5425,25 @@ h1 {
   line-height: 1.1 !important;
 }
 
-.configuration-workspace button:not(.grid-configured-name):hover:not(:disabled) {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):hover:not(:disabled) {
   border-color: rgba(174, 184, 255, .9) !important;
   background: rgba(25, 36, 72, .78) !important;
   color: #eef1ff !important;
   transform: translateY(-1px);
 }
 
-.configuration-workspace button:not(.grid-configured-name):focus-visible {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
 
-.configuration-workspace button:not(.grid-configured-name):disabled {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):disabled {
   opacity: .5;
   cursor: not-allowed;
 }
 
 /* Keep dynamic button labels inside their available space. */
-.configuration-workspace button:not(.grid-configured-name) {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search) {
   min-width: 0 !important;
   max-width: 100%;
   height: auto !important;
@@ -5221,6 +5611,251 @@ h1 {
   color: #ffe5ad !important;
 }
 
+/* Keep time-report controls above the shared button palette. */
+body .configuration-workspace .dashboard-time-reports .time-reports-filters input {
+  min-height: 42px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-date-control .line-icon {
+  top: 0 !important;
+  right: 0 !important;
+  width: 42px !important;
+  height: 42px !important;
+  padding: 11px !important;
+  border-left: 1px solid rgba(142, 162, 255, .28) !important;
+  border-radius: 0 9px 9px 0 !important;
+  box-sizing: border-box !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search {
+  top: 1px !important;
+  right: 1px !important;
+  display: grid !important;
+  width: 40px !important;
+  height: 40px !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-left: 1px solid rgba(142, 162, 255, .28) !important;
+  border-radius: 0 8px 8px 0 !important;
+  background: transparent !important;
+  color: #9fb3ff !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search:hover {
+  background: rgba(103, 125, 230, .16) !important;
+  color: #e3e8ff !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-user-input {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(142, 162, 255, .24) !important;
+  border-radius: 9px !important;
+  background: rgba(0, 0, 0, .22) !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-user-input:focus-within {
+  border-color: rgba(157, 172, 255, .8) !important;
+  outline: 2px solid rgba(157, 172, 255, .22) !important;
+  outline-offset: 2px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-user-input input {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 9px 10px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search {
+  position: static !important;
+  flex: 0 0 42px !important;
+  align-self: stretch !important;
+  width: 42px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-left: 1px solid rgba(142, 162, 255, .28) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-toolbar .primary-button {
+  border-color: #9daaff !important;
+  background: linear-gradient(180deg, rgba(106, 127, 235, .72), rgba(62, 78, 167, .62)) !important;
+  color: #f2f4ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 18px rgba(84, 103, 222, .2) !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-toolbar .time-reports-clear-button {
+  border-color: #f2b56b !important;
+  background: linear-gradient(180deg, rgba(240, 154, 79, .42), rgba(157, 77, 36, .36)) !important;
+  color: #ffd08c !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 18px rgba(224, 122, 55, .18) !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-toolbar .primary-button:hover:not(:disabled) {
+  border-color: #c0c9ff !important;
+  background: linear-gradient(180deg, rgba(126, 144, 246, .84), rgba(70, 87, 183, .72)) !important;
+  color: #ffffff !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-toolbar .time-reports-clear-button:hover:not(:disabled) {
+  border-color: #ffd08c !important;
+  background: linear-gradient(180deg, rgba(255, 180, 103, .54), rgba(187, 91, 43, .48)) !important;
+  color: #ffe0ae !important;
+}
+
+/* Keep the read check square after all shared button styles. */
+button.header-alert-read-button,
+button.alerts-read-button {
+  box-sizing: border-box !important;
+  inline-size: 34px !important;
+  min-inline-size: 34px !important;
+  max-inline-size: 34px !important;
+  block-size: 34px !important;
+  min-block-size: 34px !important;
+  max-block-size: 34px !important;
+  aspect-ratio: 1 / 1 !important;
+  flex: 0 0 34px !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 8px !important;
+  line-height: 1 !important;
+}
+
+/* The shared control baseline has higher specificity, so target the complete alert path. */
+body .configuration-workspace .dashboard-status .alerts-panel .alerts-list .alerts-item > button.alerts-read-button,
+body button.header-alert-read-button {
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  display: grid !important;
+  flex: 0 0 34px !important;
+  padding: 0 !important;
+  place-items: center !important;
+}
+
+/* Read actions use the same outlined action language as Save and Cancel. */
+body .configuration-workspace .dashboard-status .alerts-panel .alerts-list .alerts-item > button.alerts-read-button,
+body button.header-alert-read-button {
+  border: 1px solid #57dd91 !important;
+  border-radius: 10px !important;
+  background: linear-gradient(180deg, rgba(45, 172, 96, .34), rgba(22, 103, 61, .22)) !important;
+  color: #a5f6c6 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 17px rgba(70, 218, 127, .12) !important;
+}
+
+body .configuration-workspace .dashboard-status .alerts-panel .alerts-list .alerts-item > button.alerts-read-button:hover:not(:disabled),
+body button.header-alert-read-button:hover:not(:disabled) {
+  border-color: #8af2b1 !important;
+  background: linear-gradient(180deg, rgba(54, 181, 105, .42), rgba(30, 111, 68, .28)) !important;
+  color: #c0ffd5 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 8px 18px rgba(35, 164, 91, .16) !important;
+}
+
+/* Final geometry overrides prevent shared button rules from stretching the check. */
+.header-alert-read-button,
+body .configuration-workspace .dashboard-status .alerts-read-button {
+  box-sizing: border-box !important;
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  aspect-ratio: 1 / 1 !important;
+  max-width: 34px !important;
+  max-height: 34px !important;
+  flex: 0 0 34px !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 8px !important;
+  font-size: 1rem !important;
+  line-height: 1 !important;
+  border: 1px solid #58ec92 !important;
+  background: linear-gradient(180deg, #68f4a0, #39d979) !important;
+  color: #062817 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 15px rgba(75, 234, 141, .22) !important;
+}
+
+/* Keep the read action visibly square in both alert presentations. */
+.header-alert-read-button,
+body .configuration-workspace .dashboard-status .alerts-read-button {
+  box-sizing: border-box;
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  flex: 0 0 34px !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 8px !important;
+  font-size: 1rem !important;
+  line-height: 1 !important;
+}
+
+/* Global control for retrying unread Toast notifications. */
+.configuration-workspace .dashboard-status .alerts-retry-toggle {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 52px auto auto;
+  align-items: center;
+  column-gap: 9px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: .78rem;
+}
+
+.configuration-workspace .dashboard-status .alerts-retry-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.configuration-workspace .dashboard-status .alerts-retry-label {
+  color: #eef1ff;
+  font-weight: 700;
+}
+
+.configuration-workspace .dashboard-status .alerts-retry-toggle small {
+  position: relative;
+  padding-left: 10px;
+  color: #8f9dea;
+  font-size: .76rem;
+  font-weight: 400;
+}
+
+.configuration-workspace .dashboard-status .alerts-retry-toggle small::before {
+  content: '\2022';
+  position: absolute;
+  left: 0;
+  color: #6673ae;
+}
+
 /* Canonical action palette. This stays last so shared button rules cannot mute an action. */
 .configuration-workspace .status-summary-card .actions > button,
 .configuration-workspace .settings-actions > button,
@@ -5329,8 +5964,8 @@ h1 {
 }
 
 .configuration-workspace .dashboard-jql .jql-alert-add > span {
-  color: #61f59a !important;
-  text-shadow: 0 0 10px rgba(97, 245, 154, .7);
+  color: #07140d !important;
+  text-shadow: none;
 }
 
 .configuration-workspace .dashboard-jql .jql-alert-list {
@@ -5447,7 +6082,7 @@ body .configuration-workspace .dashboard-jql .jql-alert-add {
 }
 
 body .configuration-workspace .dashboard-jql .jql-alert-add > span {
-  color: #61f59a !important;
+  color: #07140d !important;
 }
 
 body .configuration-workspace .dashboard-jql .jql-alert-list {
@@ -5463,9 +6098,23 @@ body .configuration-workspace .dashboard-jql .jql-alert-list > span {
 
 body .configuration-workspace .dashboard-status .alerts-read-button,
 body .configuration-workspace .header-alert-read-button {
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  aspect-ratio: 1 / 1 !important;
+  max-width: 34px !important;
+  max-height: 34px !important;
+  flex: 0 0 34px !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 8px !important;
   border-color: #58ec92 !important;
   background: linear-gradient(180deg, #68f4a0, #39d979) !important;
   color: #062817 !important;
+  font-size: 1rem !important;
+  line-height: 1 !important;
 }
 
 body .configuration-workspace .alert-new-rule-button,

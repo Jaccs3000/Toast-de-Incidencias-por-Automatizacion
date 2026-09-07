@@ -12,6 +12,7 @@ const viteEntry = path.join(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js
 const backendEntry = path.join(projectRoot, 'src', 'main', 'server.js');
 const frontendHealthUrl = 'http://127.0.0.1:5174';
 const backendUrl = 'http://127.0.0.1:3000/api/bootstrap-context';
+const timeReportsHealthUrl = 'http://127.0.0.1:3000/api/time-reports/users';
 const servicePidPath = path.join(projectRoot, 'data', 'runtime-services.json');
 
 function log(message, details = '') {
@@ -49,10 +50,12 @@ async function isReady(url) {
 async function isJiraNotificationsRunning() {
   const frontend = await getHealth(frontendHealthUrl);
   const backend = await getHealth(backendUrl);
+  const timeReports = await getHealth(timeReportsHealthUrl);
   return frontend.ok
     && frontend.body.includes('Jira Notifications')
     && backend.ok
-    && backend.body.includes('"appState"');
+    && backend.body.includes('"appState"')
+    && [200, 401].includes(timeReports.statusCode);
 }
 
 function stopKnownServices() {

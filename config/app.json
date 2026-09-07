@@ -9,6 +9,8 @@
   "startMinimized": true,
   "enableToasts": true,
   "autoSyncEnabled": true,
+  "alertRetryEnabled": true,
+  "alertRetryPausedAt": null,
   "jqlQueries": [
     "type = \"Implementación Q&A\" AND assignee = currentUser() AND status != Cerrado AND issuekey != \"ONL-7689\"",
     "type = \"Test Tarea\" AND assignee = currentUser() AND status != Cerrado",

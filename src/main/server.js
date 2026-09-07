@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { bootstrapApp } from './app/bootstrap.js';
 import { saveAppConfig } from './config/configLoader.js';
 import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
+import { isJiraAuthenticationSyncFailure } from '../shared/auth/sessionRequirement.js';
 import { gridConditionMatches } from '../shared/grids/gridCondition.js';
 import {
   SUBTASK_COUNT_FIELDS,
@@ -20,6 +21,7 @@ import {
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
+const TIME_REPORT_EXPORTS_DIR = path.resolve(process.cwd(), 'exports');
 const JQL_SOURCE_ISSUE_OPTION = '__jql_source_issue__';
 const MAX_ALERT_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALERT_IMAGE_TYPES = {
@@ -302,6 +304,10 @@ function startAlertRetryTimer() {
     alertRetryTimer = null;
   }
 
+  if (!state.runtime.configuration?.app?.alertRetryEnabled) {
+    return;
+  }
+
   alertRetryTimer = setInterval(() => {
     refreshWindowsSessionState().then(() => {
       if (!canRunAutomaticWindowsWork() || syncInProgress || alertRetryInProgress) return;
@@ -361,7 +367,17 @@ async function startAutoSyncTimer({ scheduleNext = false } = {}) {
 
 async function refreshState() {
   const session = await state.runtime.auth.loadStoredSession();
-  const syncStatus = await state.runtime.persistence.syncStatus.getCurrent();
+  let syncStatus = await state.runtime.persistence.syncStatus.getCurrent();
+  if (!syncInProgress && session.ok && isJiraAuthenticationSyncFailure(syncStatus)) {
+    await state.runtime.persistence.syncStatus.updateStatus({
+      last_status: 'Sesion Jira iniciada. Pendiente sincronizar.',
+      last_error_message: null,
+      is_running: false,
+      is_canceling: false,
+    });
+    syncStatus = await state.runtime.persistence.syncStatus.getCurrent();
+    log('stale Jira authentication status cleared for a valid session');
+  }
   state.session = session;
   state.syncStatus = syncStatus;
   state.appState = syncInProgress ? 'syncing' : (session.ok ? 'ready' : 'auth_required');
@@ -385,6 +401,7 @@ async function handleBootstrapContext(res) {
     jqlQueries: jqlDefinitions.map((definition) => definition.query_text),
     jqlDefinitions,
     autoSyncEnabled: Boolean(state.runtime.configuration?.app?.autoSyncEnabled),
+    alertRetryEnabled: Boolean(state.runtime.configuration?.app?.alertRetryEnabled),
     alertFields: state.runtime.configuration?.alertFields?.fields ?? [],
     alertOperators: state.runtime.configuration?.alertFields?.operators ?? [],
     projectGroupRules: state.runtime.configuration?.projectGroupRules ?? {
@@ -462,6 +479,10 @@ async function handleSettings(req, res) {
   }
   const body = await readBody(req);
   const hasSyncSettings = typeof body?.autoSyncEnabled === 'boolean' || body?.syncIntervalMinutes !== undefined;
+  const hasAlertRetrySetting = typeof body?.alertRetryEnabled === 'boolean';
+  const alertRetryWasEnabled = Boolean(state.runtime.configuration?.app?.alertRetryEnabled);
+  const alertRetryPausedAt = state.runtime.configuration?.app?.alertRetryPausedAt ?? null;
+  const alertRetryTransitionAt = hasAlertRetrySetting ? new Date().toISOString() : null;
   const requestedJqlQueries = Array.isArray(body?.jqlQueries)
     ? [...new Set(body.jqlQueries
       .filter((query) => typeof query === 'string')
@@ -480,6 +501,12 @@ async function handleSettings(req, res) {
   }
   if (typeof body?.autoSyncEnabled === 'boolean') {
     updates.autoSyncEnabled = body.autoSyncEnabled;
+  }
+  if (hasAlertRetrySetting) {
+    updates.alertRetryEnabled = body.alertRetryEnabled;
+    updates.alertRetryPausedAt = body.alertRetryEnabled
+      ? null
+      : alertRetryPausedAt ?? alertRetryTransitionAt;
   }
   if (body?.syncIntervalMinutes !== undefined) {
     const minutes = Number(body.syncIntervalMinutes);
@@ -501,11 +528,28 @@ async function handleSettings(req, res) {
       await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
     }
   }
-  log('settings updated', `jqlCount=${appConfig.jqlQueries.length} autoSync=${appConfig.autoSyncEnabled}`);
+  if (hasAlertRetrySetting) {
+    if (appConfig.alertRetryEnabled) {
+      if (!alertRetryWasEnabled) {
+        const updated = alertRetryPausedAt
+          ? await state.runtime.alerts.resumeUnreadRetries({
+            lockedAt: alertRetryPausedAt,
+            unlockedAt: alertRetryTransitionAt,
+          })
+          : 0;
+        log('alert retry countdowns resumed', `updatedAlerts=${updated}`);
+      }
+      startAlertRetryTimer();
+    } else {
+      stopAlertRetryTimer();
+    }
+  }
+  log('settings updated', `jqlCount=${appConfig.jqlQueries.length} autoSync=${appConfig.autoSyncEnabled} alertRetry=${appConfig.alertRetryEnabled}`);
   json(res, 200, {
     ok: true,
     jqlQueries: appConfig.jqlQueries,
     autoSyncEnabled: appConfig.autoSyncEnabled,
+    alertRetryEnabled: appConfig.alertRetryEnabled,
     syncIntervalMinutes: appConfig.syncIntervalSeconds / 60,
   });
 }
@@ -528,9 +572,13 @@ async function handleLogin(res) {
       result,
     );
     log('Jira catalog refreshed after successful login', `projects=${state.runtime.jiraCatalog.projects.length} issueTypes=${state.runtime.jiraCatalog.issueTypes.length} statuses=${state.runtime.jiraCatalog.statuses.length}`);
+
   }
   state.session = result;
   state.appState = result.ok ? 'ready' : 'auth_required';
+  if (result.ok) {
+    await refreshState();
+  }
   json(res, 200, toPublicSession(result));
 }
 
@@ -649,6 +697,82 @@ async function handleDatabaseSql(req, res) {
     await state.runtime.persistence.exec(sql);
   });
   json(res, 200, { ok: true, type: 'write', message: 'Consulta ejecutada correctamente.' });
+}
+
+function reportSessionIsReady(res) {
+  if (state.session?.ok) return true;
+  json(res, 401, { ok: false, error: 'Inicia sesion en Jira para consultar reportes de tiempos.' });
+  return false;
+}
+
+async function handleTimeReportUsers(req, res, url) {
+  if (!reportSessionIsReady(res)) return;
+  const query = String(url.searchParams.get('query') ?? '').trim();
+  if (query.length < 2) {
+    json(res, 200, { users: [] });
+    return;
+  }
+  const users = await state.runtime.timeReports.searchUsers(query);
+  json(res, 200, { users });
+}
+
+async function handleTimeReportSearch(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede generar un reporte durante una sincronizacion.' });
+    return;
+  }
+  if (!reportSessionIsReady(res)) return;
+  const body = await readBody(req);
+  const result = await state.runtime.timeReports.search({
+    fromDate: body?.fromDate,
+    toDate: body?.toDate,
+    user: body?.user,
+  });
+  json(res, 200, { ok: true, report: result });
+}
+
+async function handleTimeReportPdf(req, res) {
+  if (syncInProgress) {
+    json(res, 409, { ok: false, error: 'No se puede generar un reporte durante una sincronizacion.' });
+    return;
+  }
+  if (!reportSessionIsReady(res)) return;
+  const body = await readBody(req);
+  const result = await state.runtime.timeReports.generatePdf({
+    reportId: body?.reportId,
+    selectedIssueIds: body?.selectedIssueIds,
+  });
+  json(res, 200, {
+    ok: true,
+    reportId: result.reportId,
+    pages: result.pages,
+    fileName: result.fileName,
+    downloadUrl: `/api/time-reports/file?name=${encodeURIComponent(result.fileName)}`,
+  });
+}
+
+async function handleTimeReportFile(res, url) {
+  const fileName = String(url.searchParams.get('name') ?? '').trim();
+  if (!/^[a-z0-9][a-z0-9_.-]*\.pdf$/i.test(fileName)) {
+    json(res, 404, { ok: false, error: 'Archivo no encontrado.' });
+    return;
+  }
+  const filePath = path.resolve(TIME_REPORT_EXPORTS_DIR, fileName);
+  if (path.dirname(filePath) !== TIME_REPORT_EXPORTS_DIR) {
+    json(res, 404, { ok: false, error: 'Archivo no encontrado.' });
+    return;
+  }
+  try {
+    const content = await fs.readFile(filePath);
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${fileName}"`,
+      'Cache-Control': 'no-store',
+    });
+    res.end(content);
+  } catch {
+    json(res, 404, { ok: false, error: 'Archivo no encontrado.' });
+  }
 }
 
 async function handleGrids(res) {
@@ -1190,6 +1314,26 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/database/sql') {
       await handleDatabaseSql(req, res);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/time-reports/users') {
+      await handleTimeReportUsers(req, res, url);
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/time-reports/search') {
+      await handleTimeReportSearch(req, res);
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/time-reports/pdf') {
+      await handleTimeReportPdf(req, res);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/time-reports/file') {
+      await handleTimeReportFile(res, url);
       return;
     }
 

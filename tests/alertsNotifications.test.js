@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AlertsService } from '../src/main/alerts/alertsService.js';
+import { Persistence } from '../src/main/persistence/persistence.js';
+import { AlertsRepository } from '../src/main/persistence/repositories/alertsRepository.js';
 
-test('sends the first toast immediately even when alert retry is configured', async () => {
+test('defers the first toast until the retry countdown is due', async () => {
   const sentToasts = [];
   const alerts = new AlertsService({
     toast: {
@@ -22,9 +24,48 @@ test('sends the first toast immediately even when alert retry is configured', as
     row: { issue_id: 'ABC-123' },
   }]);
 
+  assert.equal(sentToasts.length, 0);
+});
+
+test('sends a toast when the retry countdown is due', async () => {
+  const sentToasts = [];
+  const alerts = new AlertsService({
+    toast: {
+      async show(toast) {
+        sentToasts.push(toast);
+        return { ok: true };
+      },
+    },
+    logs: { info: async () => {} },
+  });
+
+  await alerts.notifyCreated([{
+    alertId: 'alert-1',
+    issueId: 'ABC-123',
+    isRetry: true,
+    toastMessage: 'Nueva incidencia asignada',
+    rule: { id: 'rule-1', retry_minutes: 15, toast_text: 'Nueva incidencia asignada' },
+    row: { issue_id: 'ABC-123' },
+  }]);
+
   assert.equal(sentToasts.length, 1);
   assert.equal(sentToasts[0].message, 'Nueva incidencia asignada');
   assert.equal(sentToasts[0].alertId, 'alert-1');
+});
+
+test('sends the initial toast when no retry countdown is configured', async () => {
+  const sentToasts = [];
+  const alerts = new AlertsService({
+    toast: { async show(toast) { sentToasts.push(toast); return { ok: true }; } },
+    logs: { info: async () => {} },
+  });
+
+  await alerts.notifyCreated([{
+    alertId: 'alert-1', issueId: 'ABC-123', toastMessage: 'Nueva incidencia asignada',
+    rule: { id: 'rule-1', retry_minutes: 0 }, row: { issue_id: 'ABC-123' },
+  }]);
+
+  assert.equal(sentToasts.length, 1);
 });
 
 test('reschedules unread alert retries from the moment the retry service is enabled', async () => {
@@ -53,6 +94,66 @@ test('reschedules unread alert retries from the moment the retry service is enab
   const scheduledAt = new Date(updates[0].parameters[0]).getTime();
   assert.ok(scheduledAt >= before + (2 * 60000));
   assert.ok(scheduledAt <= Date.now() + (2 * 60000) + 1000);
+});
+
+test('preserves each unread alert retry countdown across a pause', async () => {
+  const updates = [];
+  const alerts = new AlertsRepository({
+    async query() {
+      return [
+        { id: 'alert-1', next_retry_at: '2026-09-04T10:02:00.000Z' },
+        { id: 'alert-2', next_retry_at: '2026-09-04T10:00:00.000Z' },
+      ];
+    },
+    async exec(sql, parameters) {
+      updates.push({ sql, parameters });
+    },
+  });
+
+  const updated = await alerts.resumeUnreadRetries({
+    lockedAt: '2026-09-04T10:00:00.000Z',
+    unlockedAt: '2026-09-04T10:05:00.000Z',
+  });
+
+  assert.equal(updated, 2);
+  assert.equal(updates[0].parameters[0], '2026-09-04T10:07:00.000Z');
+  assert.equal(updates[1].parameters[0], '2026-09-04T10:05:00.000Z');
+});
+
+test('uses the alert payload icon when its issue is no longer in the current mirror', async () => {
+  const persistence = new Persistence(':memory:');
+  await persistence.initialize();
+
+  try {
+    const now = new Date().toISOString();
+    const iconUrl = 'https://example.test/issuetype-icon.png';
+    await persistence.exec(`
+      INSERT INTO ALERT_RULES (
+        id, jql_id, alert_type, name, sql, toast_text, retry_syncs, retry_minutes,
+        is_active, created, updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      'rule-icon-fallback', 'jql-icon-fallback', 'new_issue', 'Alerta con icono',
+      '', 'Alerta con icono', 0, 0, 1, now, now,
+    ]);
+    await persistence.exec(`
+      INSERT INTO ALERTS (
+        id, identity_key, rule_id, issue_id, project_group_id, is_read,
+        created, updated, payload_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      'alert-icon-fallback', 'identity-icon-fallback', 'rule-icon-fallback',
+      'missing-issue-id', 'group-icon-fallback', 0, now, now,
+      JSON.stringify({ issuetype_icon_url: iconUrl }),
+    ]);
+
+    const unreadAlerts = await new AlertsRepository(persistence).listUnread();
+
+    assert.equal(unreadAlerts.length, 1);
+    assert.equal(unreadAlerts[0].issuetype_icon_url, iconUrl);
+  } finally {
+    await persistence.close();
+  }
 });
 
 test('deduplicates repeated issue rows before creating an alert', async () => {

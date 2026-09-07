@@ -11,6 +11,7 @@ import { RelationshipsRepository } from './repositories/relationshipsRepository.
 import { AlertsRepository } from './repositories/alertsRepository.js';
 import { GridsRepository } from './repositories/gridsRepository.js';
 import { JqlDefinitionsRepository } from './repositories/jqlDefinitionsRepository.js';
+import { TimeReportsRepository } from './repositories/timeReportsRepository.js';
 
 const require = createRequire(import.meta.url);
 const duckdb = require('duckdb');
@@ -29,6 +30,7 @@ export class Persistence {
     this.alerts = new AlertsRepository(this);
     this.grids = new GridsRepository(this);
     this.jqlDefinitions = new JqlDefinitionsRepository(this);
+    this.timeReports = new TimeReportsRepository(this);
   }
 
   async initialize() {
@@ -249,6 +251,9 @@ export class Persistence {
       DELETE FROM JIRA_PROJECT_GROUPS;
       DELETE FROM JIRA_ISSUES;
       DELETE FROM SYNC_CHANGES;
+      DELETE FROM TIME_REPORT_CORRECTIONS;
+      DELETE FROM TIME_REPORT_ISSUES;
+      DELETE FROM TIME_REPORTS;
       DELETE FROM SYNC_STATUS;
       COMMIT;
     `);
