@@ -558,17 +558,34 @@ export class TimeReportsService {
   async generatePdf({
     reportId,
     selectedIssueIds = [],
+    issueOrderIds = [],
+    summaryOverrides = null,
     includeCorrectionsIssueIds = null,
     groupedIssueIds = [],
   }) {
     const snapshot = await this.persistence.timeReports.getSnapshot(reportId);
     if (!snapshot) throw new Error('El informe temporal no existe. Busca las incidencias nuevamente.');
+    if (summaryOverrides && typeof summaryOverrides === 'object' && !Array.isArray(summaryOverrides)) {
+      snapshot.issues = snapshot.issues.map((issue) => {
+        const override = summaryOverrides[String(issue.issueId)];
+        return typeof override === 'string' ? { ...issue, summary: override } : issue;
+      });
+    }
     if (!Array.isArray(selectedIssueIds) || selectedIssueIds.length === 0) throw new Error('Selecciona al menos una incidencia.');
     const availableIds = new Set(snapshot.issues.map((issue) => String(issue.issueId)));
     const validSelectedIds = selectedIssueIds.filter((issueId) => availableIds.has(String(issueId)));
     if (validSelectedIds.length === 0) throw new Error('Las incidencias seleccionadas ya no existen en el informe temporal.');
     await this.persistence.timeReports.setSelection(reportId, validSelectedIds);
-    const selected = await this.persistence.timeReports.getSnapshot(reportId);
+    const selectedSnapshot = await this.persistence.timeReports.getSnapshot(reportId);
+    const selected = summaryOverrides && typeof summaryOverrides === 'object' && !Array.isArray(summaryOverrides)
+      ? {
+        ...selectedSnapshot,
+        issues: selectedSnapshot.issues.map((issue) => {
+          const override = summaryOverrides[String(issue.issueId)];
+          return typeof override === 'string' ? { ...issue, summary: override } : issue;
+        }),
+      }
+      : selectedSnapshot;
     if (!selected.issues.some((issue) => issue.selected)) {
       throw new Error('Las incidencias seleccionadas ya no existen en el informe temporal.');
     }
@@ -588,6 +605,13 @@ export class TimeReportsService {
           grouped,
           corrections: includeCorrections ? issue.corrections : [],
         };
+      }).sort((left, right) => {
+        const groupedDifference = Number(left.grouped === true) - Number(right.grouped === true);
+        if (groupedDifference !== 0) return groupedDifference;
+        const leftIndex = issueOrderIds.findIndex((issueId) => String(issueId) === String(left.issueId));
+        const rightIndex = issueOrderIds.findIndex((issueId) => String(issueId) === String(right.issueId));
+        return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex)
+          - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
       }),
     };
     const pdfReport = await this.embedSelectedIssueTypeIcons(selectedForPdf);

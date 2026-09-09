@@ -1,6 +1,10 @@
-Dim shell, fso, scriptDir, batPath, logPath, logFile, message
+Dim shell, fso, scriptDir, batPath, logPath, logFile, message, restartMode
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
+restartMode = False
+If WScript.Arguments.Count > 0 Then
+  restartMode = (LCase(WScript.Arguments(0)) = "/restart")
+End If
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 batPath = fso.BuildPath(scriptDir, "run.bat")
 logPath = fso.BuildPath(scriptDir, "logs")
@@ -48,30 +52,34 @@ Do While Timer - startTime < 30
 Loop
 
 If frontendReady Then
-  chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-  If Not fso.FileExists(chromePath) Then
-    chromePath = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-  End If
-
-  If fso.FileExists(chromePath) Then
-    browserCommand = Chr(34) & chromePath & Chr(34) & " http://localhost:5174"
-    WriteLog "opening Chrome with command: " & browserCommand
-    On Error Resume Next
-    shell.Run browserCommand, 1, False
-    If Err.Number <> 0 Then
-      WriteLog "Chrome launch failed; error=" & Err.Number & "; description=" & Err.Description
-      Err.Clear
-    End If
-    On Error GoTo 0
+  If restartMode Then
+    WriteLog "restart mode: browser launch skipped; keeping the current tab"
   Else
-    WriteLog "Chrome executable not found; opening URL with default browser"
-    On Error Resume Next
-    shell.Run "http://localhost:5174", 1, False
-    If Err.Number <> 0 Then
-      WriteLog "default browser launch failed; error=" & Err.Number & "; description=" & Err.Description
-      Err.Clear
+    chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+    If Not fso.FileExists(chromePath) Then
+      chromePath = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
     End If
-    On Error GoTo 0
+
+    If fso.FileExists(chromePath) Then
+      browserCommand = Chr(34) & chromePath & Chr(34) & " http://localhost:5174"
+      WriteLog "opening Chrome with command: " & browserCommand
+      On Error Resume Next
+      shell.Run browserCommand, 1, False
+      If Err.Number <> 0 Then
+        WriteLog "Chrome launch failed; error=" & Err.Number & "; description=" & Err.Description
+        Err.Clear
+      End If
+      On Error GoTo 0
+    Else
+      WriteLog "Chrome executable not found; opening URL with default browser"
+      On Error Resume Next
+      shell.Run "http://localhost:5174", 1, False
+      If Err.Number <> 0 Then
+        WriteLog "default browser launch failed; error=" & Err.Number & "; description=" & Err.Description
+        Err.Clear
+      End If
+      On Error GoTo 0
+    End If
   End If
 Else
   WriteLog "browser was not opened because frontend did not become ready in 30 seconds"

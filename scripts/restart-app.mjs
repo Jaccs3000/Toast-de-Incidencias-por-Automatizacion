@@ -50,7 +50,7 @@ try {
     throw new Error('Los servicios anteriores no liberaron los puertos a tiempo.');
   }
 
-  const launcher = spawn(wscriptPath, [runVbsPath], {
+  const launcher = spawn(wscriptPath, [runVbsPath, '/restart'], {
     cwd: projectRoot,
     detached: true,
     stdio: 'ignore',

@@ -1175,6 +1175,17 @@ body {
 .grid-row-number { display: grid; place-items: center; min-height: 40px; border-radius: 8px; background: rgba(61, 91, 160, .28); color: #aebaff; font-weight: 800; }
 .grid-builder-form h3 { margin: 0; color: #e1e7ff; font-size: 1rem; }
 .grid-validation-errors { margin: 0; }
+.grid-validation-field { display: grid; min-width: 0; gap: 4px; }
+.grid-field-error { color: #ff9baa; font-size: .7rem; font-weight: 700; line-height: 1.2; }
+.grid-validation-field .has-validation-error,
+.grid-validation-field.has-validation-error .grid-attribute-trigger {
+  border-color: #ff657c !important;
+  box-shadow: 0 0 10px rgba(255, 82, 112, .22) !important;
+}
+.grid-name-field > input.has-validation-error {
+  border-color: #ff657c !important;
+  box-shadow: 0 0 10px rgba(255, 82, 112, .22) !important;
+}
 .grid-builder-form .jql-delete { height: 40px; }
 .grid-page-size { max-width: 240px; }
 .grid-configured-list { grid-column: 2; display: grid; align-content: start; gap: 12px; margin-top: 0; padding: 24px; border: 1px solid rgba(142, 162, 255, 0.22); border-radius: 14px; background: linear-gradient(135deg, rgba(31, 55, 91, .52), rgba(15, 24, 47, .42)); }
@@ -1419,6 +1430,7 @@ body {
 
 .time-reports-user-search {
   display: block;
+  max-width: 460px;
 }
 
 .time-reports-user-input,
@@ -1659,6 +1671,7 @@ body {
 
 .time-reports-table {
   width: 100%;
+  min-width: 1020px;
   border-collapse: collapse;
   color: #dfe5ff;
   font-size: .76rem;
@@ -1693,6 +1706,18 @@ body {
 
 .time-reports-table tr:last-child td {
   border-bottom: 0;
+}
+
+.time-reports-table tbody tr[draggable="true"] {
+  cursor: grab;
+}
+
+.time-reports-table tbody tr[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.time-reports-table tbody tr.is-dragging {
+  opacity: .45;
 }
 
 .time-reports-table input[type="checkbox"] {
@@ -1736,7 +1761,116 @@ body {
 .time-report-issue-key {
   color: #aebaff;
   font-weight: 700;
+  white-space: normal;
+  vertical-align: middle;
+}
+
+.time-reports-sort-button {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 1px solid rgba(142, 162, 255, .48);
+  border-radius: 8px;
+  background: rgba(20, 31, 67, .42);
+  color: #c7d0f4;
+  font: inherit;
+  line-height: 1.05;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.time-reports-sort-button:hover,
+.time-reports-sort-button:focus-visible,
+.time-reports-sort-button.is-sorted {
+  border-color: #9aaeff;
+  background: rgba(43, 61, 128, .5);
+  color: #dfe5ff;
+}
+
+.time-reports-sort-icon {
+  color: #7f91d5;
+  font-size: .9rem;
+  line-height: 1;
+}
+
+.time-reports-sort-button.is-sorted .time-reports-sort-icon,
+.time-reports-sort-button:hover .time-reports-sort-icon,
+.time-reports-sort-button:focus-visible .time-reports-sort-icon {
+  color: #8fe1ff;
+}
+
+.time-reports-table th:first-child {
+  width: 72px;
+}
+
+.time-reports-table th:nth-child(2) {
+  width: 92px;
+}
+
+.time-reports-table th:nth-child(3) {
+  width: 145px;
+}
+
+.time-reports-table th:nth-child(4) {
+  min-width: 220px;
+}
+
+.time-reports-table th:nth-child(5) {
+  width: 88px;
+}
+
+.time-reports-table th:nth-child(6),
+.time-reports-table th:nth-child(7) {
+  width: 112px;
+}
+
+.time-reports-table th:nth-child(8),
+.time-reports-table th:nth-child(9) {
+  width: 88px;
+}
+
+.time-reports-select-all {
   white-space: nowrap;
+}
+
+.time-report-issue-type {
+  min-width: 150px;
+  color: #c6d0f4;
+  text-align: left !important;
+}
+
+.time-reports-summary-cell {
+  min-width: 220px;
+  text-align: left !important;
+}
+
+.time-reports-summary-content {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  cursor: text;
+  text-align: left;
+}
+
+.time-reports-summary-cell > input,
+.time-reports-summary-cell > textarea {
+  width: 100%;
+  min-height: 34px;
+  max-height: none;
+  padding: 7px 9px;
+  border: 1px solid #9daaff;
+  border-radius: 7px;
+  background: rgba(3, 9, 25, .78);
+  color: #f2f5ff;
+  font: inherit;
+  text-align: left;
+  resize: none;
+  overflow: hidden;
 }
 
 .time-reports-empty,
@@ -2751,6 +2885,7 @@ h1 {
 
 .configuration-workspace .dashboard-jql .jql-save-actions {
   margin-top: 14px;
+  justify-content: flex-start;
 }
 
 .configuration-workspace .dashboard-jql .settings-actions button {
@@ -4498,7 +4633,7 @@ h1 {
 }
 
 .configuration-workspace .dashboard-grids .grid-fields-section .grid-builder-row {
-  grid-template-columns: 40px minmax(190px, .85fr) minmax(260px, 1.45fr) 28px 42px;
+  grid-template-columns: 40px minmax(220px, 1.1fr) minmax(220px, 1.25fr) 28px 42px;
   gap: 10px;
   padding-left: 45px;
 }
@@ -4626,7 +4761,7 @@ h1 {
   }
 
   .configuration-workspace .dashboard-grids .grid-fields-section .grid-builder-row {
-    grid-template-columns: 40px minmax(160px, .9fr) minmax(210px, 1.2fr) 24px 42px;
+    grid-template-columns: 40px minmax(180px, 1.05fr) minmax(180px, 1.15fr) 24px 42px;
   }
 
   .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row {
@@ -4783,6 +4918,15 @@ h1 {
 .project-grid .grid-issue-value {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+}
+
+.project-grid .grid-issue-type-icon {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 1em;
+  object-fit: contain;
+  vertical-align: middle;
 }
 
 .project-grid .grid-issue-value a {
@@ -5809,6 +5953,38 @@ body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-
   color: #e3e8ff !important;
 }
 
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger,
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search {
+  color: #8af2b1 !important;
+  filter: drop-shadow(0 0 5px rgba(61, 239, 135, .55));
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger:hover,
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger:focus-visible,
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search:hover,
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search:focus-visible {
+  color: #c0ffd5 !important;
+  filter: drop-shadow(0 0 8px rgba(61, 239, 135, .85));
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger .line-icon,
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search .line-icon {
+  width: 21px !important;
+  height: 21px !important;
+  stroke: currentColor;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search {
+  color: #70dfff !important;
+  filter: drop-shadow(0 0 6px rgba(57, 201, 255, .72));
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search:hover,
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search:focus-visible {
+  color: #c2f6ff !important;
+  filter: drop-shadow(0 0 10px rgba(57, 211, 255, .95));
+}
+
 body .configuration-workspace .dashboard-time-reports .time-reports-inline-search {
   top: 1px !important;
   right: 1px !important;
@@ -6602,4 +6778,667 @@ body .configuration-workspace .dashboard-time-reports .time-reports-search-butto
   border-color: #ffe09b !important;
   background: rgba(25, 36, 72, .78) !important;
   color: #ffe5ad !important;
+}
+/* Neon palette for the primary status actions. Keep this after the broad button overrides. */
+body .configuration-workspace .dashboard-status .sync-button {
+  border-color: #79cfff !important;
+  background: linear-gradient(180deg, rgba(26, 39, 78, .72), rgba(9, 15, 34, .9)) !important;
+  color: #dff7ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(44, 170, 255, .3) !important;
+}
+
+body .configuration-workspace .dashboard-jql .jql-save-actions > .jql-add-action,
+body .configuration-workspace .dashboard-jql .jql-save-actions > .save-action-button {
+  flex: 0 0 210px !important;
+  width: 210px !important;
+  min-width: 210px !important;
+  max-width: 210px !important;
+  min-height: 48px !important;
+  border-radius: 10px !important;
+}
+
+body .configuration-workspace .dashboard-jql .jql-save-actions > .jql-add-action {
+  border-style: solid !important;
+  border-color: #79cfff !important;
+  background: linear-gradient(180deg, rgba(26, 39, 78, .72), rgba(9, 15, 34, .9)) !important;
+  color: #dff7ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(44, 170, 255, .3) !important;
+}
+
+body .configuration-workspace .dashboard-jql .jql-save-actions > .jql-add-action:hover:not(:disabled),
+body .configuration-workspace .dashboard-jql .jql-save-actions > .jql-add-action:focus-visible {
+  border-color: #baf0ff !important;
+  background: linear-gradient(180deg, rgba(32, 55, 111, .88), rgba(13, 27, 64, .96)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 19px rgba(44, 190, 255, .55) !important;
+}
+
+@media (max-width: 720px) {
+  body .configuration-workspace .dashboard-jql .jql-save-actions > .jql-add-action,
+  body .configuration-workspace .dashboard-jql .jql-save-actions > .save-action-button {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+}
+
+body .configuration-workspace .dashboard-status .sync-button:hover:not(:disabled),
+body .configuration-workspace .dashboard-status .sync-button:focus-visible {
+  border-color: #baf0ff !important;
+  background: linear-gradient(180deg, rgba(32, 55, 111, .88), rgba(13, 27, 64, .96)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 19px rgba(44, 190, 255, .55) !important;
+}
+
+body .configuration-workspace .dashboard-sql .sql-execute-button {
+  border-color: #79cfff !important;
+  background: linear-gradient(180deg, rgba(26, 39, 78, .72), rgba(9, 15, 34, .9)) !important;
+  color: #dff7ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(44, 170, 255, .3) !important;
+}
+
+body .configuration-workspace .dashboard-sql .sql-execute-button:hover:not(:disabled),
+body .configuration-workspace .dashboard-sql .sql-execute-button:focus-visible {
+  border-color: #baf0ff !important;
+  background: linear-gradient(180deg, rgba(32, 55, 111, .88), rgba(13, 27, 64, .96)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .46), 0 0 28px rgba(44, 190, 255, .82) !important;
+}
+
+body .configuration-workspace .dashboard-sql .settings-actions .sql-query-add {
+  flex: 0 0 210px !important;
+  display: inline-flex !important;
+  min-height: 48px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  margin-top: 0 !important;
+  padding: 12px 18px !important;
+  width: 210px !important;
+  min-width: 210px !important;
+  max-width: 210px !important;
+  border: 1px solid #79cfff !important;
+  border-style: solid !important;
+  border-radius: 10px !important;
+  background: linear-gradient(180deg, rgba(26, 39, 78, .72), rgba(9, 15, 34, .9)) !important;
+  color: #dff7ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(44, 170, 255, .3) !important;
+}
+
+body .configuration-workspace .dashboard-sql .settings-actions .sql-query-add:hover:not(:disabled),
+body .configuration-workspace .dashboard-sql .settings-actions .sql-query-add:focus-visible {
+  border-color: #baf0ff !important;
+  background: linear-gradient(180deg, rgba(32, 55, 111, .88), rgba(13, 27, 64, .96)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 19px rgba(44, 190, 255, .55) !important;
+}
+
+body .configuration-workspace .dashboard-sql .sql-query-delete {
+  border-color: #ff7188 !important;
+  background: linear-gradient(180deg, rgba(76, 25, 43, .72), rgba(31, 10, 21, .9)) !important;
+  color: #ffdce2 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(255, 74, 111, .32) !important;
+}
+
+body .configuration-workspace .dashboard-sql .sql-query-delete:hover:not(:disabled),
+body .configuration-workspace .dashboard-sql .sql-query-delete:focus-visible {
+  border-color: #ffb0bd !important;
+  background: linear-gradient(180deg, rgba(112, 34, 57, .88), rgba(52, 13, 29, .96)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 20px rgba(255, 74, 111, .62) !important;
+}
+
+body .configuration-workspace .dashboard-grids .grid-add-issue-type {
+  display: inline-flex !important;
+  width: 210px !important;
+  min-width: 210px !important;
+  max-width: 210px !important;
+  min-height: 40px !important;
+  margin: 2px 0 0 45px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  border: 1px solid #78f5ad !important;
+  border-style: solid !important;
+  border-radius: 10px !important;
+  background: linear-gradient(180deg, rgba(24, 68, 49, .72), rgba(8, 25, 19, .9)) !important;
+  color: #dffff0 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(61, 239, 135, .3) !important;
+}
+
+body .configuration-workspace .dashboard-grids .grid-add-issue-type:hover:not(:disabled),
+body .configuration-workspace .dashboard-grids .grid-add-issue-type:focus-visible {
+  border-color: #baffd1 !important;
+  background: linear-gradient(180deg, rgba(30, 91, 61, .88), rgba(12, 42, 26, .96)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 20px rgba(61, 239, 135, .62) !important;
+}
+
+@container (max-width: 480px) {
+  body .configuration-workspace .dashboard-grids .grid-add-issue-type {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+  }
+}
+
+body .configuration-workspace .dashboard-grids .grid-form-actions > .grid-add-issue-type,
+body .configuration-workspace .dashboard-grids .grid-form-actions > .grid-add-condition {
+  flex: 0 0 210px !important;
+  width: 210px !important;
+  min-width: 210px !important;
+  max-width: 210px !important;
+  min-height: 48px !important;
+  margin: 0 !important;
+  padding: 12px 18px !important;
+  border-radius: 10px !important;
+  border-style: solid !important;
+}
+
+body .configuration-workspace .dashboard-grids .grid-form-actions > .grid-add-issue-type {
+  border-color: #c09bff !important;
+  background: linear-gradient(180deg, rgba(49, 37, 91, .72), rgba(20, 13, 43, .9)) !important;
+  color: #f0e5ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(192, 155, 255, .3) !important;
+}
+
+body .configuration-workspace .dashboard-grids .grid-form-actions > .grid-add-condition {
+  border-color: #79cfff !important;
+  background: linear-gradient(180deg, rgba(26, 39, 78, .72), rgba(9, 15, 34, .9)) !important;
+  color: #dff7ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(44, 170, 255, .3) !important;
+}
+
+@media (max-width: 720px) {
+  body .configuration-workspace .dashboard-grids .grid-form-actions > .grid-add-issue-type,
+  body .configuration-workspace .dashboard-grids .grid-form-actions > .grid-add-condition {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+}
+
+@media (max-width: 720px) {
+  body .configuration-workspace .dashboard-sql .settings-actions .sql-query-add {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+}
+
+body .configuration-workspace .dashboard-status .save-action-button,
+body .configuration-workspace .save-action-button,
+body .configuration-workspace .dashboard-grids .grid-form-actions .save-action-button,
+body .configuration-workspace .dashboard-alert .alert-save-button {
+  border-color: #78f5ad !important;
+  background: linear-gradient(180deg, rgba(24, 68, 49, .72), rgba(8, 25, 19, .9)) !important;
+  color: #dffff0 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 12px rgba(61, 239, 135, .3) !important;
+}
+
+body .configuration-workspace .dashboard-status .save-action-button:hover:not(:disabled),
+body .configuration-workspace .dashboard-status .save-action-button:focus-visible,
+body .configuration-workspace .save-action-button:hover:not(:disabled),
+body .configuration-workspace .save-action-button:focus-visible,
+body .configuration-workspace .dashboard-grids .grid-form-actions .save-action-button:hover:not(:disabled),
+body .configuration-workspace .dashboard-grids .grid-form-actions .save-action-button:focus-visible,
+body .configuration-workspace .dashboard-alert .alert-save-button:hover:not(:disabled),
+body .configuration-workspace .dashboard-alert .alert-save-button:focus-visible {
+  border-color: #baffd1 !important;
+  background: linear-gradient(180deg, rgba(30, 91, 61, .88), rgba(12, 42, 26, .96)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .46), 0 0 28px rgba(61, 239, 135, .78) !important;
+}
+
+/* Grid form actions match the compact width of the synchronization button. */
+body .configuration-workspace .dashboard-grids .grid-form-actions > button {
+  flex: 0 0 210px !important;
+  width: 210px !important;
+  min-width: 210px !important;
+  max-width: 210px !important;
+}
+
+@media (max-width: 720px) {
+  body .configuration-workspace .dashboard-grids .grid-form-actions > button {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+}
+
+/* Main option actions share the synchronization button width. */
+body .configuration-workspace .dashboard-time-reports .time-reports-toolbar > button,
+body .configuration-workspace .dashboard-time-reports .time-reports-toolbar .primary-button,
+body .configuration-workspace .dashboard-time-reports .time-reports-clear-button,
+body .configuration-workspace .dashboard-alert .alert-save-button,
+body .configuration-workspace .dashboard-sql .settings-actions > button {
+  flex: 0 0 210px !important;
+  width: 210px !important;
+  min-width: 210px !important;
+  max-width: 210px !important;
+}
+
+@media (max-width: 720px) {
+  body .configuration-workspace .dashboard-time-reports .time-reports-toolbar > button,
+  body .configuration-workspace .dashboard-time-reports .time-reports-toolbar .primary-button,
+  body .configuration-workspace .dashboard-time-reports .time-reports-clear-button,
+  body .configuration-workspace .dashboard-alert .alert-save-button,
+  body .configuration-workspace .dashboard-sql .settings-actions > button {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+}
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search {
+  color: #70dfff !important;
+  filter: drop-shadow(0 0 8px rgba(57, 201, 255, .9)) !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search:hover,
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search:focus-visible {
+  color: #c2f6ff !important;
+  filter: drop-shadow(0 0 13px rgba(57, 211, 255, 1)) !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-inline-search .line-icon {
+  width: 30px !important;
+  height: 30px !important;
+  stroke: currentColor !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger .line-icon {
+  width: 40px !important;
+  height: 40px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.4 !important;
+  transform: scale(1.35);
+}
+
+/* Keep time-report sorting headers consistent with grid sorting headers. */
+body .configuration-workspace .dashboard-time-reports .time-reports-table {
+  table-layout: fixed !important;
+  min-width: 1120px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th {
+  white-space: normal !important;
+  overflow: visible !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 48px !important;
+  box-sizing: border-box !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  padding: 6px 8px !important;
+  border: 1px solid rgba(142, 162, 255, .48) !important;
+  border-radius: 8px !important;
+  background: rgba(20, 31, 67, .42) !important;
+  color: #c7d0f4 !important;
+  font: inherit !important;
+  line-height: 1.05 !important;
+  white-space: normal !important;
+  text-align: center !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button:hover,
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button:focus-visible,
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button.is-sorted {
+  border-color: #9aaeff !important;
+  background: rgba(43, 61, 128, .5) !important;
+  color: #dfe5ff !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-icon {
+  flex: 0 0 auto !important;
+  color: #8fe1ff !important;
+  font-size: .9rem !important;
+  line-height: 1 !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(1) { width: 72px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(2) { width: 92px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(3) { width: 145px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4) { width: 270px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(5) { width: 88px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(6),
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(7) { width: 120px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(8),
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(9) { width: 88px !important; }
+
+/* Sorting stays as a small inline control, without boxing the column title. */
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button {
+  display: inline-flex !important;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  gap: 4px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  line-height: inherit !important;
+  white-space: normal !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button:hover,
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button:focus-visible,
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button.is-sorted {
+  border: 0 !important;
+  background: transparent !important;
+  color: #dfe5ff !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-icon {
+  display: inline-block !important;
+  color: #8fa4e8 !important;
+  font-size: .78rem !important;
+  line-height: 1 !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table {
+  min-width: 1320px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th,
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button {
+  white-space: nowrap !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th {
+  padding-left: 13px !important;
+  padding-right: 13px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(3) { width: 190px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4) { width: 320px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(6) { width: 210px !important; }
+
+/* Fit the report table to the available panel instead of forcing a desktop scrollbar. */
+body .configuration-workspace .dashboard-time-reports .time-reports-table {
+  width: fit-content !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  table-layout: auto !important;
+  font-size: .68rem !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th,
+body .configuration-workspace .dashboard-time-reports .time-reports-table td {
+  padding-left: 3px !important;
+  padding-right: 3px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(1) { width: 5% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(2) { width: 9% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(3) { width: 12% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4) { width: 27% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(5) { width: 8% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(6) { width: 11% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(7) { width: 10% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(8) { width: 8% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(9) { width: 5% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-summary-cell,
+body .configuration-workspace .dashboard-time-reports .time-report-issue-type { min-width: 0 !important; }
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th,
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button {
+  white-space: normal !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button > span:first-child {
+  display: -webkit-box !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  line-height: 1.05 !important;
+  word-break: normal !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button > span:first-child {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  flex: 0 1 auto !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button > span:first-child br {
+  display: block !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th {
+  font-size: .6rem !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button {
+  gap: 1px !important;
+  overflow: hidden !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(1) { min-width: 42px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(2) { min-width: 88px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(3) { min-width: 120px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4) { min-width: 210px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(5) { min-width: 78px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(6) { min-width: 100px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(7) { min-width: 90px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(8) { min-width: 92px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(9) { min-width: 58px !important; }
+
+body .configuration-workspace {
+  max-width: 1500px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports {
+  width: fit-content !important;
+  max-width: 1450px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(3),
+body .configuration-workspace .dashboard-time-reports .time-reports-table td:nth-child(3) {
+  padding-right: 10px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4),
+body .configuration-workspace .dashboard-time-reports .time-reports-table td:nth-child(4) {
+  padding-left: 10px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4) { width: 22% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(8) { width: 10% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(9) { width: 8% !important; }
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(1) { width: 42px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(2) { width: 88px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(3) { width: 120px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4) { width: 320px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(5) { width: 80px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(6),
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(7) { width: 92px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(8) { width: 96px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(9) { width: 68px !important; }
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody td {
+  font-size: .76rem !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-summary-content {
+  display: -webkit-box !important;
+  max-height: 2.2em !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  line-height: 1.1 !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drag-cell {
+  width: 34px !important;
+  padding: 0 2px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drag-handle {
+  display: inline-flex !important;
+  width: 20px !important;
+  height: 24px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #8fa4e8 !important;
+  cursor: grab !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drag-handle:active {
+  cursor: grabbing !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drag-icon {
+  display: inline-block !important;
+  font-size: .9rem !important;
+  line-height: 1 !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.is-dragging {
+  opacity: .42 !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.is-drag-over td {
+  padding-top: 18px !important;
+  border-top: 2px solid #70dfff !important;
+  background: rgba(48, 132, 211, .12) !important;
+  box-shadow: inset 0 1px 0 rgba(112, 223, 255, .35) !important;
+  transition: padding-top .14s ease, background-color .14s ease, border-color .14s ease !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td {
+  height: 34px !important;
+  padding: 6px 3px !important;
+  border-top: 2px solid #70dfff !important;
+  border-bottom: 2px solid rgba(112, 223, 255, .55) !important;
+  background: rgba(48, 132, 211, .16) !important;
+  color: #8fe8ff !important;
+  text-align: center !important;
+  box-shadow: inset 0 0 14px rgba(44, 190, 255, .22) !important;
+  opacity: .42 !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(2),
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(3),
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(6),
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(7),
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(8),
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(9),
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(10) {
+  text-align: center !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(4),
+body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(5) {
+  text-align: left !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drop-placeholder span {
+  font-size: .68rem !important;
+  font-weight: 700 !important;
+  letter-spacing: .04em !important;
+  text-transform: uppercase !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drop-preview {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 14px !important;
+  min-width: 0 !important;
+  padding: 0 10px !important;
+  color: #dceaff !important;
+  opacity: .28 !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drop-preview > span {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drop-preview strong {
+  flex: 0 0 auto !important;
+  color: #b9caff !important;
+}
+
+/* Column widths after adding the dedicated drag handle. */
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(1) { width: 34px !important; min-width: 34px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(2) { width: 42px !important; min-width: 42px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(3) { width: 88px !important; min-width: 88px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4) { width: 120px !important; min-width: 120px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(5) { width: 320px !important; min-width: 220px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(6) { width: 80px !important; min-width: 78px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(7),
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(8) { width: 92px !important; min-width: 90px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(9) { width: 96px !important; min-width: 92px !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(10) { width: 68px !important; min-width: 58px !important; }
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(4),
+body .configuration-workspace .dashboard-time-reports .time-reports-table td:nth-child(4) {
+  padding-right: 10px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-table th:nth-child(5),
+body .configuration-workspace .dashboard-time-reports .time-reports-table td:nth-child(5) {
+  padding-left: 10px !important;
+}
+
+@media (max-width: 900px) {
+  body .configuration-workspace .dashboard-time-reports .time-reports-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+  }
+}
+
+@media (max-width: 900px) {
+  body .configuration-workspace {
+    max-width: 100% !important;
+  }
+
+  body .configuration-workspace .dashboard-time-reports {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 900px) {
+  body .configuration-workspace .dashboard-time-reports .time-reports-table {
+    font-size: .62rem !important;
+  }
+
+  body .configuration-workspace .dashboard-time-reports .time-reports-table th,
+  body .configuration-workspace .dashboard-time-reports .time-reports-table td {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
 }

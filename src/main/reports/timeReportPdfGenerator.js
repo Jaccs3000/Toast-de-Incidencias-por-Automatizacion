@@ -86,6 +86,21 @@ function reportField(icon, label, value, valueClass = '', fieldClass = '') {
   return `<div class="report-field${fieldName}"><div class="meta-label"><span class="meta-icon">${reportIcon(icon)}</span><label>${label}</label></div><strong${className}>${escapeHtml(value)}</strong></div>`;
 }
 
+function formatReportTimeWithPercentage(seconds, plannedSeconds) {
+  const duration = formatReportDuration(seconds);
+  const planned = Number(plannedSeconds);
+  const value = Number(seconds);
+  if (!Number.isFinite(planned) || planned <= 0 || !Number.isFinite(value)) return duration;
+  return `${duration} (${Math.round((value / planned) * 100)}%)`;
+}
+
+function reportRemainingSeconds(issue) {
+  const planned = Number(issue?.plannedSeconds);
+  const total = Number(issue?.totalSeconds);
+  if (!Number.isFinite(planned) || !Number.isFinite(total)) return issue?.remainingSeconds;
+  return Math.max(planned - total, 0);
+}
+
 function reportPage(issue, report, corrections) {
   const rows = correctionRows(corrections);
   return `<section class="page">
@@ -105,8 +120,9 @@ function reportPage(issue, report, corrections) {
       ${reportField('calendar', 'F. Cierre', displayDate(issue.closedAt), '', 'field-closed')}
       <div class="report-divider report-divider-dates" aria-hidden="true"></div>
       ${reportField('target', 'Planeado', formatReportDuration(issue.plannedSeconds), '', 'field-planned')}
-      ${reportField('calendar', 'Tiempo reportado en Sprint', formatReportDuration(issue.rangeSeconds), '', 'field-sprint')}
-      ${reportField('stopwatch', 'Tiempo Total', formatReportDuration(issue.totalSeconds), '', 'field-total')}
+      ${reportField('calendar', 'Tiempo reportado en Sprint', formatReportTimeWithPercentage(issue.rangeSeconds, issue.plannedSeconds), '', 'field-sprint')}
+      ${reportField('stopwatch', 'Tiempo Total', formatReportTimeWithPercentage(issue.totalSeconds, issue.plannedSeconds), '', 'field-total')}
+      ${reportField('stopwatch', 'Tiempo Restante', formatReportTimeWithPercentage(reportRemainingSeconds(issue), issue.plannedSeconds), '', 'field-remaining')}
     </div>
     <div class="corrections"><div class="section-title">Problemas presentados</div>${rows || '<p class="empty">No hay correcciones asociadas.</p>'}</div>
     <footer>Rango consultado: ${escapeHtml(report.fromDate)} a ${escapeHtml(report.toDate)} - Usuario: ${escapeHtml(compactPersonName(report.userDisplayName))}</footer>
@@ -215,9 +231,9 @@ export function buildTimeReportHtml(report) {
       footer { position:static; margin-top:auto; padding-top:10px; color:#8191c0; font-size:9.5px; line-height:1.2; }
       .correction-continuation-page .corrections { margin-top:0; }
       /* All issue fields share the same vertical-column rhythm, including reported times. */
-      .report-details-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); grid-template-rows:minmax(54px, auto) minmax(54px, auto) 9px minmax(54px, auto) 9px minmax(54px, auto); grid-template-areas:"type responsible reporter created" "tester general . ." "general-divider general-divider general-divider general-divider" "assigned started closed ." "dates-divider dates-divider dates-divider dates-divider" "planned sprint total ."; column-gap:14px; row-gap:0; margin:6px 0 0; padding:6px 0 4px; border-bottom:1px solid rgba(145,160,255,.2); }
+      .report-details-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); grid-template-rows:minmax(54px, auto) minmax(54px, auto) 9px minmax(54px, auto) 9px minmax(54px, auto); grid-template-areas:"type responsible created general" "tester reporter . ." "general-divider general-divider general-divider general-divider" "assigned started closed ." "dates-divider dates-divider dates-divider dates-divider" "planned sprint total remaining"; column-gap:14px; row-gap:0; margin:6px 0 0; padding:6px 0 4px; border-bottom:1px solid rgba(145,160,255,.2); }
       .report-field { min-width:0; align-self:start; padding:0 0 6px; }
-      .field-type { grid-area:type; } .field-responsible { grid-area:responsible; } .field-reporter { grid-area:reporter; } .field-created { grid-area:created; } .field-tester { grid-area:tester; } .field-general { grid-area:general; } .field-assigned { grid-area:assigned; } .field-started { grid-area:started; } .field-closed { grid-area:closed; } .field-planned { grid-area:planned; } .field-sprint { grid-area:sprint; } .field-total { grid-area:total; }
+      .field-type { grid-area:type; } .field-responsible { grid-area:responsible; } .field-reporter { grid-area:reporter; } .field-created { grid-area:created; } .field-tester { grid-area:tester; } .field-general { grid-area:general; } .field-assigned { grid-area:assigned; } .field-started { grid-area:started; } .field-closed { grid-area:closed; } .field-planned { grid-area:planned; } .field-sprint { grid-area:sprint; } .field-total { grid-area:total; } .field-remaining { grid-area:remaining; }
       .report-divider { min-width:0; align-self:center; border-top:1px solid rgba(145,160,255,.2); }
       .report-divider-general { grid-area:general-divider; } .report-divider-dates { grid-area:dates-divider; }
       .report-field .meta-label { min-height:27px; align-items:center; gap:7px; margin-bottom:5px; }

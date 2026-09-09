@@ -791,6 +791,8 @@ async function handleTimeReportPdf(req, res) {
   const result = await state.runtime.timeReports.generatePdf({
     reportId: body?.reportId,
     selectedIssueIds: body?.selectedIssueIds,
+    issueOrderIds: body?.issueOrderIds,
+    summaryOverrides: body?.summaryOverrides,
     includeCorrectionsIssueIds: body?.includeCorrectionsIssueIds,
     groupedIssueIds: body?.groupedIssueIds,
   });
@@ -946,6 +948,7 @@ async function handleGridData(req, res, id) {
         list(
           struct_pack(
             id := i.id, key := i.key, project := i.project, issuetype := i.issuetype,
+            issuetype_icon_url := i.issuetype_icon_url,
             summary := i.summary, description := i.description, status := i.status,
             reporter := i.reporter, assignee := i.assignee, created := i.created,
             updated := i.updated, resolutiondate := i.resolutiondate, parent := i.parent,

@@ -441,6 +441,9 @@ function GridIssueText({ value, issueDetails = {}, jiraBaseUrl = '' }) {
         return (
           <span className="grid-issue-value" key={key}>
             {index > 0 ? <span className="grid-issue-separator">Â·</span> : null}
+            {issue.issuetype_icon_url ? (
+              <img className="grid-issue-type-icon" src={issue.issuetype_icon_url} alt="" aria-hidden="true" />
+            ) : null}
             <a
               href={href ?? '#'}
               target={href ? '_blank' : undefined}
@@ -571,6 +574,8 @@ function LineIcon({ name }) {
     calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>,
     flag: <><path d="M5 22V4" /><path d="M5 5c4-3 6 3 11 0v9c-5 3-7-3-11 0" /></>,
     trash: <><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 14h8l1-14" /><path d="M10 11v6M14 11v6" /></>,
+    pencil: <><path d="m4 16-.8 4.8L8 20l11.2-11.2a2.8 2.8 0 0 0-4-4L4 16Z" /><path d="m13.8 6.2 4 4" /></>,
+    reorder: <><path d="M8 5v14" /><path d="m5 8 3-3 3 3M5 16l3 3 3-3" /><path d="M16 19V5" /><path d="m13 8 3-3 3 3M13 16l3 3 3-3" /></>,
     save: <><path d="M5 3h12l2 2v16H5z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /></>,
     file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
@@ -1042,6 +1047,10 @@ export default function App() {
   const [timeReportGenerating, setTimeReportGenerating] = useState(false);
   const [timeReportMessage, setTimeReportMessage] = useState(null);
   const [timeReportDownloadUrl, setTimeReportDownloadUrl] = useState(null);
+  const [timeReportEditingIssueId, setTimeReportEditingIssueId] = useState(null);
+  const [timeReportSort, setTimeReportSort] = useState({ field: null, direction: 'asc' });
+  const [timeReportDraggedIssueId, setTimeReportDraggedIssueId] = useState(null);
+  const [timeReportDragOverIssueId, setTimeReportDragOverIssueId] = useState(null);
   const timeReportFromDateInputRef = useRef(null);
   const timeReportToDateInputRef = useRef(null);
   const timeReportCancelRequestedRef = useRef(false);
@@ -1072,6 +1081,8 @@ export default function App() {
   const alertsInitializedRef = useRef(false);
   const alertRetryEnabledRef = useRef(true);
   const servicesStoppedRef = useRef(false);
+  const restartRequestedRef = useRef(false);
+  const restartRecoveryInProgressRef = useRef(false);
   const jqlInitializedRef = useRef(false);
   const jqlDirtyRef = useRef(false);
   const warnedJqlEditIdsRef = useRef(new Set());
@@ -1316,6 +1327,18 @@ export default function App() {
       ? 'Los registros por pagina deben estar entre 1 y 200.' : null,
   ].filter(Boolean);
   const gridConditionValidationErrors = gridValidationErrors.filter((error) => error.startsWith('Condicion '));
+  const gridColumnTypeError = (column) => gridValidationShown && !column.issueType && column.field !== 'estadoGeneral'
+    ? 'Selecciona un tipo de incidencia.' : null;
+  const gridColumnAttributeError = (column) => gridValidationShown && !column.field
+    ? 'Selecciona un atributo.' : null;
+  const gridConditionFieldError = (condition, field) => {
+    if (!gridValidationShown) return null;
+    if (field === 'issueType' && !condition.issueType && condition.field !== 'estadoGeneral') return 'Selecciona un tipo de incidencia.';
+    if (field === 'field' && !condition.field) return 'Selecciona un atributo.';
+    if (field === 'operator' && !condition.operator) return 'Selecciona un operador.';
+    if (field === 'value' && !['IS NULL', 'IS NOT NULL'].includes(condition.operator) && !String(condition.value ?? '').trim()) return 'Indica un valor.';
+    return null;
+  };
 
   const refreshGrids = async () => {
     const result = await api('/api/grids');
@@ -1407,7 +1430,6 @@ export default function App() {
   const handleSaveGrid = async () => {
     setGridValidationShown(true);
     if (gridValidationErrors.length > 0) {
-      showUiToast('Corrige los campos pendientes del grid.', 'error');
       return;
     }
     try {
@@ -1791,6 +1813,27 @@ export default function App() {
     let mounted = true;
     let pollHandle = null;
 
+    const recoverAfterRestart = async () => {
+      if (!mounted || !restartRequestedRef.current || restartRecoveryInProgressRef.current) {
+        return;
+      }
+
+      restartRecoveryInProgressRef.current = true;
+      try {
+        await refreshBootstrapContext();
+        await refreshAlerts();
+        await refreshAlertRules();
+        await refreshGrids();
+        setStartupError(null);
+        restartRequestedRef.current = false;
+        setRestartRequested(false);
+      } catch {
+        // The backend and Vite can become available a few moments apart.
+      } finally {
+        restartRecoveryInProgressRef.current = false;
+      }
+    };
+
     const initialize = async () => {
       setIsLoading(true);
       setStartupError(null);
@@ -1823,6 +1866,11 @@ export default function App() {
     initialize();
     pollHandle = setInterval(() => {
       if (!mounted || servicesStoppedRef.current) {
+        return;
+      }
+
+      if (restartRequestedRef.current) {
+        void recoverAfterRestart();
         return;
       }
 
@@ -2767,6 +2815,13 @@ export default function App() {
     setTimeReport(null);
     setTimeReportMessage(null);
     setTimeReportDownloadUrl(null);
+    setTimeReportEditingIssueId(null);
+  };
+
+  const handleTimeReportSummaryChange = (issueId, summary) => {
+    setTimeReport((current) => current
+      ? { ...current, issues: current.issues.map((issue) => String(issue.issueId) === String(issueId) ? { ...issue, summary } : issue) }
+      : current);
   };
 
   const handleTimeReportSelectAll = (event) => {
@@ -2846,6 +2901,7 @@ export default function App() {
         method: 'POST',
         body: JSON.stringify({ ...timeReportDates, user: selectedUser }),
       });
+      setTimeReportEditingIssueId(null);
       setTimeReport(result.report);
       setTimeReportMessage({ type: 'success', text: `${result.report.issues.length} incidencia(s) encontrada(s).` });
     } catch (error) {
@@ -2895,6 +2951,8 @@ export default function App() {
         body: JSON.stringify({
           reportId: timeReport.id,
           selectedIssueIds,
+          issueOrderIds: timeReport.issues.map((issue) => issue.issueId),
+          summaryOverrides: Object.fromEntries(timeReport.issues.map((issue) => [String(issue.issueId), issue.summary ?? ''])),
           includeCorrectionsIssueIds,
           groupedIssueIds,
         }),
@@ -2933,11 +2991,14 @@ export default function App() {
   };
 
   const handleRestart = async () => {
+    restartRequestedRef.current = true;
     setRestartRequested(true);
     try {
+      // Let the loading view paint before the backend receives the restart request.
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
       await api('/api/restart', { method: 'POST', body: '{}' });
-      closeApplicationWindow();
     } catch (error) {
+      restartRequestedRef.current = false;
       setRestartRequested(false);
       showUiToast(`No se pudo reiniciar la aplicacion: ${error.message}`, 'error');
     }
@@ -2950,8 +3011,52 @@ export default function App() {
   };
 
   const renderTimeReports = () => {
-    const issues = timeReport?.issues ?? [];
+    const issues = [...(timeReport?.issues ?? [])].sort((left, right) => {
+      if (!timeReportSort.field) return 0;
+      const value = (issue, field) => {
+        if (field === 'corrections') return Array.isArray(issue.corrections) ? issue.corrections.length : 0;
+        if (field === 'grouped') return issue.grouped === true ? 1 : 0;
+        if (['rangeSeconds', 'totalSeconds'].includes(field)) return Number(issue[field] ?? 0);
+        return String(issue[field] ?? '');
+      };
+      const leftValue = value(left, timeReportSort.field);
+      const rightValue = value(right, timeReportSort.field);
+      const comparison = typeof leftValue === 'number' && typeof rightValue === 'number'
+        ? leftValue - rightValue
+        : String(leftValue).localeCompare(String(rightValue), 'es', { numeric: true, sensitivity: 'base' });
+      return comparison * (timeReportSort.direction === 'desc' ? -1 : 1);
+    });
+    const draggedIssue = issues.find((issue) => String(issue.issueId) === String(timeReportDraggedIssueId));
+    const sortButton = (field, label) => {
+      const isSorted = timeReportSort.field === field;
+      const direction = isSorted ? timeReportSort.direction : null;
+      return (
+        <button
+          type="button"
+          className={`time-reports-sort-button${isSorted ? ' is-sorted' : ''}`}
+          onClick={() => setTimeReportSort({ field, direction: direction === 'asc' ? 'desc' : 'asc' })}
+          title={`Ordenar por ${label}${direction === 'asc' ? ': ascendente' : direction === 'desc' ? ': descendente' : ''}`}
+        >
+          <span>{label.split(' ').map((word, index) => <Fragment key={`${word}-${index}`}>{index > 0 ? <br /> : null}{word}</Fragment>)}</span>
+          <span className="time-reports-sort-icon" aria-hidden="true">{direction === 'asc' ? '↑' : direction === 'desc' ? '↓' : '↕'}</span>
+        </button>
+      );
+    };
     const selectedCount = issues.filter((issue) => issue.selected).length;
+    const moveTimeReportIssue = (sourceId, targetId) => {
+      if (!sourceId || !targetId || String(sourceId) === String(targetId)) return;
+      setTimeReport((current) => {
+        if (!current) return current;
+        const nextIssues = [...current.issues];
+        const sourceIndex = nextIssues.findIndex((issue) => String(issue.issueId) === String(sourceId));
+        const targetIndex = nextIssues.findIndex((issue) => String(issue.issueId) === String(targetId));
+        if (sourceIndex < 0 || targetIndex < 0) return current;
+        const [moved] = nextIssues.splice(sourceIndex, 1);
+        nextIssues.splice(targetIndex, 0, moved);
+        return { ...current, issues: nextIssues };
+      });
+      setTimeReportSort({ field: null, direction: 'asc' });
+    };
     return (
       <div className="settings-card dashboard-card dashboard-time-reports">
         <fieldset disabled={syncInProgress || timeReportGenerating} className="time-report-fieldset">
@@ -3084,7 +3189,7 @@ export default function App() {
             {issues.length > 0 ? (
               <div className="time-reports-table-wrap">
                 <table className="time-reports-table">
-                  <thead><tr><th><span className="time-reports-select-all"><input
+                  <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input
                     type="checkbox"
                     checked={issues.length > 0 && selectedCount === issues.length}
                     ref={(element) => {
@@ -3093,12 +3198,99 @@ export default function App() {
                     disabled={timeReportLoading || timeReportGenerating || issues.length === 0}
                     onChange={handleTimeReportSelectAll}
                     aria-label="Seleccionar todas las incidencias"
-                  /><span>Incluir</span></span></th><th>Incidencia</th><th>Resumen</th><th>Estado</th><th>Tiempo reportado en Sprint</th><th>Tiempo Total</th><th>Correcciones</th><th>Agrupar</th></tr></thead>
+                  /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th><th>{sortButton('corrections', 'Correcciones')}</th><th>{sortButton('grouped', 'Agrupar')}</th></tr></thead>
                   <tbody>{issues.map((issue) => (
-                    <tr key={issue.issueId}>
+                    <Fragment key={issue.issueId}>
+                    {timeReportDragOverIssueId === issue.issueId && timeReportDraggedIssueId !== issue.issueId ? (
+                      <tr
+                        className="time-reports-drop-placeholder"
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          moveTimeReportIssue(timeReportDraggedIssueId, issue.issueId);
+                          setTimeReportDraggedIssueId(null);
+                          setTimeReportDragOverIssueId(null);
+                        }}
+                      >
+                        <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
+                        <td><input type="checkbox" checked={draggedIssue?.selected === true} readOnly aria-hidden="true" /></td>
+                        <td className="time-report-issue-key">{draggedIssue?.issueKey}</td>
+                        <td className="time-report-issue-type">{draggedIssue?.issueType}</td>
+                        <td className="time-reports-summary-cell">{draggedIssue?.summary}</td>
+                        <td>{draggedIssue?.status}</td>
+                        <td>{formatTimeReportDuration(draggedIssue?.rangeSeconds ?? 0)}</td>
+                        <td>{formatTimeReportDuration(draggedIssue?.totalSeconds ?? 0)}</td>
+                        <td className="time-reports-corrections-cell">
+                          {Array.isArray(draggedIssue?.corrections) && draggedIssue.corrections.length > 0 ? (
+                            <label className="time-reports-corrections-option">
+                              <span>{draggedIssue.corrections.length}</span>
+                              <input type="checkbox" checked={draggedIssue.includeCorrections !== false} readOnly aria-hidden="true" />
+                            </label>
+                          ) : '0'}
+                        </td>
+                        <td className="time-reports-group-cell"><input type="checkbox" checked={draggedIssue?.grouped === true} readOnly aria-hidden="true" /></td>
+                      </tr>
+                    ) : null}
+                    <tr
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        if (timeReportDraggedIssueId && timeReportDraggedIssueId !== issue.issueId) setTimeReportDragOverIssueId(issue.issueId);
+                      }}
+                      onDrop={() => {
+                        moveTimeReportIssue(timeReportDraggedIssueId, issue.issueId);
+                        setTimeReportDraggedIssueId(null);
+                        setTimeReportDragOverIssueId(null);
+                      }}
+                      className={timeReportDraggedIssueId === issue.issueId ? 'is-dragging' : ''}
+                    >
+                      <td className="time-reports-drag-cell">
+                        <button
+                          type="button"
+                          className="time-reports-drag-handle"
+                          draggable={!timeReportLoading && !timeReportGenerating}
+                          onDragStart={(event) => {
+                            event.stopPropagation();
+                            event.dataTransfer.effectAllowed = 'move';
+                            setTimeReportDraggedIssueId(issue.issueId);
+                          }}
+                          onDragEnd={() => {
+                            setTimeReportDraggedIssueId(null);
+                            setTimeReportDragOverIssueId(null);
+                          }}
+                          disabled={timeReportLoading || timeReportGenerating}
+                          aria-label={`Mover incidencia ${issue.issueKey}`}
+                          title="Mantén presionado y arrastra para mover"
+                        >
+                          <span className="time-reports-drag-icon" aria-hidden="true">↕</span>
+                        </button>
+                      </td>
                       <td><input type="checkbox" checked={issue.selected} disabled={timeReportLoading} onChange={(event) => setTimeReport((current) => ({ ...current, issues: current.issues.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item) }))} aria-label={`Incluir ${issue.issueKey}`} /></td>
                       <td className="time-report-issue-key">{issue.issueKey}</td>
-                      <td>{issue.summary}</td>
+                      <td className="time-report-issue-type">{issue.issueType || 'Sin tipo'}</td>
+                      <td className="time-reports-summary-cell">
+                        {timeReportEditingIssueId === issue.issueId ? (
+                          <AutoResizeTextarea
+                            value={issue.summary ?? ''}
+                            autoFocus
+                            onChange={(event) => handleTimeReportSummaryChange(issue.issueId, event.target.value)}
+                            onBlur={() => setTimeReportEditingIssueId(null)}
+                            aria-label={`Editar resumen de ${issue.issueKey}`}
+                          />
+                        ) : (
+                          <span
+                            className="time-reports-summary-content"
+                            onDoubleClick={() => {
+                              if (!timeReportLoading && !timeReportGenerating) setTimeReportEditingIssueId(issue.issueId);
+                            }}
+                            title="Doble clic para editar"
+                          >
+                            {issue.summary}
+                          </span>
+                        )}
+                      </td>
                       <td>{issue.status}</td>
                       <td>{formatTimeReportDuration(issue.rangeSeconds)}</td>
                       <td>{formatTimeReportDuration(issue.totalSeconds)}</td>
@@ -3123,6 +3315,7 @@ export default function App() {
                       </td>
                       <td className="time-reports-group-cell"><input type="checkbox" checked={issue.grouped === true} disabled={timeReportLoading || timeReportGenerating} onChange={(event) => handleTimeReportGroupToggle(issue.issueId, event.target.checked)} aria-label={`Agrupar ${issue.issueKey} en el PDF`} /></td>
                     </tr>
+                    </Fragment>
                   ))}</tbody>
                 </table>
               </div>
@@ -3148,17 +3341,13 @@ export default function App() {
 
   const renderGridBuilder = () => (
     <div className="grid-builder-form">
-          {gridValidationShown && gridValidationErrors.length > 0 ? (
-            <div className="alert-validation-errors grid-validation-errors" role="alert">
-              {gridValidationErrors.map((error) => <div key={error}>{error}</div>)}
-            </div>
-          ) : null}
           <section className="grid-builder-section grid-general-section">
             <div className="grid-section-title"><span>01</span><h3>Información general</h3></div>
             <div className="grid-general-fields">
-              <label className="grid-name-field">
+              <label className={`grid-name-field${gridValidationShown && !gridForm.name.trim() ? ' has-validation-error' : ''}`}>
                 Nombre de la pestaña
-                <input value={gridForm.name} onChange={(event) => setGridForm((current) => ({ ...current, name: event.target.value }))} placeholder="Seguimiento QA" />
+                <input className={gridValidationShown && !gridForm.name.trim() ? 'has-validation-error' : ''} value={gridForm.name} onChange={(event) => setGridForm((current) => ({ ...current, name: event.target.value }))} placeholder="Seguimiento QA" />
+                {gridValidationShown && !gridForm.name.trim() ? <small className="grid-field-error">Indica un nombre para la pestaña.</small> : null}
               </label>
               <label className="grid-page-size">Máximo de registros
                 <input type="number" min="1" max="200" value={gridForm.pageSize} onChange={(event) => setGridForm((current) => ({ ...current, pageSize: event.target.value }))} />
@@ -3175,6 +3364,8 @@ export default function App() {
             {gridColumnGroups.map(([groupKey, groupColumns], index) => {
               const groupType = groupKey === '__other' ? '__projectGroup' : groupKey;
               const selectedFields = groupColumns.filter((column) => column.field).map((column) => column.field);
+              const groupTypeError = gridColumnTypeError(groupColumns[0] ?? {});
+              const groupAttributeError = gridValidationShown && selectedFields.length === 0 ? 'Selecciona un atributo.' : null;
               const attributeOptions = groupKey === '__other'
                 ? [{ field: 'estadoGeneral', label: 'Estado General' }]
                 : [
@@ -3200,12 +3391,15 @@ export default function App() {
                   onDragEnd={() => setDraggedGridColumnIndex(null)}
                 >
                   <span className="grid-row-number">{index + 1}</span>
-                  <select value={groupType} onChange={(event) => updateGridGroupType(groupKey, event.target.value)}>
-                    <option value="">Seleccione Tipo de Incidencia</option>
-                    {gridIssueTypes.map((type) => <option value={type} key={type}>{type}</option>)}
-                    <option value="__projectGroup">Otros</option>
-                  </select>
-                  <div className="grid-attribute-picker">
+                  <div className="grid-validation-field">
+                    <select className={groupTypeError ? 'has-validation-error' : ''} value={groupType} onChange={(event) => updateGridGroupType(groupKey, event.target.value)}>
+                      <option value="">Seleccione Tipo de Incidencia</option>
+                      {gridIssueTypes.map((type) => <option value={type} key={type}>{type}</option>)}
+                      <option value="__projectGroup">Otros</option>
+                    </select>
+                    {groupTypeError ? <small className="grid-field-error">{groupTypeError}</small> : null}
+                  </div>
+                  <div className={`grid-validation-field grid-attribute-picker${groupAttributeError ? ' has-validation-error' : ''}`}>
                     <button type="button" className="grid-attribute-trigger" disabled={!groupType || groupType === ''} onClick={() => setOpenGridAttributeGroup((current) => current === groupKey ? null : groupKey)}>
                       {selectedFields.length > 0 ? (
                         <span className="grid-selected-attributes">
@@ -3264,26 +3458,23 @@ export default function App() {
                         })}
                       </div>
                     ) : null}
+                    {groupAttributeError ? <small className="grid-field-error">{groupAttributeError}</small> : null}
                   </div>
                   <span className="grid-column-drag-handle" title="Arrastrar para mover" aria-label="Arrastrar para mover">&#8942;</span>
                   <button type="button" className="jql-delete" disabled={gridColumnGroups.length === 1} onClick={() => setGridForm((current) => ({ ...current, columns: current.columns.filter((column) => gridColumnGroupKey(column) !== groupKey) }))} aria-label="Eliminar tipo de incidencia"><LineIcon name="trash" /></button>
                 </div>
               );
             })}
-            <button type="button" className="jql-add unified-add-button" onClick={() => setGridForm((current) => ({ ...current, columns: [...current.columns, { issueType: '', field: '' }] }))}><LineIcon name="plus" /> Agregar tipo de incidencia</button>
           </div>
           <div className="grid-builder-section grid-conditions-section">
             <div className="grid-section-title"><span>03</span><h3>Condiciones</h3></div>
-            {gridForm.conditions.length > 0 && gridConditionValidationErrors.length > 0 ? (
-              <div className="alert-validation-errors grid-validation-errors" role="alert">
-                {gridConditionValidationErrors.map((error) => <div key={error}>{error}</div>)}
-              </div>
-            ) : null}
             {gridForm.conditions.map((condition, index) => (
               <Fragment key={`grid-condition-group-${index}`}>
               <div className="grid-builder-row">
                 <span className="grid-row-number">{index + 1}</span>
+                <div className="grid-validation-field">
                 <select
+                  className={gridConditionFieldError(condition, 'issueType') ? 'has-validation-error' : ''}
                   value={condition.issueType ?? ''}
                   disabled={condition.field === 'estadoGeneral'}
                   onChange={(event) => setGridForm((current) => ({
@@ -3305,22 +3496,33 @@ export default function App() {
                   {gridIssueTypes.map((type) => <option value={type} key={type}>{type}</option>)}
                   <option value="Otros">Otros</option>
                 </select>
-                <select value={condition.field} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, field: event.target.value, issueType: event.target.value === 'estadoGeneral' ? 'Otros' : item.issueType === 'Otros' ? '' : item.issueType } : item) }))}>
+                {gridConditionFieldError(condition, 'issueType') ? <small className="grid-field-error">{gridConditionFieldError(condition, 'issueType')}</small> : null}
+                </div>
+                <div className="grid-validation-field">
+                <select className={gridConditionFieldError(condition, 'field') ? 'has-validation-error' : ''} value={condition.field} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, field: event.target.value, issueType: event.target.value === 'estadoGeneral' ? 'Otros' : item.issueType === 'Otros' ? '' : item.issueType } : item) }))}>
                   <option value="">Seleccione atributo</option>
                   {gridConditionFieldOptions.map((field) => <option value={field.field} key={field.field}>{field.label}</option>)}
                 </select>
-                <select value={condition.operator} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, operator: event.target.value } : item) }))}>
+                {gridConditionFieldError(condition, 'field') ? <small className="grid-field-error">{gridConditionFieldError(condition, 'field')}</small> : null}
+                </div>
+                <div className="grid-validation-field">
+                <select className={gridConditionFieldError(condition, 'operator') ? 'has-validation-error' : ''} value={condition.operator} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, operator: event.target.value } : item) }))}>
                   <option value="">Seleccione operador</option>
                   {conditionOperators.map((operator) => <option value={operator.value} key={operator.value}>{operator.label}</option>)}
                 </select>
+                {gridConditionFieldError(condition, 'operator') ? <small className="grid-field-error">{gridConditionFieldError(condition, 'operator')}</small> : null}
+                </div>
+                <div className="grid-validation-field">
                 {gridConditionCatalogOptions(condition.field).length > 0 ? (
-                  <select value={condition.value ?? ''} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))}>
+                  <select className={gridConditionFieldError(condition, 'value') ? 'has-validation-error' : ''} value={condition.value ?? ''} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))}>
                     <option value="">Seleccione valor</option>
                     {gridConditionCatalogOptions(condition.field).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
                   </select>
                 ) : (
-                  <input value={condition.value ?? ''} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))} placeholder="Valor" />
+                  <input className={gridConditionFieldError(condition, 'value') ? 'has-validation-error' : ''} value={condition.value ?? ''} onChange={(event) => setGridForm((current) => ({ ...current, conditions: current.conditions.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) }))} placeholder="Valor" />
                 )}
+                {gridConditionFieldError(condition, 'value') ? <small className="grid-field-error">{gridConditionFieldError(condition, 'value')}</small> : null}
+                </div>
                 {index < gridForm.conditions.length - 1 ? (
                   <select
                     className="grid-condition-connector"
@@ -3341,9 +3543,10 @@ export default function App() {
               </div>
               </Fragment>
             ))}
-            <button type="button" className="jql-add unified-add-button" onClick={() => setGridForm((current) => ({ ...current, conditions: [...current.conditions, { issueType: '', field: '', operator: '', value: '', connector: current.conditions.length ? 'AND' : undefined }] }))}><LineIcon name="plus" /> Agregar condición</button>
           </div>
           <div className="grid-form-actions">
+            <button type="button" className="jql-add unified-add-button grid-add-issue-type" onClick={() => setGridForm((current) => ({ ...current, columns: [...current.columns, { issueType: '', field: '' }] }))}><LineIcon name="plus" /> Campos</button>
+            <button type="button" className="jql-add unified-add-button grid-add-condition" onClick={() => setGridForm((current) => ({ ...current, conditions: [...current.conditions, { issueType: '', field: '', operator: '', value: '', connector: current.conditions.length ? 'AND' : undefined }] }))}><LineIcon name="plus" /> Condición</button>
             <button type="button" className="save-action-button" onClick={handleSaveGrid}>
               <LineIcon name="save" />
               Guardar
@@ -3617,7 +3820,8 @@ export default function App() {
     );
   };
 
-  if (isLoading) {
+  if (isLoading || restartRequested) {
+    const isRestarting = restartRequested;
     return (
       <main className="app-shell">
         <section className="hero startup-hero">
@@ -3625,8 +3829,12 @@ export default function App() {
             <div className="startup-spinner" aria-hidden="true" />
             <div>
               <p className="eyebrow">Jira Notifications</p>
-              <h1>Iniciando app...</h1>
-              <p className="copy">Estamos cargando el backend y la interfaz.</p>
+              <h1>{isRestarting ? 'Finalizando APP...' : 'Iniciando app...'}</h1>
+              <p className="copy">
+                {isRestarting
+                  ? 'Estamos finalizando el backend y la interfaz.'
+                  : 'Estamos cargando el backend y la interfaz.'}
+              </p>
             </div>
           </div>
         </section>
@@ -4217,11 +4425,11 @@ export default function App() {
               </div>;
             })}
           </div>
-          {!expandedJqlId ? <button type="button" className="jql-add unified-add-button" onClick={handleAddJql}>
-            <LineIcon name="plus" />
-            Agregar JQL
-          </button> : null}
           {!expandedJqlId ? <div className="settings-actions jql-save-actions">
+            <button type="button" className="jql-add unified-add-button jql-add-action" onClick={handleAddJql}>
+              <LineIcon name="plus" />
+              Agregar JQL
+            </button>
             <button type="button" className="save-action-button" onClick={handleSaveJql} disabled={jqlSaving}>
               <LineIcon name="save" />
               {jqlSaving ? 'Guardando...' : 'Guardar'}
@@ -4278,19 +4486,18 @@ export default function App() {
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            className="sql-query-add unified-add-button"
-            disabled={syncInProgress}
-            onClick={() => {
-              setSqlQueries([...sqlQueries, 'SELECT key, issuetype, status FROM JIRA_ISSUES LIMIT 20']);
-              setSelectedSqlIndex(sqlQueries.length);
-            }}
-          >
-            <LineIcon name="plus" />
-            Agregar consulta SQL
-          </button>
           <div className="settings-actions">
+            <button
+              type="button"
+              className="sql-query-add sql-execute-button"
+              disabled={syncInProgress}
+              onClick={() => {
+                setSqlQueries([...sqlQueries, 'SELECT key, issuetype, status FROM JIRA_ISSUES LIMIT 20']);
+                setSelectedSqlIndex(sqlQueries.length);
+              }}
+            >
+              Agregar Consulta
+            </button>
             <button
               type="button"
               className="sql-execute-button"
