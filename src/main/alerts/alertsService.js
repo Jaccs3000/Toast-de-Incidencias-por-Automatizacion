@@ -404,6 +404,14 @@ export class AlertsService {
   }
 
   displayValue(rule, issues, estadoGeneral, seedIssue = null) {
+    let configuredFields = [];
+    try { configuredFields = JSON.parse(rule?.display_fields_json ?? '[]'); } catch { configuredFields = []; }
+    if (configuredFields.length > 0) {
+      return configuredFields
+        .map((item) => this.displayValue({ ...rule, display_fields_json: '[]', display_issue_type: item.issueType, display_field: item.field }, issues, estadoGeneral, seedIssue))
+        .filter(Boolean)
+        .join('\n');
+    }
     const field = String(rule?.display_field ?? '').trim();
     if (!field) return '';
     if (['estado_general', 'estadoGeneral'].includes(field)) return estadoGeneral ?? '';
@@ -432,7 +440,7 @@ export class AlertsService {
   } = {}) {
     const rules = await this.persistence.query(`
       SELECT id, jql_id, alert_type, name, toast_text, toast_image, condition_config,
-             display_issue_type, display_field, retry_minutes, is_active
+             display_issue_type, display_field, display_fields_json, retry_minutes, is_active
       FROM ALERT_RULES
       WHERE is_active = 1 AND jql_id IS NOT NULL
       ORDER BY jql_id, created, name
@@ -594,7 +602,10 @@ export class AlertsService {
         });
 
         const row = JSON.parse(alert.payload_json ?? '{}');
-        const toastMessage = await this.resolveToastText(rule.toast_text ?? '', row, alert.project_group_id);
+        const displayRow = { ...row, issuetype: row.issuetype ?? row.type ?? row.issue_type };
+        const displayValue = this.displayValue(rule, [displayRow], row.estado_general ?? row.estadoGeneral, displayRow);
+        const toastMessage = String(row.toast_message ?? '').trim()
+          || composeToastMessage(rule.toast_text ?? rule.name ?? 'Alerta Jira', displayValue);
         const payloadJson = JSON.stringify({ ...row, toast_message: toastMessage });
         await this.persistence.exec(
           `
@@ -623,7 +634,7 @@ export class AlertsService {
   async repeatDueUnreadAlerts() {
     const rules = await this.persistence.query(
       `
-      SELECT id, name, sql, toast_text, toast_image, retry_minutes, is_active
+      SELECT id, name, sql, toast_text, toast_image, display_issue_type, display_field, retry_minutes, is_active
       FROM ALERT_RULES
       WHERE is_active = 1 AND retry_minutes > 0
       ORDER BY name ASC
@@ -674,7 +685,7 @@ export class AlertsService {
 
     const rules = await this.persistence.query(
       `
-      SELECT id, name, sql, toast_text, toast_image, retry_minutes, is_active
+      SELECT id, name, sql, toast_text, toast_image, display_issue_type, display_field, retry_minutes, is_active
       FROM ALERT_RULES
       WHERE is_active = 1
       ORDER BY name ASC
@@ -697,10 +708,15 @@ export class AlertsService {
           }
           processedAlertKeys.add(alertKey);
 
+          const displayRow = { ...row, issuetype: row.issuetype ?? row.type ?? row.issue_type };
+          const displayValue = this.displayValue(rule, [displayRow], row.estado_general ?? row.estadoGeneral, displayRow);
+          const toastMessage = composeToastMessage(rule.toast_text ?? rule.name ?? 'Alerta Jira', displayValue);
+
           const result = await this.upsertAlert({
             rule,
             row,
             projectGroupId: row.project_group_id ?? projectGroup?.id ?? null,
+            toastMessage,
             notify,
           });
 
@@ -755,17 +771,6 @@ export class AlertsService {
     for (const alert of createdAlerts) {
       try {
         const retryMinutes = retryMinutesForAlert(alert);
-        if (!alert.isRetry && retryMinutes > 0) {
-          await this.logs?.info?.('Alert toast deferred until retry countdown is due', {
-            alertId: alert.alertId,
-            ruleId: alert.rule?.id,
-            issueId: alert.issueId,
-            retryMinutes,
-            nextRetryAt: alert.nextRetryAt ?? null,
-          });
-          continue;
-        }
-
         if (!this.toast?.show) {
           await this.logs?.warn?.('Toast skipped: toast service unavailable', {
             alertId: alert.alertId,

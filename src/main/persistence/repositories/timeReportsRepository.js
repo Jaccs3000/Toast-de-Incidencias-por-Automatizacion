@@ -20,6 +20,7 @@ export class TimeReportsRepository {
   async clear() {
     await this.persistence.transaction(async () => {
       await this.persistence.exec('DELETE FROM TIME_REPORT_CORRECTIONS');
+      await this.persistence.exec('DELETE FROM TIME_REPORT_IMPROVEMENTS');
       await this.persistence.exec('DELETE FROM TIME_REPORT_ISSUES');
       await this.persistence.exec('DELETE FROM TIME_REPORTS');
     });
@@ -108,6 +109,15 @@ export class TimeReportsRepository {
       'SELECT * FROM TIME_REPORT_CORRECTIONS WHERE report_id = ? ORDER BY issue_key, correction_key',
       [reportId],
     );
+    const improvementRows = await this.persistence.query(
+      'SELECT issue_id, issue_key, memo FROM TIME_REPORT_IMPROVEMENTS WHERE report_id = ?',
+      [reportId],
+    );
+    const improvementByIssue = new Map(improvementRows.map((row) => [String(row.issue_id), {
+      issueId: row.issue_id,
+      issueKey: row.issue_key,
+      memo: row.memo,
+    }]));
     const issueDataByKey = new Map(issues.map((row) => [row.issue_key, parseJson(row.data_json, {})]));
     const correctionsByIssue = new Map();
     for (const row of correctionRows) {
@@ -135,8 +145,31 @@ export class TimeReportsRepository {
         issueId: row.issue_id,
         issueKey: row.issue_key,
         selected: Number(row.selected) === 1,
+        improvement: improvementByIssue.get(String(row.issue_id)) ?? null,
         corrections: correctionsByIssue.get(row.issue_key) ?? [],
       })),
     };
+  }
+
+  async saveImprovement({ reportId, issueId, issueKey, memo }) {
+    const normalizedMemo = String(memo ?? '').trim();
+    if (!reportId || !issueId || !issueKey || !normalizedMemo || normalizedMemo.length > 1000) {
+      throw new Error('La acción de mejora debe tener entre 1 y 1000 caracteres.');
+    }
+    const now = new Date().toISOString();
+    await this.persistence.exec(`
+      INSERT INTO TIME_REPORT_IMPROVEMENTS (report_id, issue_id, issue_key, memo, created, updated)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(report_id, issue_id) DO UPDATE SET
+        issue_key = excluded.issue_key, memo = excluded.memo, updated = excluded.updated
+    `, [reportId, issueId, issueKey, normalizedMemo, now, now]);
+    return { issueId, issueKey, memo: normalizedMemo };
+  }
+
+  async deleteImprovement(reportId, issueId) {
+    await this.persistence.exec(
+      'DELETE FROM TIME_REPORT_IMPROVEMENTS WHERE report_id = ? AND issue_id = ?',
+      [reportId, issueId],
+    );
   }
 }

@@ -133,7 +133,6 @@ export class WindowsSessionTask {
     this.logs = logs;
     this.sessionDirectory = path.join(projectRoot, 'data', 'windows-session');
     this.statePath = path.join(this.sessionDirectory, 'session-state.json');
-    this.historyPath = path.join(this.sessionDirectory, 'session-state-history.jsonl');
     this.updateScriptPath = path.join(projectRoot, 'scripts', 'update-windows-session.ps1');
     this.hiddenScriptPath = path.join(projectRoot, 'scripts', 'update-windows-session-hidden.vbs');
     this.taskNames = {
@@ -262,7 +261,6 @@ export class WindowsSessionTask {
         lockedStatus,
         unlockedStatus,
         statePath: this.statePath,
-        historyPath: this.historyPath,
       });
       return { ok: true };
     } catch (error) {

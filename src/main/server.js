@@ -805,6 +805,22 @@ async function handleTimeReportPdf(req, res) {
   });
 }
 
+async function handleTimeReportImprovement(req, res, method) {
+  if (!reportSessionIsReady(res)) return;
+  const body = await readBody(req);
+  if (method === 'DELETE') {
+    await state.runtime.timeReports.deleteImprovement({ reportId: body?.reportId, issueId: body?.issueId });
+    json(res, 200, { ok: true });
+    return;
+  }
+  const improvement = await state.runtime.timeReports.saveImprovement({
+    reportId: body?.reportId,
+    issueId: body?.issueId,
+    memo: body?.memo,
+  });
+  json(res, 200, { ok: true, improvement });
+}
+
 async function handleTimeReportFile(res, url) {
   const fileName = String(url.searchParams.get('name') ?? '').trim();
   if (!/^[a-z0-9][a-z0-9_.-]*\.pdf$/i.test(fileName)) {
@@ -960,6 +976,7 @@ async function handleGridData(req, res, id) {
     FROM JIRA_PROJECT_GROUPS p
     LEFT JOIN JIRA_PROJECT_GROUP_ISSUES pgi ON pgi.project_group_id = p.id
     LEFT JOIN JIRA_ISSUES i ON i.id = pgi.issue_id
+    WHERE p.source = 'sync'
     GROUP BY p.id, p.estado_general
     ORDER BY p.id
   `);
@@ -1124,6 +1141,12 @@ async function handleAlertRuleSave(req, res) {
 
   const displayIssueType = String(body?.display_issue_type ?? '').trim() || null;
   const displayField = String(body?.display_field ?? '').trim() || null;
+  const displayFields = Array.isArray(body?.display_fields)
+    ? body.display_fields.map((item) => ({
+      issueType: String(item?.issueType ?? '').trim(),
+      field: String(item?.field ?? '').trim(),
+    })).filter((item) => item.issueType && item.field)
+    : (displayIssueType && displayField ? [{ issueType: displayIssueType, field: displayField }] : []);
   if (Boolean(displayIssueType) !== Boolean(displayField)) {
     json(res, 400, { ok: false, error: 'Para mostrar información debes seleccionar tipo de incidencia y atributo.' });
     return;
@@ -1166,8 +1189,8 @@ async function handleAlertRuleSave(req, res) {
       `
       INSERT INTO ALERT_RULES (
         id, jql_id, alert_type, name, sql, toast_text, toast_image, condition_config,
-        display_issue_type, display_field, retry_syncs, retry_minutes, is_active, created, updated
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        display_issue_type, display_field, display_fields_json, retry_syncs, retry_minutes, is_active, created, updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         jql_id = excluded.jql_id,
         alert_type = excluded.alert_type,
@@ -1178,6 +1201,7 @@ async function handleAlertRuleSave(req, res) {
         condition_config = excluded.condition_config,
         display_issue_type = excluded.display_issue_type,
         display_field = excluded.display_field,
+        display_fields_json = excluded.display_fields_json,
         retry_syncs = excluded.retry_syncs,
         retry_minutes = excluded.retry_minutes,
         is_active = excluded.is_active,
@@ -1194,6 +1218,7 @@ async function handleAlertRuleSave(req, res) {
         conditionConfig,
         displayIssueType,
         displayField,
+        JSON.stringify(displayFields),
         Math.max(Number(body?.retry_syncs ?? 0) || 0, 0),
         Math.max(Number(body?.retry_minutes ?? 0) || 0, 0),
         body?.is_active === false ? 0 : 1,
@@ -1428,6 +1453,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/time-reports/pdf') {
       await handleTimeReportPdf(req, res);
+      return;
+    }
+
+    if ((req.method === 'POST' || req.method === 'DELETE') && url.pathname === '/api/time-reports/improvement') {
+      await handleTimeReportImprovement(req, res, req.method);
       return;
     }
 

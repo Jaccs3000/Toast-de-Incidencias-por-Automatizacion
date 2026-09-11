@@ -670,6 +670,7 @@ test('initializes and clears only the temporary time report tables', async () =>
     assert.deepEqual(tables.map((row) => row.table_name), [
       'TIME_REPORTS',
       'TIME_REPORT_CORRECTIONS',
+      'TIME_REPORT_IMPROVEMENTS',
       'TIME_REPORT_ISSUES',
     ]);
 

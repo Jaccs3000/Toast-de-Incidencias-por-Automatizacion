@@ -11,6 +11,7 @@ import { TimeReportPdfGenerator } from './timeReportPdfGenerator.js';
 const ISSUE_FIELDS = [
   'project', 'issuetype', 'summary', 'status', 'reporter', 'assignee', 'created',
   'resolutiondate', 'timeoriginalestimate', 'timeestimate', 'timespent', 'timetracking',
+  'issuelinks',
 ];
 const CORRECTION_TYPES = ['Correccion por Testing', 'Correccion por Testing (migrated)'];
 
@@ -93,10 +94,11 @@ function issueTypeIconUrl(issue) {
 }
 
 export class TimeReportsService {
-  constructor({ persistence, jira, logs, pdfGenerator = null } = {}) {
+  constructor({ persistence, jira, logs, syncService = null, pdfGenerator = null } = {}) {
     this.persistence = persistence;
     this.jira = jira;
     this.logs = logs;
+    this.syncService = syncService;
     this.pdfGenerator = pdfGenerator ?? new TimeReportPdfGenerator();
     this.pdfIssueTypeIconCache = new Map();
   }
@@ -167,7 +169,12 @@ export class TimeReportsService {
       ORDER BY source.key, correction.key
     `, [...issueIds, ...CORRECTION_TYPES]);
     throwIfAborted(signal);
-    return corrections;
+    const timeReportSources = new Set(corrections
+      .filter((row) => String(row.project_group_id ?? '').startsWith('time-report:'))
+      .map((row) => row.issue_key));
+    return corrections.filter((row) => (
+      !timeReportSources.has(row.issue_key) || String(row.project_group_id ?? '').startsWith('time-report:')
+    ));
   }
 
   async loadProjectGroupDetails(issueIds, signal = null) {
@@ -178,7 +185,7 @@ export class TimeReportsService {
       SELECT pgi.issue_id, pgi.project_group_id, pg.estado_general,
              tester.assignee AS tester_assignee, tester.key AS tester_key
       FROM JIRA_PROJECT_GROUP_ISSUES pgi
-      JOIN JIRA_PROJECT_GROUPS pg ON pg.id = pgi.project_group_id
+      JOIN JIRA_PROJECT_GROUPS pg ON pg.id = pgi.project_group_id AND pg.source = 'time-report'
       LEFT JOIN JIRA_PROJECT_GROUP_ISSUES tester_pgi
         ON tester_pgi.project_group_id = pgi.project_group_id
       LEFT JOIN JIRA_ISSUES tester
@@ -368,6 +375,7 @@ export class TimeReportsService {
     const phaseTimings = {};
     throwIfAborted(signal);
     await this.persistence.timeReports.clear();
+    await this.persistence.clearProjectGroupsBySource?.('time-report');
     throwIfAborted(signal);
     const range = validateTimeReportRange(fromDate, toDate);
     const accountId = String(user?.accountId ?? '').trim();
@@ -457,6 +465,7 @@ export class TimeReportsService {
       throw error;
     }
     const detailedIssues = detailed.issues;
+    await this.syncService?.refreshProjectGroupsForIssues(detailedIssues, { signal });
     const reportIssues = new Map(detailedIssues.map((issue) => {
       const normalized = normalizeIssue(issue);
       const aggregate = getIssueAggregate(rangeAggregates, normalized);
@@ -619,5 +628,22 @@ export class TimeReportsService {
     await this.persistence.timeReports.markGenerated(reportId, result.fileName);
     await this.logs?.info('Time report PDF generated', { reportId, fileName: result.fileName, pages: result.pages });
     return { ...result, reportId };
+  }
+
+  async saveImprovement({ reportId, issueId, memo }) {
+    const snapshot = await this.persistence.timeReports.getSnapshot(reportId);
+    const issue = snapshot?.issues.find((item) => String(item.issueId) === String(issueId));
+    if (!issue) throw new Error('La incidencia no pertenece al reporte actual.');
+    const improvement = await this.persistence.timeReports.saveImprovement({
+      reportId,
+      issueId: issue.issueId,
+      issueKey: issue.issueKey,
+      memo,
+    });
+    return improvement;
+  }
+
+  async deleteImprovement({ reportId, issueId }) {
+    await this.persistence.timeReports.deleteImprovement(reportId, issueId);
   }
 }

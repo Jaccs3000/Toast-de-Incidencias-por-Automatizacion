@@ -60,6 +60,12 @@ export class Persistence {
       )
     `);
     try {
+      await this.exec("ALTER TABLE JIRA_PROJECT_GROUPS ADD COLUMN source TEXT DEFAULT 'sync'");
+      await this.exec("UPDATE JIRA_PROJECT_GROUPS SET source = 'sync' WHERE source IS NULL OR source = ''");
+    } catch {
+      // The column already exists in databases initialized after this migration.
+    }
+    try {
       await this.exec('ALTER TABLE JIRA_ISSUES ADD COLUMN issuetype_icon_url TEXT');
     } catch {
       // The column already exists in databases initialized after the schema update.
@@ -114,6 +120,7 @@ export class Persistence {
       'ALTER TABLE ALERT_RULES ADD COLUMN alert_type TEXT',
       'ALTER TABLE ALERT_RULES ADD COLUMN display_issue_type TEXT',
       'ALTER TABLE ALERT_RULES ADD COLUMN display_field TEXT',
+      'ALTER TABLE ALERT_RULES ADD COLUMN display_fields_json TEXT',
       'ALTER TABLE ALERTS ADD COLUMN identity_key TEXT',
     ]) {
       try {
@@ -227,6 +234,27 @@ export class Persistence {
 
       throw error;
     }
+  }
+
+  async clearProjectGroupsBySource(source) {
+    const normalizedSource = String(source ?? '').trim();
+    if (!normalizedSource) return;
+
+    await this.transaction(async () => {
+      await this.exec(`
+        DELETE FROM JIRA_RELATIONSHIPS
+        WHERE project_group_id IN (
+          SELECT id FROM JIRA_PROJECT_GROUPS WHERE source = ?
+        )
+      `, [normalizedSource]);
+      await this.exec(`
+        DELETE FROM JIRA_PROJECT_GROUP_ISSUES
+        WHERE project_group_id IN (
+          SELECT id FROM JIRA_PROJECT_GROUPS WHERE source = ?
+        )
+      `, [normalizedSource]);
+      await this.exec('DELETE FROM JIRA_PROJECT_GROUPS WHERE source = ?', [normalizedSource]);
+    });
   }
 
   async close() {

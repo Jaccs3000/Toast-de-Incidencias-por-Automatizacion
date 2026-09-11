@@ -5,6 +5,13 @@ import { REPORTED_TIMES_FIELD } from '../shared/grids/reportedTimes.js';
 import { compactPersonName } from '../shared/people/compactPersonName.js';
 import { calculateSecondFriday } from '../shared/reports/timeReport.js';
 
+function getLocalDateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: {
@@ -503,8 +510,8 @@ function alertRetryDueAt(alert) {
 function shouldShowAlertToast(alert, previousAlert, retryEnabled, now = Date.now()) {
   const retryMinutes = Math.max(Number(alert?.retry_minutes ?? 0) || 0, 0);
   if (!previousAlert) {
-    // A retry of zero has no countdown, so the initial alert is still immediate.
-    return retryMinutes === 0;
+    // A newly discovered alert is immediate; retry_minutes only schedules later repeats.
+    return true;
   }
   if (!retryEnabled) {
     return false;
@@ -572,7 +579,7 @@ function LineIcon({ name }) {
     clock: <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></>,
     shield: <path d="m12 3 7 3v5c0 4.5-3 7.5-7 10-4-2.5-7-5.5-7-10V6l7-3Z" />,
     calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>,
-    flag: <><path d="M5 22V4" /><path d="M5 5c4-3 6 3 11 0v9c-5 3-7-3-11 0" /></>,
+    improvement: <><path d="m14.7 6.3 3-3a3 3 0 0 1 3.9 3.9l-3 3" /><path d="m17.6 9.2-9.8 9.8a2.1 2.1 0 1 1-3-3l9.8-9.8" /><path d="m13.1 7.1 3.8 3.8" /><path d="m6.2 14.1-3.1-3.1a4.2 4.2 0 0 1 5.7-5.7l1.5 1.5" /><path d="m17.8 15.9 3.1 3.1a4.2 4.2 0 0 1-5.7 5.7l-1.5-1.5" /></>,
     trash: <><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 14h8l1-14" /><path d="M10 11v6M14 11v6" /></>,
     pencil: <><path d="m4 16-.8 4.8L8 20l11.2-11.2a2.8 2.8 0 0 0-4-4L4 16Z" /><path d="m13.8 6.2 4 4" /></>,
     reorder: <><path d="M8 5v14" /><path d="m5 8 3-3 3 3M5 16l3 3 3-3" /><path d="M16 19V5" /><path d="m13 8 3-3 3 3M13 16l3 3 3-3" /></>,
@@ -585,6 +592,18 @@ function LineIcon({ name }) {
     upload: <><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 14v6h14v-6" /></>,
   };
   return <svg className="line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] ?? paths.pulse}</svg>;
+}
+
+function ImprovementIcon() {
+  return <svg className="line-icon improvement-svg" viewBox="0 0 24 24" fill="none" stroke="#ffd477" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M5 19 18.5 5.5" />
+    <path d="M14.5 4.5 18.5 5.5 19.5 9.5" />
+    <path d="M4.5 14.5 5.5 18.5 9.5 19.5" />
+    <path d="M7 6.5 10 9.5" />
+    <path d="M14.5 14 18 17.5" />
+    <circle cx="6.5" cy="6.5" r="2.5" />
+    <circle cx="17.5" cy="17.5" r="2.5" />
+  </svg>;
 }
 
 function AutoResizeTextarea({ value, onChange, ...props }) {
@@ -954,6 +973,7 @@ function emptyAlertForm(jqlId = null) {
     toastText: '',
     displayIssueType: '',
     displayField: '',
+    displayFields: [],
     isActive: true,
   };
 }
@@ -1051,6 +1071,9 @@ export default function App() {
   const [timeReportSort, setTimeReportSort] = useState({ field: null, direction: 'asc' });
   const [timeReportDraggedIssueId, setTimeReportDraggedIssueId] = useState(null);
   const [timeReportDragOverIssueId, setTimeReportDragOverIssueId] = useState(null);
+  const [timeReportImprovementIssueId, setTimeReportImprovementIssueId] = useState(null);
+  const [timeReportImprovementMemo, setTimeReportImprovementMemo] = useState('');
+  const [timeReportImprovementSaving, setTimeReportImprovementSaving] = useState(false);
   const timeReportFromDateInputRef = useRef(null);
   const timeReportToDateInputRef = useRef(null);
   const timeReportCancelRequestedRef = useRef(false);
@@ -1079,6 +1102,7 @@ export default function App() {
   const alertNotificationProcessingRef = useRef(false);
   const alertNotificationTimerRef = useRef(null);
   const alertsInitializedRef = useRef(false);
+  const alertNotificationStartedAtRef = useRef(Date.now());
   const alertRetryEnabledRef = useRef(true);
   const servicesStoppedRef = useRef(false);
   const restartRequestedRef = useRef(false);
@@ -1791,7 +1815,10 @@ export default function App() {
         const previous = knownAlerts.get(alert.id);
         return shouldShowAlertToast(alert, previous, alertRetryEnabledRef.current);
       })
-      : [];
+      : unreadAlerts.filter((alert) => {
+        const createdAt = new Date(alert.created ?? '').getTime();
+        return Number.isFinite(createdAt) && createdAt >= alertNotificationStartedAtRef.current;
+      });
     enqueueAlertNotifications(alertsToShow);
     knownAlertNotifiedAtRef.current = new Map(
       unreadAlerts.map((alert) => [alert.id, {
@@ -2213,6 +2240,7 @@ export default function App() {
           remove_toast_image: alertImageRemoved,
           display_issue_type: alertForm.displayIssueType || null,
           display_field: alertForm.displayField || null,
+          display_fields: alertForm.displayFields,
           retry_minutes: Math.max(Number(alertForm.retryMinutes) || 0, 0),
           is_active: alertForm.isActive,
         }),
@@ -2285,6 +2313,7 @@ export default function App() {
       toastText: rule.toast_text ?? '',
       displayIssueType: rule.display_issue_type ?? '',
       displayField: rule.display_field ?? '',
+      displayFields: (() => { try { const fields = JSON.parse(rule.display_fields_json ?? '[]'); return Array.isArray(fields) && fields.length ? fields : (rule.display_issue_type && rule.display_field ? [{ issueType: rule.display_issue_type, field: rule.display_field }] : []); } catch { return []; } })(),
       isActive: Boolean(rule.is_active),
     });
     setAlertImageData(null);
@@ -2329,7 +2358,7 @@ export default function App() {
   const renderAlertForm = (isNew) => {
     const imageInputId = `alert-image-input-${isNew ? 'new' : alertForm.id}`;
     return (
-      <div className="alert-builder-form">
+      <div className={`alert-builder-form${alertForm.event === 'attribute_changed' ? ' has-conditions' : ''}`}>
         <section className="alert-form-section alert-general-section">
           <header className="alert-form-section-heading">
             <span>1</span>
@@ -2527,16 +2556,34 @@ export default function App() {
         <section className="alert-form-section alert-content-section">
           <header className="alert-form-section-heading">
             <span>{alertForm.event === 'attribute_changed' ? 3 : 2}</span>
-            <h4>Contenido de la notificación</h4>
+            <h4>Texto del Toast</h4>
           </header>
           <div className="alert-message-insert">
+            <div className="alert-message-primary-row">
             <span>Mostrar en notificación (opcional)</span>
+            <span
+              className="alert-add-attribute-button"
+              aria-label="Agregar atributo"
+              role="button"
+              tabIndex={0}
+              style={{ width: 22, minWidth: 22, maxWidth: 22, height: 22, minHeight: 22, maxHeight: 22, padding: 0, lineHeight: '20px' }}
+              onClick={() => setAlertForm((current) => ({ ...current, displayFields: [...current.displayFields, { issueType: '', field: '' }] }))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setAlertForm((current) => ({ ...current, displayFields: [...current.displayFields, { issueType: '', field: '' }] }));
+                }
+              }}
+            >+</span>
+            </div>
+            {alertForm.displayFields.length > 0 ? <div className="alert-message-select-row">
             <select
               value={alertForm.displayIssueType}
               onChange={(event) => setAlertForm((current) => ({
                 ...current,
                 displayIssueType: event.target.value,
                 displayField: '',
+                displayFields: [{ issueType: event.target.value, field: '' }, ...current.displayFields.slice(1)],
               }))}
             >
               <option value="">Seleccione</option>
@@ -2549,7 +2596,7 @@ export default function App() {
             <select
               value={alertForm.displayField}
               disabled={!alertForm.displayIssueType}
-              onChange={(event) => setAlertForm((current) => ({ ...current, displayField: event.target.value }))}
+              onChange={(event) => setAlertForm((current) => ({ ...current, displayField: event.target.value, displayFields: [{ issueType: current.displayIssueType, field: event.target.value }, ...current.displayFields.slice(1)] }))}
             >
               <option value="">Seleccione</option>
               {alertForm.displayIssueType === 'Otros'
@@ -2558,6 +2605,50 @@ export default function App() {
                   <option value={value} key={value}>{label}</option>
                 ))}
             </select>
+            <button
+              type="button"
+              className="alert-attribute-delete"
+              aria-label="Limpiar atributo de notificación"
+              title="Limpiar atributo"
+              style={{ border: '1px solid #ff697d', borderColor: '#ff697d', color: '#ff8798' }}
+              onClick={() => setAlertForm((current) => {
+                const remaining = current.displayFields.slice(1);
+                const next = remaining[0] ?? { issueType: '', field: '' };
+                return {
+                  ...current,
+                  displayIssueType: next.issueType,
+                  displayField: next.field,
+                  displayFields: remaining,
+                };
+              })}
+            >
+              <LineIcon name="trash" />
+            </button>
+            </div> : null}
+            {alertForm.displayFields.slice(1).map((item, index) => (
+              <span className="alert-message-extra-row" key={`display-field-${index + 1}`}>
+                <select value={item.issueType} onChange={(event) => setAlertForm((current) => ({ ...current, displayFields: current.displayFields.map((entry, rowIndex) => rowIndex === index + 1 ? { ...entry, issueType: event.target.value, field: '' } : entry) }))}>
+                  <option value="">Seleccione</option>
+                  <option value={JQL_SOURCE_ISSUE_OPTION}>{JQL_SOURCE_ISSUE_LABEL}</option>
+                  {graphIssueTypes.map((issueType) => <option value={issueType} key={issueType}>{issueType}</option>)}
+                  <option value="Otros">Otros</option>
+                </select>
+                <select value={item.field} disabled={!item.issueType} onChange={(event) => setAlertForm((current) => ({ ...current, displayFields: current.displayFields.map((entry, rowIndex) => rowIndex === index + 1 ? { ...entry, field: event.target.value } : entry) }))}>
+                  <option value="">Seleccione</option>
+                  {item.issueType === 'Otros' ? <option value="estado_general">Estado General</option> : Object.entries(alertMessageFields).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                </select>
+                <button
+                  type="button"
+                  className="alert-attribute-delete"
+                  aria-label="Eliminar atributo de notificación"
+                  title="Eliminar atributo"
+                  style={{ border: '1px solid #ff697d', borderColor: '#ff697d', color: '#ff8798' }}
+                  onClick={() => setAlertForm((current) => ({ ...current, displayFields: current.displayFields.filter((_, rowIndex) => rowIndex !== index + 1) }))}
+                >
+                  <LineIcon name="trash" />
+                </button>
+              </span>
+            ))}
           </div>
           <div className="alert-content-grid">
             <label className="alert-message-builder">
@@ -2565,11 +2656,10 @@ export default function App() {
               <textarea
                 ref={alertToastInputRef}
                 value={alertForm.toastText}
-                onChange={(event) => setAlertForm((current) => ({ ...current, toastText: event.target.value }))}
+              onChange={(event) => setAlertForm((current) => ({ ...current, toastText: event.target.value }))}
                 rows={4}
                 placeholder="Hay criterios pendientes. Responsable: "
               />
-              <small className="alert-message-help">Combina texto libre y datos de Jira en el orden que prefieras.</small>
             </label>
             <div className="alert-image-field">
               <span>Imagen del Toast</span>
@@ -2583,13 +2673,13 @@ export default function App() {
                 <label
                   className="alert-image-dropzone"
                   htmlFor={imageInputId}
+                  title="Formatos permitidos: PNG, JPG o WEBP. Tamaño máximo: 2 MB."
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={handleAlertImageDrop}
                 >
                   <LineIcon name="upload" />
                   <strong>Arrastra una imagen</strong>
                   <small>o selecciónala</small>
-                  <em>PNG, JPG o WEBP · máximo 2 MB</em>
                 </label>
                 {(alertImageData || alertImageUrl) ? (
                   <div className="alert-image-preview">
@@ -2902,6 +2992,7 @@ export default function App() {
         body: JSON.stringify({ ...timeReportDates, user: selectedUser }),
       });
       setTimeReportEditingIssueId(null);
+      setTimeReportImprovementIssueId(null);
       setTimeReport(result.report);
       setTimeReportMessage({ type: 'success', text: `${result.report.issues.length} incidencia(s) encontrada(s).` });
     } catch (error) {
@@ -2972,6 +3063,62 @@ export default function App() {
     }
   };
 
+  const openTimeReportImprovement = (issue) => {
+    setTimeReportImprovementIssueId(issue.issueId);
+    setTimeReportImprovementMemo(issue.improvement?.memo ?? '');
+  };
+
+  const closeTimeReportImprovement = () => {
+    if (timeReportImprovementSaving) return;
+    setTimeReportImprovementIssueId(null);
+    setTimeReportImprovementMemo('');
+  };
+
+  const saveTimeReportImprovement = async () => {
+    const issue = timeReport?.issues.find((item) => String(item.issueId) === String(timeReportImprovementIssueId));
+    const memo = timeReportImprovementMemo.trim();
+    if (!issue || !memo || memo.length > 1000) return;
+    setTimeReportImprovementSaving(true);
+    try {
+      const result = await api('/api/time-reports/improvement', {
+        method: 'POST',
+        body: JSON.stringify({ reportId: timeReport.id, issueId: issue.issueId, memo }),
+      });
+      setTimeReport((current) => ({
+        ...current,
+        issues: current.issues.map((item) => item.issueId === issue.issueId
+          ? { ...item, improvement: result.improvement }
+          : item),
+      }));
+      closeTimeReportImprovement();
+    } catch (error) {
+      setTimeReportMessage({ type: 'error', text: `No se pudo guardar la acción: ${error.message}` });
+    } finally {
+      setTimeReportImprovementSaving(false);
+    }
+  };
+
+  const deleteTimeReportImprovement = async () => {
+    const issue = timeReport?.issues.find((item) => String(item.issueId) === String(timeReportImprovementIssueId));
+    if (!issue?.improvement) return;
+    setTimeReportImprovementSaving(true);
+    try {
+      await api('/api/time-reports/improvement', {
+        method: 'DELETE',
+        body: JSON.stringify({ reportId: timeReport.id, issueId: issue.issueId }),
+      });
+      setTimeReport((current) => ({
+        ...current,
+        issues: current.issues.map((item) => item.issueId === issue.issueId ? { ...item, improvement: null } : item),
+      }));
+      closeTimeReportImprovement();
+    } catch (error) {
+      setTimeReportMessage({ type: 'error', text: `No se pudo eliminar la acción: ${error.message}` });
+    } finally {
+      setTimeReportImprovementSaving(false);
+    }
+  };
+
   const closeApplicationWindow = () => {
     closeSessionNotification();
     clearToastTimer();
@@ -3037,7 +3184,7 @@ export default function App() {
           onClick={() => setTimeReportSort({ field, direction: direction === 'asc' ? 'desc' : 'asc' })}
           title={`Ordenar por ${label}${direction === 'asc' ? ': ascendente' : direction === 'desc' ? ': descendente' : ''}`}
         >
-          <span>{label.split(' ').map((word, index) => <Fragment key={`${word}-${index}`}>{index > 0 ? <br /> : null}{word}</Fragment>)}</span>
+          <span>{label === 'Correcciones y Mejoras' ? <><span>Correcciones</span><br /><span>y Mejoras</span></> : label.split(' ').map((word, index) => <Fragment key={`${word}-${index}`}>{index > 0 ? <br /> : null}{word}</Fragment>)}</span>
           <span className="time-reports-sort-icon" aria-hidden="true">{direction === 'asc' ? '↑' : direction === 'desc' ? '↓' : '↕'}</span>
         </button>
       );
@@ -3080,7 +3227,7 @@ export default function App() {
                   setTimeReportDates((current) => ({
                     ...current,
                     fromDate,
-                    toDate: calculateSecondFriday(fromDate),
+                    toDate: calculateSecondFriday(fromDate, getLocalDateInputValue()),
                   }));
                 }}
               />
@@ -3198,7 +3345,7 @@ export default function App() {
                     disabled={timeReportLoading || timeReportGenerating || issues.length === 0}
                     onChange={handleTimeReportSelectAll}
                     aria-label="Seleccionar todas las incidencias"
-                  /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th><th>{sortButton('corrections', 'Correcciones')}</th><th>{sortButton('grouped', 'Agrupar')}</th></tr></thead>
+                  /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th><th>{sortButton('corrections', 'Correcciones y Mejoras')}</th><th>{sortButton('grouped', 'Agrupar')}</th></tr></thead>
                   <tbody>{issues.map((issue) => (
                     <Fragment key={issue.issueId}>
                     {timeReportDragOverIssueId === issue.issueId && timeReportDraggedIssueId !== issue.issueId ? (
@@ -3294,10 +3441,23 @@ export default function App() {
                       <td>{issue.status}</td>
                       <td>{formatTimeReportDuration(issue.rangeSeconds)}</td>
                       <td>{formatTimeReportDuration(issue.totalSeconds)}</td>
-                      <td className="time-reports-corrections-cell">
+                        <td className="time-reports-corrections-cell">
                         {(() => {
                           const correctionCount = Array.isArray(issue.corrections) ? issue.corrections.length : 0;
-                          if (correctionCount === 0) return '0';
+                          if (correctionCount === 0) return (
+                            <label className="time-reports-corrections-option is-empty">
+                              <span>0</span>
+                              <input
+                                type="checkbox"
+                                checked={issue.grouped !== true && issue.includeCorrections !== false}
+                                disabled={timeReportLoading || timeReportGenerating || issue.grouped === true}
+                                onChange={(event) => handleTimeReportCorrectionsToggle(issue.issueId, event.target.checked)}
+                                aria-label={`Incluir correcciones de ${issue.issueKey}`}
+                                title={issue.grouped ? 'Las incidencias agrupadas no incluyen correcciones.' : 'Incluir correcciones en el PDF'}
+                              />
+                              {issue.improvement ? <span className="time-reports-improvement-icon" title={issue.improvement.memo} role="button" tabIndex="0" aria-label={`Editar acción de mejora de ${issue.issueKey}`} onDoubleClick={() => openTimeReportImprovement(issue)}><ImprovementIcon /></span> : null}
+                            </label>
+                          );
                           return (
                             <label className="time-reports-corrections-option">
                               <span>{correctionCount}</span>
@@ -3309,6 +3469,7 @@ export default function App() {
                                 aria-label={`Incluir correcciones de ${issue.issueKey}`}
                                 title={issue.grouped ? 'Las incidencias agrupadas no incluyen correcciones.' : 'Incluir correcciones en el PDF'}
                               />
+                              {issue.improvement ? <span className="time-reports-improvement-icon" title={issue.improvement.memo} role="button" tabIndex="0" aria-label={`Editar acción de mejora de ${issue.issueKey}`} onDoubleClick={() => openTimeReportImprovement(issue)}><ImprovementIcon /></span> : null}
                             </label>
                           );
                         })()}
@@ -3325,7 +3486,45 @@ export default function App() {
                 <LineIcon name="file" />
                 {timeReportGenerating ? 'Creando PDF...' : 'Crear PDF'}
               </button>
+              <button type="button" className="secondary-button time-reports-improvement-action" onClick={() => {
+                const firstIssue = issues.find((issue) => issue.selected) ?? issues[0];
+                if (firstIssue) openTimeReportImprovement(firstIssue);
+              }} disabled={timeReportLoading || timeReportGenerating || issues.length === 0}>
+                + Acción de Mejora
+              </button>
             </div>
+            {timeReportImprovementIssueId ? (() => {
+              const improvementIssue = issues.find((issue) => String(issue.issueId) === String(timeReportImprovementIssueId));
+              if (!improvementIssue) return null;
+              const memoLength = timeReportImprovementMemo.length;
+              return (
+                <div className="time-reports-improvement-dialog" role="dialog" aria-modal="true" aria-label="Acción de mejora">
+                  <div className="time-reports-improvement-dialog-card">
+                    <h3>Acción de Mejora</h3>
+                    <label>Incidencia
+                      <select value={improvementIssue.issueId} onChange={(event) => {
+                        const next = issues.find((issue) => String(issue.issueId) === String(event.target.value));
+                        if (next) {
+                          setTimeReportImprovementIssueId(next.issueId);
+                          setTimeReportImprovementMemo(next.improvement?.memo ?? '');
+                        }
+                      }}>
+                        {issues.map((issue) => <option key={issue.issueId} value={issue.issueId}>{issue.issueKey}</option>)}
+                      </select>
+                    </label>
+                    <label>Texto de la acción
+                      <textarea maxLength={1000} value={timeReportImprovementMemo} onChange={(event) => setTimeReportImprovementMemo(event.target.value)} rows={6} />
+                    </label>
+                    <small>{memoLength}/1000</small>
+                    <div className="time-reports-improvement-dialog-actions">
+                      {improvementIssue.improvement ? <button type="button" className="danger-button" onClick={deleteTimeReportImprovement} disabled={timeReportImprovementSaving}>Eliminar</button> : null}
+                      <button type="button" className="secondary-button" onClick={closeTimeReportImprovement} disabled={timeReportImprovementSaving}>Cancelar</button>
+                      <button type="button" className="save-action-button" onClick={saveTimeReportImprovement} disabled={timeReportImprovementSaving || !timeReportImprovementMemo.trim()}>Guardar</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })() : null}
           </div>
         ) : null}
         {timeReportMessage ? (

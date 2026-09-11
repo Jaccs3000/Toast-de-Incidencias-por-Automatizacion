@@ -232,9 +232,44 @@ export class SyncService {
     return defaultValue;
   }
 
-  async persistProjectGroup(projectGroup, detailedSeedIssue, startedAt, { persistIssues = true } = {}) {
+  async refreshProjectGroupsForIssues(seedIssues = [], { signal = null } = {}) {
+    if (!Array.isArray(seedIssues) || seedIssues.length === 0) return;
+    if (!this.graph || !this.jira || !this.persistence) return;
+    const issueCache = new Map(seedIssues.filter((issue) => issue?.key).map((issue) => [issue.key, issue]));
+    const batchLoader = new JiraBatchLoader({ jira: this.jira, signal, batchSize: 100, concurrency: 2 });
+    const startedAt = new Date().toISOString();
+    const refreshed = new Set();
+
+    for (const seedIssue of seedIssues) {
+      if (!seedIssue?.key || !this.graph.isAllowedSeed(seedIssue)) continue;
+      if (signal?.aborted) throw new DOMException('ProjectGroup refresh canceled.', 'AbortError');
+      const groups = await this.graph.buildProjectGroups(seedIssue, async (issueKey) => batchLoader.load(issueKey), {
+        signal,
+        issueCache,
+        metrics: { seedReuses: 0, issueLoads: 0, cacheHits: 0 },
+      });
+      for (const group of groups) {
+        if (!group.issues?.some((issue) => String(issue?.id ?? issue?.key) === String(seedIssue.id ?? seedIssue.key))) continue;
+        const signature = this.getProjectGroupSignature(group);
+        if (refreshed.has(signature)) continue;
+        group.id = `time-report:${group.id}`;
+        group.source = 'time-report';
+        group.estado_general = this.evaluateProjectGroupState(group);
+        const detailedSeedIssue = group.issues.find((issue) => String(issue?.id) === String(group.rootIssueId)) ?? seedIssue;
+        await this.persistProjectGroup(group, detailedSeedIssue, startedAt, { persistIssues: true, source: 'time-report' });
+        refreshed.add(signature);
+      }
+    }
+    await this.logs?.info('Contextual ProjectGroup refresh completed', {
+      issueCount: seedIssues.length,
+      projectGroupsCount: refreshed.size,
+    });
+  }
+
+  async persistProjectGroup(projectGroup, detailedSeedIssue, startedAt, { persistIssues = true, source = 'sync' } = {}) {
     await this.persistence.projectGroups.upsert({
       id: projectGroup.id,
+      source,
       rootIssueId: projectGroup.rootIssueId,
       rootIssueKey: projectGroup.rootIssueKey,
       estado_general: 'Creado',
@@ -263,6 +298,7 @@ export class SyncService {
 
     await this.persistence.projectGroups.upsert({
       id: projectGroup.id,
+      source,
       rootIssueId: projectGroup.rootIssueId,
       rootIssueKey: projectGroup.rootIssueKey,
       estado_general: estadoGeneral,
@@ -536,6 +572,7 @@ export class SyncService {
   }
 
   async run({ signal } = {}) {
+    await this.persistence?.alerts?.removeReadOlderThan?.(this.configuration?.app?.retentionDays);
     if (!this.persistence || !this.jira || !this.logs || !this.auth || !this.graph || !this.alerts) {
       throw new Error('SyncService dependencies are not fully configured.');
     }

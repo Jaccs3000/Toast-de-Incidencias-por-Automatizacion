@@ -10,7 +10,7 @@ const defaultAppConfig = {
   chromeProfileDirectory: 'Default',
   syncIntervalSeconds: 300,
   queryDelaySeconds: 1,
-  logRetentionDays: 7,
+  retentionDays: 2,
   startMinimized: true,
   enableToasts: true,
   autoSyncEnabled: true,
@@ -72,8 +72,8 @@ function validateAppConfig(config) {
     normalized.queryDelaySeconds = defaultAppConfig.queryDelaySeconds;
   }
 
-  if (!Number.isInteger(normalized.logRetentionDays) || normalized.logRetentionDays < 1) {
-    normalized.logRetentionDays = defaultAppConfig.logRetentionDays;
+  if (!Number.isInteger(normalized.retentionDays) || normalized.retentionDays < 1) {
+    normalized.retentionDays = defaultAppConfig.retentionDays;
   }
 
   normalized.startMinimized = Boolean(normalized.startMinimized);

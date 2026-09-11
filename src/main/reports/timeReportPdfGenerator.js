@@ -22,6 +22,18 @@ function displayDate(value) {
   }).format(date);
 }
 
+function reportDateLabel(value) {
+  if (!value) return '';
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return displayDate(value);
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sept', 'Oct', 'Nov', 'Dic'];
+  return `${match[3]}-${months[Number(match[2]) - 1]}-${match[1]}`;
+}
+
+function reportHeaderMeta(report) {
+  return `<span class="report-range-header"><span>Reporte de tiempo</span><span>${escapeHtml(reportDateLabel(report.fromDate))} &#8594; ${escapeHtml(reportDateLabel(report.toDate))}</span><span>${escapeHtml(compactPersonName(report.userDisplayName))}</span></span>`;
+}
+
 function reportIcon(name) {
   const paths = {
     calendar: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
@@ -105,7 +117,7 @@ function reportPage(issue, report, corrections) {
   const rows = correctionRows(corrections);
   return `<section class="page">
     <header class="report-header">
-      <div><span class="eyebrow">Jira Notifications</span><div class="issue-heading">${jiraIssueTypeIcon(issue)}<h1 class="issue-key">${escapeHtml(issue.issueKey)}</h1><span class="status ${statusClass(issue.status)}"><span class="status-marker" aria-hidden="true"></span>${escapeHtml(issue.status)}</span></div><p class="issue-summary">${escapeHtml(issue.summary)}</p></div>
+      <div><span class="eyebrow">${reportHeaderMeta(report)}</span><div class="issue-heading">${jiraIssueTypeIcon(issue)}<h1 class="issue-key">${escapeHtml(issue.issueKey)}</h1><span class="status ${statusClass(issue.status)}"><span class="status-marker" aria-hidden="true"></span>${escapeHtml(issue.status)}</span></div><p class="issue-summary">${escapeHtml(issue.summary)}</p></div>
     </header>
     <div class="report-details-grid">
       ${reportField('project', 'Tipo de incidencia', issue.issueType, '', 'field-type')}
@@ -125,7 +137,8 @@ function reportPage(issue, report, corrections) {
       ${reportField('stopwatch', 'Tiempo Restante', formatReportTimeWithPercentage(reportRemainingSeconds(issue), issue.plannedSeconds), '', 'field-remaining')}
     </div>
     <div class="corrections"><div class="section-title">Problemas presentados</div>${rows || '<p class="empty">No hay correcciones asociadas.</p>'}</div>
-    <footer>Rango consultado: ${escapeHtml(report.fromDate)} a ${escapeHtml(report.toDate)} - Usuario: ${escapeHtml(compactPersonName(report.userDisplayName))}</footer>
+    ${issue.improvement ? `<div class="improvement-panel"><div class="section-title">Acción de mejora</div><p>${escapeHtml(issue.improvement.memo)}</p></div>` : ''}
+    <footer></footer>
   </section>`;
 }
 
@@ -133,10 +146,10 @@ function correctionContinuationPage(issue, report, corrections, pageNumber) {
   const rows = correctionRows(corrections);
   return `<section class="page correction-continuation-page">
     <header class="report-header continuation-header">
-      <div><span class="eyebrow">Problemas presentados</span><div class="issue-heading">${jiraIssueTypeIcon(issue)}<h1 class="issue-key">${escapeHtml(issue.issueKey)}</h1><span class="status status-other">Correcciones ${escapeHtml(pageNumber)}</span></div><p class="issue-summary">${escapeHtml(issue.summary)}</p></div>
+      <div><span class="eyebrow">${reportHeaderMeta(report)}</span><div class="issue-heading">${jiraIssueTypeIcon(issue)}<h1 class="issue-key">${escapeHtml(issue.issueKey)}</h1><span class="status status-other">Correcciones ${escapeHtml(pageNumber)}</span></div><p class="issue-summary">${escapeHtml(issue.summary)}</p></div>
     </header>
     <div class="corrections corrections-only"><div class="section-title">Correcciones asociadas</div>${rows || '<p class="empty">No hay correcciones asociadas.</p>'}</div>
-    <footer>Rango consultado: ${escapeHtml(report.fromDate)} a ${escapeHtml(report.toDate)} - Usuario: ${escapeHtml(compactPersonName(report.userDisplayName))}</footer>
+    <footer></footer>
   </section>`;
 }
 
@@ -154,7 +167,7 @@ function groupedIssueRows(issues) {
 function groupedIssuesPage(issues, report, pageNumber) {
   return `<section class="page grouped-issues-page">
     <header class="report-header grouped-issues-header">
-      <div><span class="eyebrow">Informe de tiempos</span><div class="grouped-issues-heading"><h1>Tiempos adicionales en el Sprint</h1>${pageNumber > 1 ? `<span class="status status-other">Pagina ${escapeHtml(pageNumber)}</span>` : ''}</div></div>
+      <div><span class="eyebrow">${reportHeaderMeta(report)}</span><div class="grouped-issues-heading"><h1>Tiempos adicionales en el Sprint</h1>${pageNumber > 1 ? `<span class="status status-other">Pagina ${escapeHtml(pageNumber)}</span>` : ''}</div></div>
     </header>
     <div class="grouped-issues-grid-wrap">
       <table class="grouped-issues-grid">
@@ -162,7 +175,7 @@ function groupedIssuesPage(issues, report, pageNumber) {
         <tbody>${groupedIssueRows(issues)}</tbody>
       </table>
     </div>
-    <footer>Rango consultado: ${escapeHtml(report.fromDate)} a ${escapeHtml(report.toDate)} - Usuario: ${escapeHtml(compactPersonName(report.userDisplayName))}</footer>
+    <footer></footer>
   </section>`;
 }
 
@@ -200,7 +213,7 @@ export function buildTimeReportHtml(report) {
       .eyebrow { font-size:10px; letter-spacing:.16em; }
       .issue-heading { min-height:34px; align-items:center; gap:9px; }
       .issue-heading .issue-key { margin:0; font-size:16px; line-height:1.15; font-weight:650; }
-      .report-header p.issue-summary { margin-top:5px; max-width:950px; font-size:20px; line-height:1.23; font-weight:600; }
+      .report-header p.issue-summary { margin-top:5px; width:calc(100% - 300px); max-width:calc(100% - 300px); font-size:20px; line-height:1.23; font-weight:600; overflow-wrap:anywhere; }
       .jira-issue-icon { position:relative; display:grid; width:22px; height:22px; flex:0 0 22px; place-items:center; overflow:hidden; border:1px solid rgba(126,153,255,.48); border-radius:6px; background:rgba(45,77,160,.28); }
       .jira-issue-icon > .report-icon { width:14px; height:14px; stroke:#a9bbff; }
       .jira-issue-icon img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#1d2b59; }
@@ -221,6 +234,8 @@ export function buildTimeReportHtml(report) {
       .time-metric-icon .report-icon { width:18px; height:18px; }
       .time-metric strong { font-size:15px; line-height:1.2; font-weight:650; }
       .corrections { margin-top:0; padding:12px 15px; border-radius:13px; }
+      .improvement-panel { margin-top:10px; padding:12px 15px; border:1px solid rgba(243,193,91,.45); border-radius:13px; background:rgba(104,70,24,.2); }
+      .improvement-panel p { margin:0; color:#ffe2a1; font-size:11.5px; line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere; }
       .section-title { margin-bottom:7px; font-size:15px; line-height:1.2; }
       .correction-row { grid-template-columns:145px minmax(0, 1fr) 105px; gap:12px; min-height:37px; align-items:center; padding:6px 0; font-size:11.5px; line-height:1.3; }
       .correction-key { display:flex; min-width:0; align-items:center; gap:8px; }
@@ -239,6 +254,50 @@ export function buildTimeReportHtml(report) {
       .report-field .meta-label { min-height:27px; align-items:center; gap:7px; margin-bottom:5px; }
       .report-field strong { display:block; overflow-wrap:anywhere; font-size:13.5px; line-height:1.3; font-weight:550; }
       .report-field .general-state { color:var(--status-color); font-weight:650; }
+      .report-field.field-general .general-state { color:#f3c15b; }
+      .report-header { position:relative; }
+      .report-header > div { width:100%; }
+      .report-range-header { position:absolute; top:-2mm; right:0; display:flex; width:auto; flex-direction:column; align-items:flex-end; color:#e6a85e; font-size:12px; font-weight:600; letter-spacing:.04em; line-height:1.35; text-align:right; text-transform:none; }
+      .report-header .issue-key { color:#72c9ff; text-shadow:0 0 7px rgba(71,190,255,.52); }
+      .report-field.field-type .meta-label,
+      .report-field.field-responsible .meta-label,
+      .report-field.field-reporter .meta-label,
+      .report-field.field-tester .meta-label,
+      .report-field.field-general .meta-label,
+      .report-field.field-created .meta-label { color:#82c89d; }
+      .report-field.field-type strong,
+      .report-field.field-responsible strong,
+      .report-field.field-reporter strong,
+      .report-field.field-tester strong,
+      .report-field.field-general strong,
+      .report-field.field-created strong { color:#b8e4c6; }
+      .report-field.field-type .meta-label label,
+      .report-field.field-responsible .meta-label label,
+      .report-field.field-reporter .meta-label label,
+      .report-field.field-tester .meta-label label,
+      .report-field.field-general .meta-label label,
+      .report-field.field-created .meta-label label { color:#78bd93; }
+      .report-field.field-assigned .meta-label,
+      .report-field.field-started .meta-label,
+      .report-field.field-closed .meta-label { color:#ae95e8; }
+      .report-field.field-assigned strong,
+      .report-field.field-started strong,
+      .report-field.field-closed strong { color:#d4c5fa; }
+      .report-field.field-assigned .meta-label label,
+      .report-field.field-started .meta-label label,
+      .report-field.field-closed .meta-label label { color:#a38bd8; }
+      .report-field.field-planned .meta-label,
+      .report-field.field-sprint .meta-label,
+      .report-field.field-total .meta-label,
+      .report-field.field-remaining .meta-label { color:#7dc9e8; }
+      .report-field.field-planned strong,
+      .report-field.field-sprint strong,
+      .report-field.field-total strong,
+      .report-field.field-remaining strong { color:#b9e8fa; }
+      .report-field.field-planned .meta-label label,
+      .report-field.field-sprint .meta-label label,
+      .report-field.field-total .meta-label label,
+      .report-field.field-remaining .meta-label label { color:#72b9d8; }
       .correction-row { grid-template-columns:145px minmax(0, 1fr) 88px; }
       .correction-status { justify-self:end; width:88px; min-width:88px; max-width:none; justify-content:center; padding:3px 5px; text-align:center; white-space:nowrap; }
       .grouped-issues-header { margin-bottom:12px; }

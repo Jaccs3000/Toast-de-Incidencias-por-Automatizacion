@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS JIRA_ISSUES (
 
 CREATE TABLE IF NOT EXISTS JIRA_PROJECT_GROUPS (
   id TEXT PRIMARY KEY,
+  source TEXT NOT NULL DEFAULT 'sync',
   root_issue_id TEXT,
   root_issue_key TEXT,
   estado_general TEXT,
@@ -74,6 +75,7 @@ CREATE TABLE IF NOT EXISTS ALERT_RULES (
   toast_image TEXT,
   display_issue_type TEXT,
   display_field TEXT,
+  display_fields_json TEXT,
   condition_config TEXT,
   retry_syncs INTEGER NOT NULL DEFAULT 0,
   retry_minutes INTEGER NOT NULL DEFAULT 0,

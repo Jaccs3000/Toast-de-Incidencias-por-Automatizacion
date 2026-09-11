@@ -20,7 +20,7 @@ function formatTimestamp(date) {
 export class LogService {
   constructor({
     logDir = path.join(process.cwd(), 'logs'),
-    retentionDays = 7,
+    retentionDays = 2,
   } = {}) {
     this.logDir = logDir;
     this.retentionDays = retentionDays;

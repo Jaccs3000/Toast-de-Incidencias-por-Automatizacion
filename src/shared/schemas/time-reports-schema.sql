@@ -45,3 +45,13 @@ CREATE TABLE IF NOT EXISTS TIME_REPORT_CORRECTIONS (
   project_group_id TEXT,
   PRIMARY KEY (report_id, issue_key, correction_key, project_group_id)
 );
+
+CREATE TABLE IF NOT EXISTS TIME_REPORT_IMPROVEMENTS (
+  report_id TEXT NOT NULL,
+  issue_id TEXT NOT NULL,
+  issue_key TEXT NOT NULL,
+  memo TEXT NOT NULL,
+  created TEXT NOT NULL,
+  updated TEXT NOT NULL,
+  PRIMARY KEY (report_id, issue_id)
+);

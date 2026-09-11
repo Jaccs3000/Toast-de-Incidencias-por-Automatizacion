@@ -5,7 +5,7 @@
   "chromeProfileDirectory": "Default",
   "syncIntervalSeconds": 3600,
   "queryDelaySeconds": 1,
-  "logRetentionDays": 7,
+  "retentionDays": 5,
   "startMinimized": true,
   "enableToasts": true,
   "autoSyncEnabled": true,

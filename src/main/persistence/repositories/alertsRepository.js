@@ -39,7 +39,7 @@ export class AlertsRepository {
     const rows = await this.persistence.query(
       `
       SELECT id, jql_id, alert_type, name, sql, toast_text, toast_image, condition_config,
-             display_issue_type, display_field, retry_minutes, is_active, created, updated
+             display_issue_type, display_field, display_fields_json, retry_minutes, is_active, created, updated
       FROM ALERT_RULES
       ORDER BY jql_id ASC, created ASC, name ASC
       `,
@@ -57,6 +57,21 @@ export class AlertsRepository {
       'UPDATE ALERTS SET is_read = 1, updated = ? WHERE id = ?',
       [new Date().toISOString(), alertId],
     );
+  }
+
+  async removeReadOlderThan(retentionDays) {
+    const days = Number(retentionDays);
+    if (!Number.isInteger(days) || days < 1) return 0;
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const rows = await this.persistence.query(
+      'SELECT COUNT(*) AS total FROM ALERTS WHERE is_read = 1 AND COALESCE(updated, created) < ?',
+      [cutoff],
+    );
+    await this.persistence.exec(
+      'DELETE FROM ALERTS WHERE is_read = 1 AND COALESCE(updated, created) < ?',
+      [cutoff],
+    );
+    return Number(rows[0]?.total ?? 0);
   }
 
   async resumeUnreadRetries({ lockedAt, unlockedAt } = {}) {

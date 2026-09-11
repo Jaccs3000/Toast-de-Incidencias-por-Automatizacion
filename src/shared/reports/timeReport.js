@@ -2,7 +2,7 @@ function normalizeDate(value) {
   return String(value ?? '').trim();
 }
 
-export function calculateSecondFriday(fromDate) {
+export function calculateSecondFriday(fromDate, maxDate = '') {
   const value = normalizeDate(fromDate);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
 
@@ -16,7 +16,9 @@ export function calculateSecondFriday(fromDate) {
 
   const daysUntilFriday = (5 - date.getUTCDay() + 7) % 7;
   date.setUTCDate(date.getUTCDate() + daysUntilFriday + 7);
-  return date.toISOString().slice(0, 10);
+  const result = date.toISOString().slice(0, 10);
+  const maximum = normalizeDate(maxDate);
+  return /^\d{4}-\d{2}-\d{2}$/.test(maximum) && maximum < result ? maximum : result;
 }
 
 export function validateTimeReportRange(fromDate, toDate) {

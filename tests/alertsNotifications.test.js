@@ -4,7 +4,7 @@ import { AlertsService } from '../src/main/alerts/alertsService.js';
 import { Persistence } from '../src/main/persistence/persistence.js';
 import { AlertsRepository } from '../src/main/persistence/repositories/alertsRepository.js';
 
-test('defers the first toast until the retry countdown is due', async () => {
+test('sends the first toast immediately even when retry is configured', async () => {
   const sentToasts = [];
   const alerts = new AlertsService({
     toast: {
@@ -24,7 +24,7 @@ test('defers the first toast until the retry countdown is due', async () => {
     row: { issue_id: 'ABC-123' },
   }]);
 
-  assert.equal(sentToasts.length, 0);
+  assert.equal(sentToasts.length, 1);
 });
 
 test('sends a toast when the retry countdown is due', async () => {
@@ -51,6 +51,27 @@ test('sends a toast when the retry countdown is due', async () => {
   assert.equal(sentToasts.length, 1);
   assert.equal(sentToasts[0].message, 'Nueva incidencia asignada');
   assert.equal(sentToasts[0].alertId, 'alert-1');
+});
+
+test('keeps the persisted complete toast message when retrying', async () => {
+  const updates = [];
+  const sentToasts = [];
+  const alerts = new AlertsService({
+    persistence: {
+      async query(sql) {
+        if (sql.includes('FROM ALERT_RULES')) return [{ id: 'rule-1', toast_text: 'Base', retry_minutes: 1, display_fields_json: '[]' }];
+        if (sql.includes('FROM ALERTS')) return [{ id: 'alert-1', issue_id: 'ABC-123', next_retry_at: '2020-01-01T00:00:00.000Z', payload_json: JSON.stringify({ toast_message: 'Base\n• Resumen\n• Informador' }) }];
+        return [];
+      },
+      async exec(sql, parameters) { updates.push({ sql, parameters }); },
+    },
+    toast: { async show(toast) { sentToasts.push(toast); return { ok: true }; } },
+    logs: { info: async () => {} },
+  });
+  const result = await alerts.repeatUnreadAlerts([{ id: 'rule-1', toast_text: 'Base', retry_minutes: 1 }]);
+  await alerts.notifyCreated(result);
+  assert.equal(sentToasts[0].message, 'Base\n• Resumen\n• Informador');
+  assert.equal(updates.length, 1);
 });
 
 test('sends the initial toast when no retry countdown is configured', async () => {

@@ -11,16 +11,18 @@ export class ProjectGroupsRepository {
     await this.persistence.exec(
       `
       INSERT INTO JIRA_PROJECT_GROUPS (
-        id, root_issue_id, root_issue_key, estado_general, created, updated
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        id, source, root_issue_id, root_issue_key, estado_general, created, updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         root_issue_id = excluded.root_issue_id,
         root_issue_key = excluded.root_issue_key,
+        source = excluded.source,
         estado_general = excluded.estado_general,
         updated = excluded.updated
       `,
       [
         group.id,
+        group.source ?? 'sync',
         group.rootIssueId ?? null,
         group.rootIssueKey ?? null,
         group.estado_general ?? null,

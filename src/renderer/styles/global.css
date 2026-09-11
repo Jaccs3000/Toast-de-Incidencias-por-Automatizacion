@@ -1708,6 +1708,83 @@ body {
   border-bottom: 0;
 }
 
+.time-reports-improvement-action { border-color: #f2bf64; color: #ffda8c; }
+.time-reports-improvement-cell { width: 38px; padding-left: 4px !important; padding-right: 4px !important; }
+.time-reports-improvement-icon {
+  display: inline-grid !important;
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  max-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(243, 193, 91, .72);
+  border-radius: 7px;
+  background: rgba(104, 70, 24, .22);
+  background-image: none !important;
+  color: #ffd477;
+  cursor: pointer;
+  overflow: visible !important;
+}
+.time-reports-improvement-icon:hover { box-shadow: 0 0 12px rgba(243, 193, 91, .48); }
+.time-reports-improvement-icon .line-icon,
+.time-reports-improvement-icon .improvement-svg { display: block !important; width: 17px !important; height: 17px !important; color: #ffd477 !important; stroke: #ffd477 !important; opacity: 1 !important; visibility: visible !important; }
+.time-reports-improvement-icon .improvement-svg { display: none !important; }
+.time-reports-improvement-icon::before {
+  content: 'i';
+  display: block;
+  color: #ffd477;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+body .configuration-workspace .dashboard-time-reports .time-reports-improvement-icon {
+  display: grid !important;
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  align-self: center;
+  justify-self: center;
+  line-height: 0 !important;
+}
+.time-reports-improvement-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 8, 24, .72);
+}
+.time-reports-improvement-dialog-card {
+  display: grid;
+  width: min(560px, 100%);
+  gap: 14px;
+  padding: 24px;
+  border: 1px solid rgba(243, 193, 91, .58);
+  border-radius: 14px;
+  background: #0c1530;
+  box-shadow: 0 0 28px rgba(243, 193, 91, .18);
+}
+.time-reports-improvement-dialog-card h3 { margin: 0; color: #ffe2a1; }
+.time-reports-improvement-dialog-card label { display: grid; gap: 7px; color: #dce3ff; }
+.time-reports-improvement-dialog-card select,
+.time-reports-improvement-dialog-card textarea { width: 100%; min-width: 0; padding: 10px; border: 1px solid rgba(125, 145, 227, .35); border-radius: 8px; background: #070e22; color: #edf1ff; }
+.time-reports-improvement-dialog-card textarea { resize: vertical; }
+.time-reports-improvement-dialog-card small { color: #9ba8d2; text-align: right; }
+.time-reports-improvement-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
 .time-reports-table tbody tr[draggable="true"] {
   cursor: grab;
 }
@@ -1736,9 +1813,10 @@ body {
 
 .time-reports-corrections-option {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 16px;
+  grid-template-columns: 30px 16px 24px;
   align-items: center;
-  gap: 0;
+  gap: 7px;
+  justify-content: center;
   width: 100%;
   margin: 0;
   color: inherit;
@@ -1748,14 +1826,25 @@ body {
 }
 
 .time-reports-corrections-option > span {
-  grid-column: 2;
+  grid-column: 1;
+  grid-row: 1;
   text-align: center;
 }
 
-.time-reports-corrections-option input[type="checkbox"] {
+.time-reports-corrections-option .time-reports-improvement-icon {
   grid-column: 3;
+  grid-row: 1;
+}
+
+.time-reports-corrections-option input[type="checkbox"] {
+  grid-column: 2;
+  grid-row: 1;
   margin: 0;
-  justify-self: end;
+  justify-self: center;
+}
+
+.time-reports-corrections-option.is-empty input[type="checkbox"] {
+  visibility: hidden;
 }
 
 .time-report-issue-key {
@@ -2886,6 +2975,56 @@ h1 {
 .configuration-workspace .dashboard-jql .jql-save-actions {
   margin-top: 14px;
   justify-content: flex-start;
+}
+.alert-add-display-field { width: 32px; min-width: 32px; padding: 0; border: 1px solid rgba(125, 145, 227, .6); border-radius: 7px; background: rgba(55, 77, 150, .3); color: #c5d0ff; font-size: 18px; line-height: 1; cursor: pointer; }
+.alert-message-extra-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; grid-column: 1 / -1; }
+.configuration-workspace .dashboard-alert .alert-content-section { display: flex; flex-direction: column; }
+.configuration-workspace .dashboard-alert .alert-content-section > .alert-form-section-heading { order: 1; }
+.configuration-workspace .dashboard-alert .alert-content-section > .alert-content-grid { order: 2; }
+.configuration-workspace .dashboard-alert .alert-content-section > .alert-message-insert { order: 3; grid-template-columns: max-content minmax(150px, 1.15fr) minmax(120px, .8fr) 32px; }
+.configuration-workspace .dashboard-alert .alert-message-insert > span:first-child { grid-column: 1; grid-row: 1; align-self: center; white-space: nowrap; }
+.configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(1) { grid-column: 2; grid-row: 1; }
+.configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(2) { grid-column: 3; grid-row: 1; }
+.configuration-workspace .dashboard-alert .alert-message-insert > .alert-add-display-field { grid-column: 4; grid-row: 1; justify-self: center; width: 26px; min-width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 50%; font-size: 17px; }
+.configuration-workspace .dashboard-alert .alert-message-insert > .alert-message-extra-row { grid-column: 2 / 4; grid-row: auto; }
+.configuration-workspace .dashboard-alert .alert-content-section {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, .72fr);
+  column-gap: 16px;
+  align-items: start;
+}
+.configuration-workspace .dashboard-alert .alert-content-section > .alert-form-section-heading {
+  grid-column: 1 / -1;
+}
+.configuration-workspace .dashboard-alert .alert-content-section > .alert-content-grid {
+  display: contents;
+}
+.configuration-workspace .dashboard-alert .alert-message-builder {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+  padding-right: 16px;
+  border-right: 1px solid rgba(142, 162, 255, .2);
+}
+.configuration-workspace .dashboard-alert .alert-message-builder textarea {
+  min-height: 52px;
+  height: 52px;
+  max-height: 52px;
+  resize: none;
+}
+.configuration-workspace .dashboard-alert .alert-image-field {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  min-width: 0;
+  padding-left: 0;
+}
+.configuration-workspace .dashboard-alert > .alert-message-insert {
+  grid-column: 1;
+  grid-row: 3;
+  width: auto;
+  margin: 14px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid rgba(142, 162, 255, .2);
 }
 
 .configuration-workspace .dashboard-jql .settings-actions button {
@@ -4603,7 +4742,7 @@ h1 {
 
 .configuration-workspace .dashboard-grids .grid-general-fields {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 170px 142px;
+  grid-template-columns: minmax(220px, 1fr) 132px 124px;
   align-items: end;
   gap: 16px;
   padding-left: 45px;
@@ -4633,13 +4772,13 @@ h1 {
 }
 
 .configuration-workspace .dashboard-grids .grid-fields-section .grid-builder-row {
-  grid-template-columns: 40px minmax(220px, 1.1fr) minmax(220px, 1.25fr) 28px 42px;
+  grid-template-columns: 40px minmax(155px, .8fr) minmax(175px, 1fr) 28px 42px;
   gap: 10px;
   padding-left: 45px;
 }
 
 .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row {
-  grid-template-columns: 40px repeat(4, minmax(120px, 1fr)) 64px 42px;
+  grid-template-columns: 40px minmax(155px, .85fr) minmax(150px, .85fr) minmax(120px, .7fr) minmax(135px, .8fr) 64px 42px;
   gap: 9px;
   padding-left: 45px;
 }
@@ -4757,15 +4896,15 @@ h1 {
 
 @container (max-width: 820px) {
   .configuration-workspace .dashboard-grids .grid-general-fields {
-    grid-template-columns: minmax(220px, 1fr) 150px 132px;
+    grid-template-columns: minmax(190px, 1fr) 128px 120px;
   }
 
   .configuration-workspace .dashboard-grids .grid-fields-section .grid-builder-row {
-    grid-template-columns: 40px minmax(180px, 1.05fr) minmax(180px, 1.15fr) 24px 42px;
+    grid-template-columns: 40px minmax(145px, .9fr) minmax(155px, 1fr) 24px 42px;
   }
 
   .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row {
-    grid-template-columns: 40px repeat(2, minmax(140px, 1fr)) 64px 42px;
+    grid-template-columns: 40px minmax(135px, 1fr) minmax(135px, 1fr) 64px 42px;
   }
 
   .configuration-workspace .dashboard-grids .grid-conditions-section .grid-builder-row > .grid-row-number {
@@ -7420,6 +7559,78 @@ body .configuration-workspace .dashboard-time-reports .time-reports-table td:nth
   }
 }
 
+/* Final alert content layout: text and attributes on the left, image on the right. */
+body .configuration-workspace .dashboard-alert .alert-content-section {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, .72fr) !important;
+  column-gap: 16px !important;
+  align-items: start !important;
+}
+body .configuration-workspace .dashboard-alert .alert-content-section > .alert-form-section-heading {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+}
+body .configuration-workspace .dashboard-alert .alert-content-section > .alert-content-grid {
+  display: contents !important;
+}
+body .configuration-workspace .dashboard-alert .alert-message-builder {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  padding-right: 16px !important;
+  border-right: 1px solid rgba(142, 162, 255, .2) !important;
+}
+body .configuration-workspace .dashboard-alert .alert-message-builder textarea {
+  min-height: 52px !important;
+  height: 52px !important;
+  max-height: 52px !important;
+  resize: none !important;
+}
+body .configuration-workspace .dashboard-alert .alert-image-field {
+  grid-column: 2 !important;
+  grid-row: 2 / span 2 !important;
+  min-width: 0 !important;
+  padding-left: 0 !important;
+}
+body .configuration-workspace .dashboard-alert .alert-content-section > .alert-message-insert {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  width: auto !important;
+  margin: 14px 0 0 !important;
+  padding-top: 14px !important;
+  border-top: 1px solid rgba(142, 162, 255, .2) !important;
+}
+
+@media (max-width: 700px) {
+  body .configuration-workspace .dashboard-alert .alert-content-section {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body .configuration-workspace .dashboard-alert .alert-image-field,
+  body .configuration-workspace .dashboard-alert .alert-message-builder,
+  body .configuration-workspace .dashboard-alert .alert-content-section > .alert-message-insert {
+    grid-column: 1 !important;
+  }
+
+  body .configuration-workspace .dashboard-alert .alert-image-field {
+    grid-row: 4 !important;
+    margin-top: 14px !important;
+    padding-top: 14px !important;
+    border-top: 1px solid rgba(142, 162, 255, .2) !important;
+  }
+}
+
+/* Final geometry: the attribute panel spans below both top columns. */
+body .configuration-workspace .dashboard-alert .alert-content-section {
+  width: min(520px, calc(100% - 24px)) !important;
+  max-width: 520px !important;
+  grid-template-columns: minmax(0, 1fr) 120px !important;
+}
+body .configuration-workspace .dashboard-alert .alert-content-section > .alert-message-insert {
+  grid-column: 1 / -1 !important;
+  width: auto !important;
+}
+
 @media (max-width: 900px) {
   body .configuration-workspace {
     max-width: 100% !important;
@@ -7437,8 +7648,538 @@ body .configuration-workspace .dashboard-time-reports .time-reports-table td:nth
   }
 
   body .configuration-workspace .dashboard-time-reports .time-reports-table th,
-  body .configuration-workspace .dashboard-time-reports .time-reports-table td {
+body .configuration-workspace .dashboard-time-reports .time-reports-table td {
     padding-left: 4px !important;
     padding-right: 4px !important;
+  }
+}
+
+/* Keep this override after the shared responsive rules. */
+body .configuration-workspace .dashboard-alert .alert-content-section { display: grid !important; grid-template-columns: minmax(0, 1fr) minmax(260px, .72fr) !important; column-gap: 16px !important; align-items: start !important; }
+body .configuration-workspace .dashboard-alert .alert-content-section > .alert-form-section-heading { grid-column: 1 / -1 !important; grid-row: 1 !important; }
+body .configuration-workspace .dashboard-alert .alert-content-section > .alert-content-grid { display: contents !important; }
+body .configuration-workspace .dashboard-alert .alert-message-builder { grid-column: 1 !important; grid-row: 2 !important; min-width: 0 !important; padding-right: 16px !important; border-right: 1px solid rgba(142, 162, 255, .2) !important; }
+body .configuration-workspace .dashboard-alert .alert-message-builder textarea { min-height: 52px !important; height: 52px !important; max-height: 52px !important; resize: none !important; }
+body .configuration-workspace .dashboard-alert .alert-image-field { grid-column: 2 !important; grid-row: 2 / span 2 !important; min-width: 0 !important; padding-left: 0 !important; }
+body .configuration-workspace .dashboard-alert .alert-content-section > .alert-message-insert { grid-column: 1 !important; grid-row: 3 !important; width: auto !important; margin: 14px 0 0 !important; padding-top: 14px !important; border-top: 1px solid rgba(142, 162, 255, .2) !important; }
+body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-notification-title { grid-column: 1 / -1 !important; grid-row: 1 !important; color: #c9d2ff; font-size: .78rem; font-weight: 750; }
+body .configuration-workspace .dashboard-alert .alert-message-insert > span:not(.alert-notification-title):not(.alert-message-extra-row) { grid-column: 1 !important; grid-row: 2 !important; }
+body .configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(1),
+body .configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(2),
+body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-add-display-field { grid-row: 2 !important; }
+body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-message-extra-row { grid-row: auto !important; }
+body .configuration-workspace .dashboard-alert .alert-content-section { grid-template-columns: minmax(0, 1fr) 170px !important; }
+body .configuration-workspace .dashboard-alert .alert-content-section { width: min(550px, 100%) !important; max-width: 550px !important; }
+body .configuration-workspace .dashboard-alert .alert-content-section { grid-template-columns: minmax(0, 1fr) 120px !important; }
+body .configuration-workspace .dashboard-alert .alert-image-field { width: 120px !important; justify-self: end !important; }
+body .configuration-workspace .dashboard-alert .alert-image-dropzone { min-height: 68px !important; padding: 8px !important; }
+body .configuration-workspace .dashboard-alert .alert-image-dropzone .line-icon { width: 20px !important; height: 20px !important; margin-bottom: 3px !important; }
+body .configuration-workspace .dashboard-alert .alert-image-dropzone strong { font-size: .66rem !important; }
+body .configuration-workspace .dashboard-alert .alert-image-dropzone small { font-size: .62rem !important; }
+body .configuration-workspace .dashboard-alert .alert-image-dropzone em { font-size: .52rem !important; }
+
+/* Keep the compact image control inside the top row so it cannot overlap the attributes. */
+body .configuration-workspace .dashboard-alert .alert-image-field {
+  grid-row: 2 !important;
+  align-self: start !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-image-dropzone {
+  min-height: 52px !important;
+  height: 52px !important;
+  max-height: 52px !important;
+  padding: 5px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-image-dropzone .line-icon {
+  width: 18px !important;
+  height: 18px !important;
+  margin-bottom: 2px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-image-dropzone strong {
+  font-size: .6rem !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-image-dropzone small {
+  font-size: .56rem !important;
+}
+
+/* A selected image replaces the dropzone and stays inside the compact field. */
+body .configuration-workspace .dashboard-alert .alert-image-controls.has-preview {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-image-controls.has-preview .alert-image-dropzone {
+  display: none !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-image-controls.has-preview .alert-image-preview {
+  display: grid !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 52px !important;
+  height: 52px !important;
+  max-height: 52px !important;
+  box-sizing: border-box !important;
+  padding: 3px !important;
+  overflow: hidden !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-image-controls.has-preview .alert-image-preview img {
+  display: block !important;
+  width: 44px !important;
+  height: 44px !important;
+  max-width: 100% !important;
+  max-height: 44px !important;
+  object-fit: contain !important;
+}
+
+@media (max-width: 700px) {
+  body .configuration-workspace .dashboard-alert .alert-content-section { grid-template-columns: minmax(0, 1fr) !important; }
+  body .configuration-workspace .dashboard-alert .alert-image-field,
+  body .configuration-workspace .dashboard-alert .alert-message-builder,
+  body .configuration-workspace .dashboard-alert .alert-content-section > .alert-message-insert { grid-column: 1 !important; }
+  body .configuration-workspace .dashboard-alert .alert-image-field { grid-row: 4 !important; margin-top: 14px !important; padding-top: 14px !important; border-top: 1px solid rgba(142, 162, 255, .2) !important; }
+}
+
+/* The attribute panel belongs below both top columns, not only below the text column. */
+body .configuration-workspace .dashboard-alert .alert-content-section > .alert-message-insert {
+  grid-column: 1 / -1 !important;
+}
+
+/* Match the intended editor width: the lower attributes panel spans the same area as both top fields. */
+body .configuration-workspace .dashboard-alert .alert-content-section {
+  width: min(650px, calc(100% - 24px)) !important;
+  max-width: 650px !important;
+  grid-template-columns: minmax(0, 1fr) 140px !important;
+}
+
+/* Keep the general-information panel aligned with the Toast panel width. */
+body .configuration-workspace .dashboard-alert .alert-form-section:not(.alert-content-section) {
+  width: min(650px, calc(100% - 24px)) !important;
+  max-width: 650px !important;
+}
+
+/* Reduce the complete alert panel to the same width as its content panels. */
+body .configuration-workspace .dashboard-alert {
+  width: min(650px, calc(100% - 24px)) !important;
+  max-width: 650px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-image-field {
+  width: 140px !important;
+}
+
+/* Keep the notification selector rows aligned and prevent the label from squeezing both selects. */
+body .configuration-workspace .dashboard-alert .alert-message-insert {
+  grid-template-columns: max-content 32px minmax(170px, 1fr) minmax(130px, .8fr) !important;
+  grid-template-rows: 26px auto !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  align-items: center !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-notification-title {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  display: block !important;
+  margin-bottom: 2px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > span:not(.alert-notification-title):not(.alert-message-extra-row) {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  white-space: nowrap !important;
+  align-self: center !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(1) {
+  grid-column: 3 !important;
+  grid-row: 2 !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(2) {
+  grid-column: 4 !important;
+  grid-row: 2 !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-add-display-field {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  justify-self: start !important;
+  align-self: center !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 !important;
+  border-radius: 7px !important;
+  font-size: 15px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-message-extra-row {
+  grid-column: 3 / 5 !important;
+  grid-row: auto !important;
+  width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(1),
+body .configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(2) {
+  align-self: start !important;
+}
+
+@media (max-width: 700px) {
+  body .configuration-workspace .dashboard-alert .alert-content-section > .alert-message-insert {
+    grid-column: 1 !important;
+  }
+
+  body .configuration-workspace .dashboard-alert .alert-content-section {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  body .configuration-workspace .dashboard-alert .alert-image-field {
+    width: auto !important;
+  }
+
+  body .configuration-workspace .dashboard-alert .alert-message-insert {
+    grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) !important;
+    grid-template-rows: 26px auto !important;
+  }
+
+  body .configuration-workspace .dashboard-alert .alert-message-insert > span:not(.alert-notification-title):not(.alert-message-extra-row) {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+  }
+
+  body .configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(1) { grid-column: 1 !important; grid-row: 3 !important; }
+  body .configuration-workspace .dashboard-alert .alert-message-insert > select:nth-of-type(2) { grid-column: 3 !important; grid-row: 3 !important; }
+  body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-add-display-field { grid-column: 2 !important; grid-row: 3 !important; }
+  body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-message-extra-row { grid-column: 1 / -1 !important; }
+}
+
+/* Use explicit rows for the notification controls. */
+body .configuration-workspace .dashboard-alert .alert-message-insert {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-primary-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 26px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-primary-row > span {
+  white-space: nowrap !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-primary-row .alert-add-display-field {
+  flex: 0 0 22px !important;
+  width: 22px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  line-height: 20px !important;
+  align-self: center !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert .alert-add-display-field {
+  box-sizing: border-box !important;
+  flex: 0 0 22px !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  max-width: 22px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  padding: 0 !important;
+  line-height: 20px !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-select-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) 30px !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-select-row > select {
+  grid-column: auto !important;
+  grid-row: auto !important;
+  width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-message-extra-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) 30px !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-message-insert > .alert-message-extra-row > select {
+  width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-attribute-delete {
+  display: grid !important;
+  place-items: center !important;
+  align-self: center !important;
+  justify-self: center !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  aspect-ratio: 1 / 1 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 1px solid rgba(255, 105, 125, .9) !important;
+  border-radius: 6px !important;
+  color: #ff8798 !important;
+  background: rgba(126, 29, 52, .3) !important;
+  box-shadow: inset 0 0 8px rgba(255, 105, 125, .18), 0 0 10px rgba(255, 68, 100, .42) !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-attribute-delete .line-icon {
+  display: block !important;
+  width: 20px !important;
+  height: 20px !important;
+  max-width: 20px !important;
+  max-height: 20px !important;
+  flex: 0 0 20px !important;
+  color: #ff8798 !important;
+  stroke: #ff8798 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-attribute-delete:hover:not(:disabled),
+body .configuration-workspace .dashboard-alert .alert-attribute-delete:focus-visible {
+  border-color: #ffb0bc !important;
+  color: #ffb0bc !important;
+  background: rgba(164, 40, 65, .42) !important;
+  box-shadow: inset 0 0 10px rgba(255, 150, 165, .25), 0 0 16px rgba(255, 68, 100, .68) !important;
+}
+
+/* Fresh control for adding notification attributes; isolated from legacy button rules. */
+body .configuration-workspace .dashboard-alert .alert-add-attribute-button {
+  display: grid !important;
+  place-items: center !important;
+  box-sizing: border-box !important;
+  flex: 0 0 22px !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  max-width: 22px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  overflow: hidden !important;
+  cursor: pointer !important;
+  text-align: center !important;
+  border: 1px solid rgba(96, 204, 246, .9) !important;
+  border-radius: 6px !important;
+  background: linear-gradient(180deg, rgba(48, 151, 199, .32), rgba(22, 68, 107, .24)) !important;
+  color: #a9e8ff !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  box-shadow: inset 0 1px 0 rgba(214, 249, 255, .16), 0 0 8px rgba(35, 178, 255, .16) !important;
+}
+
+body .configuration-workspace .dashboard-alert .alert-add-attribute-button:hover,
+body .configuration-workspace .dashboard-alert .alert-add-attribute-button:focus-visible {
+  border-color: #b4f0ff !important;
+  background: linear-gradient(180deg, rgba(64, 177, 225, .5), rgba(28, 89, 137, .4)) !important;
+  color: #ffffff !important;
+  outline: none !important;
+}
+
+/* Responsive two-card alert editor: JQL stays full width, form panels sit side by side. */
+body .configuration-workspace .dashboard-jql.dashboard-alert {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+body .configuration-workspace .dashboard-jql .jql-row,
+body .configuration-workspace .dashboard-jql .jql-associated-alerts {
+  width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  grid-template-areas:
+    "general content"
+    "conditions conditions"
+    "footer footer" !important;
+  gap: 16px !important;
+  width: 100% !important;
+  align-items: start !important;
+  min-width: 0 !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form .alert-general-section,
+body .configuration-workspace .dashboard-jql .alert-builder-form .alert-content-section {
+  justify-self: stretch !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-general-section {
+  grid-area: general !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  border: 1px solid rgba(142, 162, 255, .28) !important;
+  border-radius: 10px !important;
+  background: linear-gradient(145deg, rgba(34, 54, 104, .58), rgba(14, 24, 54, .42)) !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-content-section {
+  grid-area: content !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  border: 1px solid rgba(142, 162, 255, .28) !important;
+  border-radius: 10px !important;
+  background: linear-gradient(145deg, rgba(68, 49, 116, .5), rgba(20, 25, 58, .4)) !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-conditions-section {
+  grid-area: conditions !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-form-actions {
+  grid-area: footer !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions {
+  grid-template-areas:
+    "general conditions"
+    "content ."
+    "footer footer" !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions .alert-content-section {
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions .alert-conditions-section {
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  border: 1px solid rgba(142, 162, 255, .28) !important;
+  border-radius: 10px !important;
+  background: linear-gradient(145deg, rgba(34, 54, 104, .48), rgba(14, 24, 54, .36)) !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions .condition-builder {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions .condition-row {
+  grid-template-columns: 30px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .9fr) 42px !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions .condition-row > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions .alert-add-condition {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+@media (max-width: 900px) {
+  body .configuration-workspace .dashboard-jql .alert-builder-form {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas:
+      "general"
+      "content"
+      "conditions"
+      "footer" !important;
+  }
+
+  body .configuration-workspace .dashboard-jql {
+    padding: 12px !important;
+  }
+
+  body .configuration-workspace .dashboard-jql > h2 {
+    font-size: 1.05rem !important;
+  }
+
+  body .configuration-workspace .dashboard-jql > .copy {
+    margin: 5px 0 10px !important;
+    font-size: .74rem !important;
+  }
+
+  body .configuration-workspace .dashboard-jql .jql-row {
+    gap: 6px !important;
+  }
+
+  body .configuration-workspace .dashboard-jql .jql-editor-shell textarea {
+    min-height: 48px !important;
+    padding: 8px !important;
+    font-size: .72rem !important;
+  }
+
+  body .configuration-workspace .dashboard-jql .jql-row-actions {
+    gap: 4px !important;
+  }
+
+  body .configuration-workspace .dashboard-jql .jql-row-actions > button,
+  body .configuration-workspace .dashboard-jql .jql-row-actions > .jql-alert-list-placeholder {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+  }
+
+  body .configuration-workspace .dashboard-jql .jql-row-actions .line-icon {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions {
+    grid-template-areas:
+      "general"
+      "conditions"
+      "content"
+      "footer" !important;
   }
 }
