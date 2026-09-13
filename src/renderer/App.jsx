@@ -1070,8 +1070,11 @@ export default function App() {
   const [timeReportDownloadUrl, setTimeReportDownloadUrl] = useState(null);
   const [timeReportEditingIssueId, setTimeReportEditingIssueId] = useState(null);
   const [timeReportSort, setTimeReportSort] = useState({ field: null, direction: 'asc' });
+  const [pendingTimeReportSort, setPendingTimeReportSort] = useState({ field: null, direction: 'asc' });
   const [timeReportDraggedIssueId, setTimeReportDraggedIssueId] = useState(null);
   const [timeReportDragOverIssueId, setTimeReportDragOverIssueId] = useState(null);
+  const [pendingTimeReportDraggedIssueId, setPendingTimeReportDraggedIssueId] = useState(null);
+  const [pendingTimeReportDragOverIssueId, setPendingTimeReportDragOverIssueId] = useState(null);
   const [timeReportImprovementIssueId, setTimeReportImprovementIssueId] = useState(null);
   const [timeReportImprovementMemo, setTimeReportImprovementMemo] = useState('');
   const [timeReportImprovementSaving, setTimeReportImprovementSaving] = useState(false);
@@ -2995,6 +2998,7 @@ export default function App() {
       });
       setTimeReportEditingIssueId(null);
       setTimeReportImprovementIssueId(null);
+      setPendingTimeReportSort({ field: null, direction: 'asc' });
       setTimeReport(result.report);
       setPendingTimeReportIssues(result.report.pendingIssues ?? []);
       setTimeReportMessage({ type: 'success', text: `${result.report.issues.length} incidencia(s) encontrada(s).` });
@@ -3164,30 +3168,31 @@ export default function App() {
   };
 
   const renderTimeReports = () => {
-    const issues = [...(timeReport?.issues ?? [])].sort((left, right) => {
-      if (!timeReportSort.field) return 0;
+    const sortIssues = (left, right, sortState = timeReportSort) => {
+      if (!sortState.field) return 0;
       const value = (issue, field) => {
         if (field === 'corrections') return Array.isArray(issue.corrections) ? issue.corrections.length : 0;
         if (field === 'grouped') return issue.grouped === true ? 1 : 0;
         if (['rangeSeconds', 'totalSeconds'].includes(field)) return Number(issue[field] ?? 0);
         return String(issue[field] ?? '');
       };
-      const leftValue = value(left, timeReportSort.field);
-      const rightValue = value(right, timeReportSort.field);
+      const leftValue = value(left, sortState.field);
+      const rightValue = value(right, sortState.field);
       const comparison = typeof leftValue === 'number' && typeof rightValue === 'number'
         ? leftValue - rightValue
         : String(leftValue).localeCompare(String(rightValue), 'es', { numeric: true, sensitivity: 'base' });
-      return comparison * (timeReportSort.direction === 'desc' ? -1 : 1);
-    });
+      return comparison * (sortState.direction === 'desc' ? -1 : 1);
+    };
+    const issues = [...(timeReport?.issues ?? [])].sort(sortIssues);
     const draggedIssue = issues.find((issue) => String(issue.issueId) === String(timeReportDraggedIssueId));
-    const sortButton = (field, label) => {
-      const isSorted = timeReportSort.field === field;
-      const direction = isSorted ? timeReportSort.direction : null;
+    const sortButton = (field, label, sortState = timeReportSort, setSortState = setTimeReportSort) => {
+      const isSorted = sortState.field === field;
+      const direction = isSorted ? sortState.direction : null;
       return (
         <button
           type="button"
           className={`time-reports-sort-button${isSorted ? ' is-sorted' : ''}`}
-          onClick={() => setTimeReportSort({ field, direction: direction === 'asc' ? 'desc' : 'asc' })}
+          onClick={() => setSortState({ field, direction: direction === 'asc' ? 'desc' : 'asc' })}
           title={`Ordenar por ${label}${direction === 'asc' ? ': ascendente' : direction === 'desc' ? ': descendente' : ''}`}
         >
           <span>{label === 'Correcciones y Mejoras' ? <><span>Correcciones</span><br /><span>y Mejoras</span></> : label.split(' ').map((word, index) => <Fragment key={`${word}-${index}`}>{index > 0 ? <br /> : null}{word}</Fragment>)}</span>
@@ -3196,7 +3201,7 @@ export default function App() {
       );
     };
     const selectedCount = issues.filter((issue) => issue.selected).length;
-    const pendingIssues = [...pendingTimeReportIssues];
+    const pendingIssues = [...pendingTimeReportIssues].sort((left, right) => sortIssues(left, right, pendingTimeReportSort));
     const pendingSelectedCount = pendingIssues.filter((issue) => issue.selected).length;
     const handlePendingSelectAll = (event) => {
       const selected = event.target.checked;
@@ -3207,10 +3212,11 @@ export default function App() {
         String(issue.issueId) === String(issueId) ? { ...issue, grouped } : issue
       )));
     };
+    const pendingSortButton = (field, label) => sortButton(field, label, pendingTimeReportSort, setPendingTimeReportSort);
     const movePendingIssue = (sourceId, targetId) => {
       if (!sourceId || !targetId || String(sourceId) === String(targetId)) return;
       setPendingTimeReportIssues((current) => {
-        const next = [...current];
+        const next = [...current].sort((left, right) => sortIssues(left, right, pendingTimeReportSort));
         const sourceIndex = next.findIndex((issue) => String(issue.issueId) === String(sourceId));
         const targetIndex = next.findIndex((issue) => String(issue.issueId) === String(targetId));
         if (sourceIndex < 0 || targetIndex < 0) return current;
@@ -3218,12 +3224,13 @@ export default function App() {
         next.splice(targetIndex, 0, moved);
         return next;
       });
+      setPendingTimeReportSort({ field: null, direction: 'asc' });
     };
     const moveTimeReportIssue = (sourceId, targetId) => {
       if (!sourceId || !targetId || String(sourceId) === String(targetId)) return;
       setTimeReport((current) => {
         if (!current) return current;
-        const nextIssues = [...current.issues];
+        const nextIssues = [...current.issues].sort(sortIssues);
         const sourceIndex = nextIssues.findIndex((issue) => String(issue.issueId) === String(sourceId));
         const targetIndex = nextIssues.findIndex((issue) => String(issue.issueId) === String(targetId));
         if (sourceIndex < 0 || targetIndex < 0) return current;
@@ -3518,18 +3525,65 @@ export default function App() {
               {pendingIssues.length > 0 ? (
                 <div className="time-reports-table-wrap">
                   <table className="time-reports-table">
-                    <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input type="checkbox" checked={pendingSelectedCount === pendingIssues.length} ref={(element) => { if (element) element.indeterminate = pendingSelectedCount > 0 && pendingSelectedCount < pendingIssues.length; }} onChange={handlePendingSelectAll} aria-label="Seleccionar todas las tareas pendientes" /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th></tr></thead>
-                    <tbody>{pendingIssues.map((issue, index) => (
-                      <tr key={issue.issueId} draggable={!timeReportLoading} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', issue.issueId); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); movePendingIssue(event.dataTransfer.getData('text/plain'), issue.issueId); }}>
+                    <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input type="checkbox" checked={pendingSelectedCount === pendingIssues.length} ref={(element) => { if (element) element.indeterminate = pendingSelectedCount > 0 && pendingSelectedCount < pendingIssues.length; }} onChange={handlePendingSelectAll} aria-label="Seleccionar todas las tareas pendientes" /></span></th><th>{pendingSortButton('issueKey', 'Incidencia')}</th><th>{pendingSortButton('issueType', 'Tipo Incidencia')}</th><th>{pendingSortButton('summary', 'Resumen')}</th><th>{pendingSortButton('status', 'Estado')}</th><th>{pendingSortButton('reporter', 'Informador')}</th></tr></thead>
+                    <tbody>{pendingIssues.map((issue) => (
+                      <Fragment key={issue.issueId}>
+                      {pendingTimeReportDragOverIssueId === issue.issueId && pendingTimeReportDraggedIssueId !== issue.issueId ? (
+                        <tr
+                          className="time-reports-drop-placeholder"
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = 'move';
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            movePendingIssue(pendingTimeReportDraggedIssueId, issue.issueId);
+                            setPendingTimeReportDraggedIssueId(null);
+                            setPendingTimeReportDragOverIssueId(null);
+                          }}
+                        >
+                          <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
+                          <td><input type="checkbox" checked={pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.selected === true} readOnly aria-hidden="true" /></td>
+                          <td className="time-report-issue-key">{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueKey}</td>
+                          <td className="time-report-issue-type">{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueType}</td>
+                          <td className="time-reports-summary-cell">{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.summary}</td>
+                          <td>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.status}</td>
+                          <td>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.reporter}</td>
+                        </tr>
+                      ) : null}
+                      <tr
+                        draggable={!timeReportLoading}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', issue.issueId);
+                          setPendingTimeReportDraggedIssueId(issue.issueId);
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          if (pendingTimeReportDraggedIssueId && pendingTimeReportDraggedIssueId !== issue.issueId) {
+                            setPendingTimeReportDragOverIssueId(issue.issueId);
+                          }
+                        }}
+                        onDragEnd={() => {
+                          setPendingTimeReportDraggedIssueId(null);
+                          setPendingTimeReportDragOverIssueId(null);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          movePendingIssue(pendingTimeReportDraggedIssueId || event.dataTransfer.getData('text/plain'), issue.issueId);
+                          setPendingTimeReportDraggedIssueId(null);
+                          setPendingTimeReportDragOverIssueId(null);
+                        }}
+                      >
                         <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
                         <td><input type="checkbox" checked={issue.selected === true} onChange={(event) => setPendingTimeReportIssues((current) => current.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item))} aria-label={`Incluir ${issue.issueKey}`} /></td>
                         <td className="time-report-issue-key">{issue.issueKey}</td>
                         <td className="time-report-issue-type">{issue.issueType || 'Sin tipo'}</td>
                         <td className="time-reports-summary-cell">{issue.summary}</td>
                         <td>{issue.status}</td>
-                        <td>{formatTimeReportDuration(0)}</td>
-                        <td>{formatTimeReportDuration(0)}</td>
+                        <td>{issue.reporter || 'Sin informador'}</td>
                       </tr>
+                      </Fragment>
                     ))}</tbody>
                   </table>
                 </div>

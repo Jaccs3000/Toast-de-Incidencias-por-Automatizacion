@@ -104,8 +104,15 @@ export class SyncService {
 
   evaluateProjectGroupState(projectGroup) {
     const rules = this.configuration?.projectGroupRules?.rules ?? [];
-    const defaultValue = this.configuration?.projectGroupRules?.defaultValue ?? 'Creado';
-    const issuesByType = this.getIssuesByType(projectGroup.issues ?? []);
+    const groupIssues = projectGroup.issues ?? [];
+    const rootIssue = groupIssues.find((issue) => (
+      String(issue?.id ?? '') === String(projectGroup.rootIssueId ?? '')
+      || String(issue?.key ?? '') === String(projectGroup.rootIssueKey ?? '')
+    )) ?? groupIssues[0];
+    const defaultValue = this.getIssueStatus(rootIssue)
+      || this.configuration?.projectGroupRules?.defaultValue
+      || 'No definido';
+    const issuesByType = this.getIssuesByType(groupIssues);
 
     const conditions = {
       exists: (condition) => this.issueExists(issuesByType, condition.issueType, (issue) => {

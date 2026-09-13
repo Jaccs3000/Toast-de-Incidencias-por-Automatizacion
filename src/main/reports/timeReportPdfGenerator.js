@@ -157,7 +157,7 @@ function groupedIssueRows(issues) {
   return issues.map((issue) => `
     <tr>
       <td>${escapeHtml(issue.issueKey)}</td>
-      <td>${escapeHtml(issue.issueType)}</td>
+      <td><span class="issue-type-badge ${issueTypeColorClass(issue.issueType)}">${escapeHtml(issue.issueType)}</span></td>
       <td>${escapeHtml(issue.summary)}</td>
       <td>${escapeHtml(formatReportDuration(issue.rangeSeconds))}</td>
       <td><span class="status ${statusClass(issue.status)}"><span class="status-marker" aria-hidden="true"></span>${escapeHtml(issue.status)}</span></td>
@@ -179,6 +179,23 @@ function groupedIssuesPage(issues, report, pageNumber) {
   </section>`;
 }
 
+function issueTypeColorClass(value) {
+  const text = String(value ?? '');
+  const hash = [...text].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return `issue-type-color-${(hash % 6) + 1}`;
+}
+
+function pendingIssueRows(issues) {
+  return issues.map((issue) => `
+    <tr>
+      <td>${escapeHtml(issue.issueKey)}</td>
+      <td><span class="issue-type-badge ${issueTypeColorClass(issue.issueType)}">${escapeHtml(issue.issueType)}</span></td>
+      <td>${escapeHtml(issue.summary)}</td>
+      <td>${escapeHtml(compactPersonName(issue.reporter))}</td>
+      <td><span class="status ${statusClass(issue.status)}"><span class="status-marker" aria-hidden="true"></span>${escapeHtml(issue.status)}</span></td>
+    </tr>`).join('');
+}
+
 function pendingIssuesPage(issues, report, pageNumber) {
   return `<section class="page grouped-issues-page">
     <header class="report-header grouped-issues-header">
@@ -186,8 +203,8 @@ function pendingIssuesPage(issues, report, pageNumber) {
     </header>
     <div class="grouped-issues-grid-wrap">
       <table class="grouped-issues-grid">
-        <thead><tr><th>Incidencia</th><th>Tipo Incidencia</th><th>Asunto</th><th>Tiempo Sprint</th><th>Estado</th></tr></thead>
-        <tbody>${groupedIssueRows(issues)}</tbody>
+        <thead><tr><th>Incidencia</th><th>Tipo Incidencia</th><th>Asunto</th><th>Informador</th><th>Estado</th></tr></thead>
+        <tbody>${pendingIssueRows(issues)}</tbody>
       </table>
     </div>
     <footer></footer>
@@ -226,7 +243,7 @@ export function buildTimeReportHtml(report) {
       @page { size: Letter landscape; margin: 0; } * { box-sizing: border-box; } body { margin: 0; background: #070d20; color: #edf1ff; font-family: "Segoe UI", Arial, sans-serif; } .page { position: relative; width: 279.4mm; min-height: 215.9mm; padding: 14mm 16mm 13mm; page-break-after: always; background: radial-gradient(circle at top right, rgba(83,105,218,.22), transparent 40%), #091128; } .page:last-child { page-break-after: auto; } .report-header { display: flex; justify-content: space-between; gap: 20px; align-items: start; padding-bottom: 12px; border-bottom: 1px solid rgba(145,160,255,.35); } .continuation-header { margin-bottom: 14px; } .eyebrow { color: #9eafff; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; } .issue-key { margin: 6px 0 4px; font-size: 18px; line-height: 1.15; font-weight: 600; } .report-header p.issue-summary { margin: 0; color: #edf1ff; font-size: 19px; line-height: 1.25; font-weight: 600; } .status { display:inline-flex; align-items:center; gap:6px; padding: 6px 12px; border:1px solid color-mix(in srgb, var(--status-color), transparent 45%); border-radius:99px; color:var(--status-color); background:color-mix(in srgb, var(--status-color), transparent 88%); font-size:11px; font-weight:600; } .status-progress, .correction-status.status-progress { --status-color:#71e6a4; } .status-waiting, .correction-status.status-waiting { --status-color:#f3c15b; } .status-closed, .correction-status.status-closed { --status-color:#ff7c87; } .status-production, .correction-status.status-production { --status-color:#5bdbe0; } .status-danger, .correction-status.status-danger { --status-color:#ff7c87; } .status-new, .correction-status.status-new { --status-color:#b9a5ff; } .status-other, .correction-status.status-other { --status-color:#9eafff; } .status-marker { display:inline-block; width:6px; height:6px; flex:0 0 6px; border-radius:50%; background:var(--status-color); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-color), transparent 82%); } label { display:block; color:#93a2d0; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; } strong { font-size:13px; font-weight:500; } .meta-label { display:flex; align-items:center; gap:6px; } .report-icon { width:14px; height:14px; flex:0 0 14px; fill:none; stroke:#9eafff; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; } .meta-grid, .dates { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; padding:14px 0; border-bottom:1px solid rgba(145,160,255,.2); } .dates { grid-template-columns:repeat(3,1fr); } .time-panel { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin:16px 0; padding:14px 16px; border:1px solid rgba(145,160,255,.35); border-radius:14px; background:rgba(20,31,67,.65); } .time-panel > div { min-width:72px; } .corrections { margin-top:12px; padding:14px 16px; border:1px solid rgba(145,160,255,.3); border-radius:14px; } .corrections-only { margin-top:0; } .section-title { margin-bottom:10px; color:#c9d3ff; font-size:15px; font-weight:700; } .correction-row { display:grid; grid-template-columns:92px 1fr 100px; gap:10px; align-items:center; padding:8px 0; border-top:1px solid rgba(145,160,255,.15); font-size:11px; } .correction-row > b { color:#d8def3; font-weight:600; } .correction-row > span:not(.correction-status) { color:#d8def3; } .correction-status { display:inline-flex; width:max-content; max-width:100%; align-items:center; gap:5px; padding:3px 7px; border:1px solid color-mix(in srgb, var(--status-color), transparent 45%); border-radius:99px; color:var(--status-color); background:color-mix(in srgb, var(--status-color), transparent 90%); font-size:10px; line-height:1.2; white-space:normal; } .empty { color:#99a6ce; font-size:11px; } footer { position:absolute; bottom:8mm; color:#7786b6; font-size:9px; }
       .issue-heading { display:flex; align-items:center; flex-wrap:wrap; gap:12px; } .issue-heading .issue-key { margin:6px 0 4px; } .report-header p.issue-summary { max-width: 920px; } .status { flex:0 0 auto; } .meta-label { display:flex; align-items:center; gap:8px; margin-bottom:5px; } .meta-label label { margin:0; line-height:1.1; } .meta-icon, .time-metric-icon, .project-icon { display:grid; place-items:center; border:1px solid rgba(126,153,255,.42); background:rgba(45,77,160,.28); } .meta-icon { width:24px; height:24px; border-radius:7px; } .report-icon { width:15px; height:15px; flex:0 0 15px; fill:none; stroke:#a9bbff; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; } .time-metric-label { display:flex; align-items:center; gap:8px; margin-bottom:7px; } .time-metric-label label { margin:0; line-height:1.1; } .time-metric-icon { width:26px; height:26px; border-color:rgba(104,171,255,.5); border-radius:8px; background:rgba(32,91,179,.25); } .time-metric-icon .report-icon { width:16px; height:16px; } .correction-row { grid-template-columns:124px 1fr 110px; } .correction-key { display:flex; min-width:0; align-items:center; gap:7px; } .correction-key b { overflow-wrap:anywhere; color:#d8def3; font-weight:600; } .project-icon { width:22px; height:22px; flex:0 0 22px; border-color:rgba(126,153,255,.42); border-radius:6px; background:rgba(45,77,160,.24); } .project-icon .report-icon { width:13px; height:13px; }
       /* Final visual hierarchy for the PDF. These overrides keep the source layout compact. */
-      .page { position:relative; display:flex; flex-direction:column; width:279.4mm; min-height:215.9mm; padding:12.5mm 15mm 10mm; }
+      .page { position:relative; display:flex; flex-direction:column; width:279.4mm; height:215.9mm; min-height:215.9mm; max-height:215.9mm; overflow:hidden; break-inside:avoid; page-break-inside:avoid; padding:12.5mm 15mm 10mm; }
       .report-header { flex:0 0 auto; padding-bottom:8px; }
       .continuation-header { margin-bottom:13px; }
       .eyebrow { font-size:10px; letter-spacing:.16em; }
@@ -331,6 +348,13 @@ export function buildTimeReportHtml(report) {
       .grouped-issues-grid th:nth-child(4), .grouped-issues-grid td:nth-child(4) { width:13%; text-align:center; white-space:nowrap; }
       .grouped-issues-grid th:nth-child(5), .grouped-issues-grid td:nth-child(5) { width:15%; text-align:center; white-space:nowrap; }
       .grouped-issues-grid tr:last-child td { border-bottom:0; }
+      .issue-type-badge { display:inline-block; max-width:100%; font-size:10.5px; line-height:1.2; font-weight:700; white-space:normal; }
+      .issue-type-color-1 { color:#66f3ff; text-shadow:0 0 5px rgba(102,243,255,.72); }
+      .issue-type-color-2 { color:#e3a7ff; text-shadow:0 0 5px rgba(227,167,255,.72); }
+      .issue-type-color-3 { color:#ffe36e; text-shadow:0 0 5px rgba(255,227,110,.72); }
+      .issue-type-color-4 { color:#72ffae; text-shadow:0 0 5px rgba(114,255,174,.72); }
+      .issue-type-color-5 { color:#ff91ad; text-shadow:0 0 5px rgba(255,145,173,.72); }
+      .issue-type-color-6 { color:#9ebdff; text-shadow:0 0 5px rgba(158,189,255,.72); }
     </style></head><body>${pages.join('')}</body></html>`;
 }
 

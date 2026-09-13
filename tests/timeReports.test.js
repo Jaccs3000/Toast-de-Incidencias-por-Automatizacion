@@ -509,6 +509,7 @@ test('renders selected pending issues at the end and omits the page when empty',
       issueKey: 'ABC-1',
       issueType: 'Tarea',
       summary: 'Pendiente',
+      reporter: 'María Elena Rodríguez Pérez',
       rangeSeconds: 0,
       status: 'En progreso',
     }],
@@ -516,7 +517,9 @@ test('renders selected pending issues at the end and omits the page when empty',
   const html = buildTimeReportHtml(report);
   assert.match(html, /Tareas Pendientes/);
   assert.match(html, /ABC-1/);
-  assert.match(html, /<th>Tiempo Sprint<\/th><th>Estado<\/th>/);
+  assert.match(html, /María Rodríguez/);
+  assert.doesNotMatch(html, /María Elena Rodríguez Pérez/);
+  assert.match(html, /<th>Informador<\/th><th>Estado<\/th>/);
   assert.doesNotMatch(buildTimeReportHtml({ ...report, pendingIssues: [] }), /Tareas Pendientes/);
 });
 

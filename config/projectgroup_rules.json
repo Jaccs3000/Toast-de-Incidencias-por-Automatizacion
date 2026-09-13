@@ -25,6 +25,15 @@
     {
       "priority": 3,
       "enabled": true,
+      "output": "Por iniciar pruebas",
+      "when": {
+        "issueType": "Testing",
+        "status": "Creado"
+      }
+    },
+    {
+      "priority": 4,
+      "enabled": true,
       "output": "Probando en TEST",
       "when": {
         "issueType": "Testing",
@@ -32,18 +41,19 @@
       }
     },
     {
-      "priority": 4,
+      "priority": 5,
       "enabled": true,
       "output": "En Espera",
       "when": {
         "any": [
           { "issueType": "Testing", "status": "En Espera" },
+          { "issueType": "Testing", "status": "Bloqueado" },
           { "issueType": "Testing Pre-Producción", "status": "En Espera" }
         ]
       }
     },
     {
-      "priority": 5,
+      "priority": 6,
       "enabled": true,
       "output": "Pedir Montaje PRE",
       "when": {
@@ -54,7 +64,7 @@
       }
     },
     {
-      "priority": 6,
+      "priority": 7,
       "enabled": true,
       "output": "Solicitado montaje Pre-Prod",
       "when": {
@@ -63,7 +73,7 @@
       }
     },
     {
-      "priority": 7,
+      "priority": 8,
       "enabled": true,
       "output": "Probando en PRE",
       "when": {
@@ -72,7 +82,7 @@
       }
     },
     {
-      "priority": 8,
+      "priority": 9,
       "enabled": true,
       "output": "Pedir Montaje PROD",
       "when": {
@@ -84,7 +94,7 @@
       }
     },
     {
-      "priority": 9,
+      "priority": 10,
       "enabled": true,
       "output": "Solicitado Montaje PROD",
       "when": {
@@ -95,7 +105,7 @@
       }
     },
     {
-      "priority": 10,
+      "priority": 11,
       "enabled": true,
       "output": "En Producción",
       "when": {

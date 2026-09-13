@@ -16,6 +16,7 @@
     "type = \"Test Tarea\" AND assignee = currentUser() AND status != Cerrado",
     "type = \"Solicitud Paso a Pre-Producción\" AND reporter = currentUser() AND status = Cerrado AND created >= -10d",
     "type = \"Documentar Criterios de Aceptación\" AND status != Cerrado AND assignee = currentUser()",
-    "status = \"En espera PRE-PROD\" and assignee = currentUser() AND status != Cerrado"
+    "status = \"En espera PRE-PROD\" and assignee = currentUser() AND status != Cerrado",
+    "created >= -30d AND type = Testing AND status != Cerrado ORDER BY created DESC"
   ]
 }
