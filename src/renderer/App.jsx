@@ -1062,6 +1062,7 @@ export default function App() {
   const [timeReportUsers, setTimeReportUsers] = useState([]);
   const [timeReportUser, setTimeReportUser] = useState(null);
   const [timeReport, setTimeReport] = useState(null);
+  const [pendingTimeReportIssues, setPendingTimeReportIssues] = useState([]);
   const [timeReportLoading, setTimeReportLoading] = useState(false);
   const [timeReportCanceling, setTimeReportCanceling] = useState(false);
   const [timeReportGenerating, setTimeReportGenerating] = useState(false);
@@ -2903,6 +2904,7 @@ export default function App() {
     setTimeReportUsers([]);
     setTimeReportUser(jiraSessionUser);
     setTimeReport(null);
+    setPendingTimeReportIssues([]);
     setTimeReportMessage(null);
     setTimeReportDownloadUrl(null);
     setTimeReportEditingIssueId(null);
@@ -2994,6 +2996,7 @@ export default function App() {
       setTimeReportEditingIssueId(null);
       setTimeReportImprovementIssueId(null);
       setTimeReport(result.report);
+      setPendingTimeReportIssues(result.report.pendingIssues ?? []);
       setTimeReportMessage({ type: 'success', text: `${result.report.issues.length} incidencia(s) encontrada(s).` });
     } catch (error) {
       setTimeReport(null);
@@ -3190,6 +3193,29 @@ export default function App() {
       );
     };
     const selectedCount = issues.filter((issue) => issue.selected).length;
+    const pendingIssues = [...pendingTimeReportIssues];
+    const pendingSelectedCount = pendingIssues.filter((issue) => issue.selected).length;
+    const handlePendingSelectAll = (event) => {
+      const selected = event.target.checked;
+      setPendingTimeReportIssues((current) => current.map((issue) => ({ ...issue, selected })));
+    };
+    const handlePendingGroupToggle = (issueId, grouped) => {
+      setPendingTimeReportIssues((current) => current.map((issue) => (
+        String(issue.issueId) === String(issueId) ? { ...issue, grouped } : issue
+      )));
+    };
+    const movePendingIssue = (sourceId, targetId) => {
+      if (!sourceId || !targetId || String(sourceId) === String(targetId)) return;
+      setPendingTimeReportIssues((current) => {
+        const next = [...current];
+        const sourceIndex = next.findIndex((issue) => String(issue.issueId) === String(sourceId));
+        const targetIndex = next.findIndex((issue) => String(issue.issueId) === String(targetId));
+        if (sourceIndex < 0 || targetIndex < 0) return current;
+        const [moved] = next.splice(sourceIndex, 1);
+        next.splice(targetIndex, 0, moved);
+        return next;
+      });
+    };
     const moveTimeReportIssue = (sourceId, targetId) => {
       if (!sourceId || !targetId || String(sourceId) === String(targetId)) return;
       setTimeReport((current) => {
@@ -3481,6 +3507,32 @@ export default function App() {
                 </table>
               </div>
             ) : <p className="time-reports-empty">No hay incidencias con tiempo reportado por este usuario en el rango.</p>}
+            <section className="time-reports-pending-section">
+              <div className="time-reports-pending-heading">
+                <h3>Tareas Pendientes</h3>
+                <span>{pendingSelectedCount} de {pendingIssues.length} seleccionadas</span>
+              </div>
+              {pendingIssues.length > 0 ? (
+                <div className="time-reports-table-wrap">
+                  <table className="time-reports-table">
+                    <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input type="checkbox" checked={pendingSelectedCount === pendingIssues.length} ref={(element) => { if (element) element.indeterminate = pendingSelectedCount > 0 && pendingSelectedCount < pendingIssues.length; }} onChange={handlePendingSelectAll} aria-label="Seleccionar todas las tareas pendientes" /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th><th>{sortButton('grouped', 'Agrupar')}</th></tr></thead>
+                    <tbody>{pendingIssues.map((issue, index) => (
+                      <tr key={issue.issueId} draggable={!timeReportLoading} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', issue.issueId); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); movePendingIssue(event.dataTransfer.getData('text/plain'), issue.issueId); }}>
+                        <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
+                        <td><input type="checkbox" checked={issue.selected === true} onChange={(event) => setPendingTimeReportIssues((current) => current.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item))} aria-label={`Incluir ${issue.issueKey}`} /></td>
+                        <td className="time-report-issue-key">{issue.issueKey}</td>
+                        <td className="time-report-issue-type">{issue.issueType || 'Sin tipo'}</td>
+                        <td className="time-reports-summary-cell">{issue.summary}</td>
+                        <td>{issue.status}</td>
+                        <td>{formatTimeReportDuration(0)}</td>
+                        <td>{formatTimeReportDuration(0)}</td>
+                        <td className="time-reports-group-cell"><input type="checkbox" checked={issue.grouped === true} onChange={(event) => handlePendingGroupToggle(issue.issueId, event.target.checked)} aria-label={`Agrupar ${issue.issueKey}`} /></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              ) : <p className="time-reports-empty">No hay tareas pendientes para este usuario.</p>}
+            </section>
             <div className="time-reports-actions">
               <button type="button" className="save-action-button" onClick={handleTimeReportPdf} disabled={timeReportLoading || timeReportGenerating || issues.length === 0 || selectedCount === 0}>
                 <LineIcon name="file" />

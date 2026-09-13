@@ -93,6 +93,18 @@ function issueTypeIconUrl(issue) {
   ).trim();
 }
 
+function normalizePendingIssue(issue) {
+  return {
+    ...normalizeIssue(issue),
+    rangeSeconds: 0,
+    totalSeconds: 0,
+    corrections: [],
+    includeCorrections: false,
+    selected: true,
+    grouped: false,
+  };
+}
+
 export class TimeReportsService {
   constructor({ persistence, jira, logs, syncService = null, pdfGenerator = null } = {}) {
     this.persistence = persistence;
@@ -382,6 +394,12 @@ export class TimeReportsService {
     const displayName = String(user?.displayName ?? '').trim();
     if (!accountId || !displayName) throw new Error('Selecciona un usuario Jira valido.');
 
+    const pendingJql = `assignee = "${accountId.replace(/"/g, '\\"')}" AND status NOT IN ("Cerrado", "Aceptado", "Terminado", "No aceptado") ORDER BY updated DESC`;
+    const pendingTask = this.jira.searchIssues(pendingJql, 1000, {
+      fields: ISSUE_FIELDS,
+      signal,
+    });
+
     let aggregates = new Map();
     let sourceWorklogCount = 0;
     let historicalWorklogCount = 0;
@@ -555,7 +573,12 @@ export class TimeReportsService {
         jiraMetrics: typeof this.jira.getMetrics === 'function' ? this.jira.getMetrics() : null,
       });
       throwIfAborted(signal);
-      return snapshot;
+      const pendingResult = await pendingTask;
+      throwIfAborted(signal);
+      return {
+        ...snapshot,
+        pendingIssues: (pendingResult.issues ?? []).map(normalizePendingIssue),
+      };
     } catch (error) {
       if (error?.name === 'AbortError') {
         await this.persistence.timeReports.clear();

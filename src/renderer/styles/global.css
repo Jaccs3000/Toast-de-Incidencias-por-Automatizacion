@@ -1663,6 +1663,29 @@ body {
   padding-top: 16px;
 }
 
+.time-reports-pending-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color, rgba(150, 170, 220, 0.24));
+}
+
+.time-reports-pending-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.time-reports-pending-heading h3 {
+  margin: 0;
+}
+
+.time-reports-pending-heading span {
+  color: var(--muted-text, #aab5d4);
+  font-size: 0.85rem;
+}
+
 .time-reports-table-wrap {
   overflow-x: auto;
   border: 1px solid rgba(142, 162, 255, .22);
