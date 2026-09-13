@@ -594,6 +594,9 @@ export class TimeReportsService {
     summaryOverrides = null,
     includeCorrectionsIssueIds = null,
     groupedIssueIds = [],
+    pendingIssues = [],
+    selectedPendingIssueIds = [],
+    pendingIssueOrderIds = [],
   }) {
     const snapshot = await this.persistence.timeReports.getSnapshot(reportId);
     if (!snapshot) throw new Error('El informe temporal no existe. Busca las incidencias nuevamente.');
@@ -647,6 +650,17 @@ export class TimeReportsService {
       }),
     };
     const pdfReport = await this.embedSelectedIssueTypeIcons(selectedForPdf);
+    const pendingSelection = new Set((Array.isArray(selectedPendingIssueIds) ? selectedPendingIssueIds : [])
+      .map((issueId) => String(issueId)));
+    const pendingForPdf = (Array.isArray(pendingIssues) ? pendingIssues : [])
+      .filter((issue) => pendingSelection.has(String(issue.issueId)))
+      .sort((left, right) => {
+        const leftIndex = pendingIssueOrderIds.findIndex((issueId) => String(issueId) === String(left.issueId));
+        const rightIndex = pendingIssueOrderIds.findIndex((issueId) => String(issueId) === String(right.issueId));
+        return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex)
+          - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
+      });
+    pdfReport.pendingIssues = pendingForPdf;
     const result = await this.pdfGenerator.generate(pdfReport);
     await this.persistence.timeReports.markGenerated(reportId, result.fileName);
     await this.logs?.info('Time report PDF generated', { reportId, fileName: result.fileName, pages: result.pages });

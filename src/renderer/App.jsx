@@ -3049,6 +3049,9 @@ export default function App() {
           summaryOverrides: Object.fromEntries(timeReport.issues.map((issue) => [String(issue.issueId), issue.summary ?? ''])),
           includeCorrectionsIssueIds,
           groupedIssueIds,
+          pendingIssues: pendingTimeReportIssues,
+          selectedPendingIssueIds: pendingTimeReportIssues.filter((issue) => issue.selected).map((issue) => issue.issueId),
+          pendingIssueOrderIds: pendingTimeReportIssues.map((issue) => issue.issueId),
         }),
       });
       setTimeReportDownloadUrl(result.downloadUrl);
@@ -3515,7 +3518,7 @@ export default function App() {
               {pendingIssues.length > 0 ? (
                 <div className="time-reports-table-wrap">
                   <table className="time-reports-table">
-                    <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input type="checkbox" checked={pendingSelectedCount === pendingIssues.length} ref={(element) => { if (element) element.indeterminate = pendingSelectedCount > 0 && pendingSelectedCount < pendingIssues.length; }} onChange={handlePendingSelectAll} aria-label="Seleccionar todas las tareas pendientes" /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th><th>{sortButton('grouped', 'Agrupar')}</th></tr></thead>
+                    <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input type="checkbox" checked={pendingSelectedCount === pendingIssues.length} ref={(element) => { if (element) element.indeterminate = pendingSelectedCount > 0 && pendingSelectedCount < pendingIssues.length; }} onChange={handlePendingSelectAll} aria-label="Seleccionar todas las tareas pendientes" /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th></tr></thead>
                     <tbody>{pendingIssues.map((issue, index) => (
                       <tr key={issue.issueId} draggable={!timeReportLoading} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', issue.issueId); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); movePendingIssue(event.dataTransfer.getData('text/plain'), issue.issueId); }}>
                         <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
@@ -3526,7 +3529,6 @@ export default function App() {
                         <td>{issue.status}</td>
                         <td>{formatTimeReportDuration(0)}</td>
                         <td>{formatTimeReportDuration(0)}</td>
-                        <td className="time-reports-group-cell"><input type="checkbox" checked={issue.grouped === true} onChange={(event) => handlePendingGroupToggle(issue.issueId, event.target.checked)} aria-label={`Agrupar ${issue.issueKey}`} /></td>
                       </tr>
                     ))}</tbody>
                   </table>

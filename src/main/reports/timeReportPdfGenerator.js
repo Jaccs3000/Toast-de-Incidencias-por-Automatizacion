@@ -179,6 +179,21 @@ function groupedIssuesPage(issues, report, pageNumber) {
   </section>`;
 }
 
+function pendingIssuesPage(issues, report, pageNumber) {
+  return `<section class="page grouped-issues-page">
+    <header class="report-header grouped-issues-header">
+      <div><span class="eyebrow">${reportHeaderMeta(report)}</span><div class="grouped-issues-heading"><h1>Tareas Pendientes</h1>${pageNumber > 1 ? `<span class="status status-other">Pagina ${escapeHtml(pageNumber)}</span>` : ''}</div></div>
+    </header>
+    <div class="grouped-issues-grid-wrap">
+      <table class="grouped-issues-grid">
+        <thead><tr><th>Incidencia</th><th>Tipo Incidencia</th><th>Asunto</th><th>Tiempo Sprint</th><th>Estado</th></tr></thead>
+        <tbody>${groupedIssueRows(issues)}</tbody>
+      </table>
+    </div>
+    <footer></footer>
+  </section>`;
+}
+
 function buildReportPages(report) {
   const pages = [];
   const selectedIssues = report.issues.filter((item) => item.selected);
@@ -197,6 +212,10 @@ function buildReportPages(report) {
   const groupedIssues = selectedIssues.filter((item) => item.grouped === true);
   for (let index = 0; index < groupedIssues.length; index += 12) {
     pages.push(groupedIssuesPage(groupedIssues.slice(index, index + 12), report, (index / 12) + 1));
+  }
+  const pendingIssues = report.pendingIssues ?? [];
+  for (let index = 0; index < pendingIssues.length; index += 12) {
+    pages.push(pendingIssuesPage(pendingIssues.slice(index, index + 12), report, (index / 12) + 1));
   }
   return pages;
 }

@@ -795,6 +795,9 @@ async function handleTimeReportPdf(req, res) {
     summaryOverrides: body?.summaryOverrides,
     includeCorrectionsIssueIds: body?.includeCorrectionsIssueIds,
     groupedIssueIds: body?.groupedIssueIds,
+    pendingIssues: body?.pendingIssues,
+    selectedPendingIssueIds: body?.selectedPendingIssueIds,
+    pendingIssueOrderIds: body?.pendingIssueOrderIds,
   });
   json(res, 200, {
     ok: true,

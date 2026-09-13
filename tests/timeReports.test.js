@@ -498,6 +498,28 @@ test('renders grouped issues in a paginated grid without individual correction p
   assert.doesNotMatch(html, /No debe mostrarse/);
 });
 
+test('renders selected pending issues at the end and omits the page when empty', () => {
+  const report = {
+    fromDate: '2026-09-01',
+    toDate: '2026-09-11',
+    userDisplayName: 'Usuario',
+    issues: [],
+    pendingIssues: [{
+      issueId: 'pending-1',
+      issueKey: 'ABC-1',
+      issueType: 'Tarea',
+      summary: 'Pendiente',
+      rangeSeconds: 0,
+      status: 'En progreso',
+    }],
+  };
+  const html = buildTimeReportHtml(report);
+  assert.match(html, /Tareas Pendientes/);
+  assert.match(html, /ABC-1/);
+  assert.match(html, /<th>Tiempo Sprint<\/th><th>Estado<\/th>/);
+  assert.doesNotMatch(buildTimeReportHtml({ ...report, pendingIssues: [] }), /Tareas Pendientes/);
+});
+
 test('embeds selected type icons before generating the PDF', async () => {
   let generatedReport;
   const snapshot = {
