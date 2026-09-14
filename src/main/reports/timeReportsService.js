@@ -5,13 +5,14 @@ import {
   enrichTempoWorklogs,
   extractFirstLifecycleDates,
   validateTimeReportRange,
+  worklogDate,
 } from '../../shared/reports/timeReport.js';
 import { TimeReportPdfGenerator } from './timeReportPdfGenerator.js';
 
 const ISSUE_FIELDS = [
   'project', 'issuetype', 'summary', 'status', 'reporter', 'assignee', 'created',
   'resolutiondate', 'timeoriginalestimate', 'timeestimate', 'timespent', 'timetracking',
-  'issuelinks',
+  'issuelinks', 'comment',
 ];
 const CORRECTION_TYPES = ['Correccion por Testing', 'Correccion por Testing (migrated)'];
 
@@ -49,6 +50,48 @@ function seconds(value) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function commentText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(commentText).filter(Boolean).join(' ');
+  if (typeof value === 'object') {
+    if (typeof value.text === 'string') return value.text;
+    return commentText(value.content ?? value.body ?? '');
+  }
+  return String(value);
+}
+
+function normalizeComments(fields) {
+  const comments = fields.comment?.comments ?? [];
+  return comments.map((comment) => ({
+    author: comment.author?.displayName ?? comment.author?.name ?? comment.author?.accountId ?? 'Usuario desconocido',
+    created: comment.created ?? null,
+    text: commentText(comment.body),
+  })).filter((comment) => comment.text || comment.author || comment.created);
+}
+
+function isIgnoredTimeDescription(value) {
+  return String(value ?? '').trim().toLocaleLowerCase() === 'time-tracking';
+}
+
+function normalizeWorklogDescriptions(worklogs, accountId, range) {
+  return (Array.isArray(worklogs) ? worklogs : []).map((worklog) => {
+    const authorId = worklog?.tempoAuthorId
+      ?? worklog?.workerId
+      ?? worklog?.author?.accountId
+      ?? worklog?.author?.accountID;
+    const date = worklogDate(worklog);
+    const descriptionText = commentText(worklog?.description);
+    const text = descriptionText.trim() ? descriptionText : commentText(worklog?.comment);
+    if (String(authorId ?? '') !== String(accountId ?? '')
+      || date < range.fromDate || date > range.toDate || !text.trim() || isIgnoredTimeDescription(text)) return null;
+    return {
+      created: worklog?.started ?? worklog?.startDate ?? null,
+      text,
+    };
+  }).filter(Boolean);
+}
+
 function normalizeIssue(issue) {
   const fields = issue?.fields ?? {};
   return {
@@ -64,6 +107,8 @@ function normalizeIssue(issue) {
     summary: fields.summary ?? '',
     status: fields.status?.name ?? '',
     reporter: fields.reporter?.displayName ?? fields.reporter?.name ?? '',
+    comments: normalizeComments(fields),
+    timeDescriptions: [],
     assignee: fields.assignee?.displayName ?? fields.assignee?.name ?? '',
     assigneeAccountId: fields.assignee?.accountId ?? fields.assignee?.accountID ?? '',
     created: fields.created ?? null,
@@ -239,17 +284,25 @@ export class TimeReportsService {
       worklog?.properties?.some((property) => property?.key === 'tempo')
     ));
     const tempoWorklog = worklogs.find((worklog) => worklog.issueId);
-    const tempoAudit = hasTempoWorklogs && tempoWorklog
-      ? await this.jira.listTempoWorklogAudit(tempoWorklog.issueId, { issueKey: issueReference, signal })
-      : [];
+    let tempoAudit = [];
+    if (hasTempoWorklogs && tempoWorklog) {
+      try {
+        tempoAudit = await this.jira.listTempoWorklogAudit(tempoWorklog.issueId, { issueKey: issueReference, signal });
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        if (error?.status !== 503) throw error;
+        await this.logs?.warn('Tempo worklog audit unavailable; continuing without audit enrichment', {
+          issueKey: issueReference,
+          status: error.status,
+          message: String(error.message ?? error).slice(0, 300),
+        });
+      }
+    }
     throwIfAborted(signal);
+    const enrichedWorklogs = enrichTempoWorklogs(worklogs, tempoAudit);
     return {
-      aggregate: aggregateUserWorklogs(
-        enrichTempoWorklogs(worklogs, tempoAudit),
-        accountId,
-        range.fromDate,
-        range.toDate,
-      ),
+      aggregate: aggregateUserWorklogs(enrichedWorklogs, accountId, range.fromDate, range.toDate),
+      timeDescriptions: normalizeWorklogDescriptions(enrichedWorklogs, accountId, range),
       worklogCount: worklogs.length,
     };
   }
@@ -273,6 +326,7 @@ export class TimeReportsService {
         results.set(issueReference, {
           rangeSeconds: rangeAggregate?.rangeSeconds ?? result.aggregate.rangeSeconds,
           totalSeconds: result.aggregate.totalSeconds,
+          timeDescriptions: result.timeDescriptions,
         });
       }
     }, signal);
@@ -405,57 +459,78 @@ export class TimeReportsService {
     let historicalWorklogCount = 0;
     const worklogStartedAt = Date.now();
     let rangeAggregates = new Map();
+    const tempoTimeDescriptions = new Map();
     let selectedIssueReferences = [];
     let historicalTask;
     let detailed;
 
+    let tempoSearchFailed = false;
     if (typeof this.jira.searchTempoWorklogs === 'function') {
-      const contextJql = `worklogDate >= "${range.fromDate}" AND worklogDate <= "${range.toDate}" ORDER BY updated DESC`;
-      const contextPage = await this.jira.searchIssues(contextJql, 1, {
-        fields: ['summary'],
-        paginate: false,
-        signal,
-      });
-      throwIfAborted(signal);
-      const contextIssueKey = contextPage.issues?.[0]?.key ?? null;
-
-      if (contextIssueKey) {
-        const tempoWorklogs = await this.jira.searchTempoWorklogs({
-          accountId,
-          fromDate: range.fromDate,
-          toDate: range.toDate,
-          issueKey: contextIssueKey,
+      try {
+        const contextJql = `worklogDate >= "${range.fromDate}" AND worklogDate <= "${range.toDate}" ORDER BY updated DESC`;
+        const contextPage = await this.jira.searchIssues(contextJql, 1, {
+          fields: ['summary'],
+          paginate: false,
           signal,
         });
         throwIfAborted(signal);
-        sourceWorklogCount = tempoWorklogs.length;
-        for (const worklog of tempoWorklogs) {
-          if (String(worklog?.workerId ?? '') !== accountId) continue;
-          const issueId = String(worklog?.originTaskId ?? '').trim();
-          if (!issueId) continue;
-          const current = rangeAggregates.get(issueId) ?? { rangeSeconds: 0 };
-          const aggregate = aggregateUserWorklogs(
-            [{ ...worklog, tempoAuthorId: worklog.workerId, startDate: worklog.started }],
-            accountId,
-            range.fromDate,
-            range.toDate,
-          );
-          current.rangeSeconds += aggregate.rangeSeconds;
-          if (current.rangeSeconds > 0) rangeAggregates.set(issueId, current);
-        }
-      }
+        const contextIssueKey = contextPage.issues?.[0]?.key ?? null;
 
-      selectedIssueReferences = [...rangeAggregates.keys()];
-      historicalTask = this.loadHistoricalAggregates(
-        selectedIssueReferences,
-        accountId,
-        range,
-        rangeAggregates,
-        signal,
-      ).finally(() => {
-        phaseTimings.worklogsMs = Date.now() - worklogStartedAt;
-      });
-    } else {
+        if (contextIssueKey) {
+          const tempoWorklogs = await this.jira.searchTempoWorklogs({
+            accountId,
+            fromDate: range.fromDate,
+            toDate: range.toDate,
+            issueKey: contextIssueKey,
+            signal,
+          });
+          throwIfAborted(signal);
+          sourceWorklogCount = tempoWorklogs.length;
+          for (const worklog of tempoWorklogs) {
+            if (String(worklog?.workerId ?? '') !== accountId) continue;
+            const issueId = String(worklog?.originTaskId ?? '').trim();
+            if (!issueId) continue;
+            const worklogDateValue = String(worklog?.started ?? '').slice(0, 10);
+            const descriptionText = commentText(worklog?.description ?? worklog?.comment);
+            if (descriptionText.trim() && !isIgnoredTimeDescription(descriptionText)
+              && worklogDateValue >= range.fromDate && worklogDateValue <= range.toDate) {
+              const descriptions = tempoTimeDescriptions.get(issueId) ?? [];
+              descriptions.push({ created: worklog.started ?? null, text: descriptionText });
+              tempoTimeDescriptions.set(issueId, descriptions);
+            }
+            const current = rangeAggregates.get(issueId) ?? { rangeSeconds: 0 };
+            const aggregate = aggregateUserWorklogs(
+              [{ ...worklog, tempoAuthorId: worklog.workerId, startDate: worklog.started }],
+              accountId,
+              range.fromDate,
+              range.toDate,
+            );
+            current.rangeSeconds += aggregate.rangeSeconds;
+            if (current.rangeSeconds > 0) rangeAggregates.set(issueId, current);
+          }
+        }
+
+        selectedIssueReferences = [...rangeAggregates.keys()];
+        historicalTask = this.loadHistoricalAggregates(
+          selectedIssueReferences,
+          accountId,
+          range,
+          rangeAggregates,
+          signal,
+        ).finally(() => {
+          phaseTimings.worklogsMs = Date.now() - worklogStartedAt;
+        });
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        tempoSearchFailed = true;
+        await this.logs?.warn('Tempo worklog search failed; falling back to Jira worklogs', {
+          status: error?.status ?? null,
+          message: String(error?.message ?? error).slice(0, 300),
+        });
+      }
+    }
+
+    if (typeof this.jira.searchTempoWorklogs !== 'function' || tempoSearchFailed) {
       const fallbackJql = `worklogDate >= "${range.fromDate}" AND worklogDate <= "${range.toDate}" ORDER BY updated DESC`;
       const candidate = await this.jira.searchIssues(fallbackJql, 100, { fields: ['summary'], signal });
       throwIfAborted(signal);
@@ -491,6 +566,10 @@ export class TimeReportsService {
         ...normalized,
         rangeSeconds: aggregate.rangeSeconds,
         totalSeconds: aggregate.totalSeconds,
+        timeDescriptions: [
+          ...(tempoTimeDescriptions.get(normalized.issueId) ?? []),
+          ...(aggregate.timeDescriptions ?? []),
+        ],
       }];
     }));
 
@@ -516,6 +595,13 @@ export class TimeReportsService {
       const aggregate = getIssueAggregate(aggregates, issue);
       issue.rangeSeconds = aggregate.rangeSeconds;
       issue.totalSeconds = aggregate.totalSeconds;
+      const descriptions = [
+        ...(tempoTimeDescriptions.get(issue.issueId) ?? []),
+        ...(aggregate.timeDescriptions ?? []),
+      ];
+      issue.timeDescriptions = descriptions.filter((description, index, values) => (
+        values.findIndex((candidate) => candidate.created === description.created && candidate.text === description.text) === index
+      ));
     }
 
     const [lifecycle, projectGroupDetails, correctionRows] = await Promise.all([

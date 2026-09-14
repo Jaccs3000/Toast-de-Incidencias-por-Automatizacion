@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
 import { requiresVisibleJiraLogin } from '../shared/auth/sessionRequirement.js';
 import { REPORTED_TIMES_FIELD } from '../shared/grids/reportedTimes.js';
@@ -105,6 +106,12 @@ function formatGridIssueDetailValue(field, value) {
 function hasGridIssueDetailValue(field, value) {
   const formatted = formatGridIssueDetailValue(field, value);
   return formatted !== '-' && formatted.trim() !== '';
+}
+
+function issueTypeColorClass(value) {
+  const text = String(value ?? 'Sin tipo');
+  const hash = [...text].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return `issue-type-color-${(hash % 6) + 1}`;
 }
 
 function isNegativeGridTimeRemaining(field, value) {
@@ -586,6 +593,8 @@ function LineIcon({ name }) {
     save: <><path d="M5 3h12l2 2v16H5z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /></>,
     file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
+    minimize: <path d="M5 12h14" />,
+    restore: <><path d="M8 8h10v10H8z" /><path d="M6 16H4V6h10v2" /></>,
     chevron: <path d="m7 9 5 5 5-5" />,
     arrowLeft: <><path d="m15 18-6-6 6-6" /><path d="M9 12h10" /></>,
     arrowRight: <><path d="m9 18 6-6-6-6" /><path d="M5 12h10" /></>,
@@ -1069,6 +1078,7 @@ export default function App() {
   const [timeReportMessage, setTimeReportMessage] = useState(null);
   const [timeReportDownloadUrl, setTimeReportDownloadUrl] = useState(null);
   const [timeReportEditingIssueId, setTimeReportEditingIssueId] = useState(null);
+  const [timeReportCommentsIssue, setTimeReportCommentsIssue] = useState(null);
   const [timeReportSort, setTimeReportSort] = useState({ field: null, direction: 'asc' });
   const [pendingTimeReportSort, setPendingTimeReportSort] = useState({ field: null, direction: 'asc' });
   const [timeReportDraggedIssueId, setTimeReportDraggedIssueId] = useState(null);
@@ -1155,6 +1165,7 @@ export default function App() {
   }, [headerAlertsOpen]);
   const [activeTab, setActiveTab] = useState('config');
   const [configSection, setConfigSection] = useState('status');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('configuration-sidebar-collapsed') === 'true');
   const [grids, setGrids] = useState([]);
   const [gridFormOpen, setGridFormOpen] = useState(false);
   const [expandedGridId, setExpandedGridId] = useState(null);
@@ -2942,7 +2953,7 @@ export default function App() {
       ? {
         ...current,
         issues: current.issues.map((issue) => String(issue.issueId) === String(issueId)
-          ? { ...issue, grouped }
+          ? { ...issue, grouped, selected: grouped ? true : issue.selected }
           : issue),
       }
       : current);
@@ -3172,6 +3183,7 @@ export default function App() {
       if (!sortState.field) return 0;
       const value = (issue, field) => {
         if (field === 'corrections') return Array.isArray(issue.corrections) ? issue.corrections.length : 0;
+        if (field === 'comments') return Array.isArray(issue.comments) ? issue.comments.length : 0;
         if (field === 'grouped') return issue.grouped === true ? 1 : 0;
         if (['rangeSeconds', 'totalSeconds'].includes(field)) return Number(issue[field] ?? 0);
         return String(issue[field] ?? '');
@@ -3201,6 +3213,53 @@ export default function App() {
       );
     };
     const selectedCount = issues.filter((issue) => issue.selected).length;
+    const renderComments = (issue) => {
+      const comments = issue?.comments ?? [];
+      const timeDescriptions = issue?.timeDescriptions ?? [];
+      if (comments.length === 0 && timeDescriptions.length === 0) return null;
+      const renderEntries = (entries) => entries.map((comment, index) => (
+        <span className="time-report-comment-preview" key={`${comment.created ?? 'comment'}-${index}`}>
+          <small>{formatBogotaDate(comment.created)}</small>
+          <span>{comment.text}</span>
+        </span>
+      ));
+      return (
+        <button
+          type="button"
+          className="time-report-comments-button"
+          aria-label={`Ver comentarios de ${issue.issueKey}`}
+          onDoubleClick={(event) => {
+            const anchor = event.currentTarget.getBoundingClientRect();
+            const viewportPadding = 12;
+            const cardWidth = Math.min(650, window.innerWidth - viewportPadding * 2);
+            const cardHeight = Math.min(500, window.innerHeight - viewportPadding * 2);
+            let left = anchor.left;
+            let top = anchor.bottom + 8;
+            if (left + cardWidth > window.innerWidth - viewportPadding) {
+              left = window.innerWidth - cardWidth - viewportPadding;
+            }
+            if (top + cardHeight > window.innerHeight - viewportPadding) {
+              top = anchor.top - cardHeight - 8;
+            }
+            setTimeReportCommentsIssue({
+              issue,
+              position: {
+                left: Math.max(viewportPadding, left),
+                top: Math.max(viewportPadding, top),
+              },
+            });
+          }}
+        >
+          <span aria-hidden="true">&#128172;</span>
+          <span className="time-report-comments-tooltip" role="tooltip">
+            {comments.length > 0 ? <strong className="time-report-comment-section-title">Comentarios</strong> : null}
+            {renderEntries(comments)}
+            {timeDescriptions.length > 0 ? <strong className="time-report-comment-section-title">Descripción de Tiempo</strong> : null}
+            {renderEntries(timeDescriptions)}
+          </span>
+        </button>
+      );
+    };
     const pendingIssues = [...pendingTimeReportIssues].sort((left, right) => sortIssues(left, right, pendingTimeReportSort));
     const pendingSelectedCount = pendingIssues.filter((issue) => issue.selected).length;
     const handlePendingSelectAll = (event) => {
@@ -3381,7 +3440,7 @@ export default function App() {
                     disabled={timeReportLoading || timeReportGenerating || issues.length === 0}
                     onChange={handleTimeReportSelectAll}
                     aria-label="Seleccionar todas las incidencias"
-                  /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th><th>{sortButton('corrections', 'Correcciones y Mejoras')}</th><th>{sortButton('grouped', 'Agrupar')}</th></tr></thead>
+                  /></span></th><th>{sortButton('issueKey', 'Incidencia')}</th><th>{sortButton('issueType', 'Tipo Incidencia')}</th><th>{sortButton('summary', 'Resumen')}</th><th>{sortButton('status', 'Estado')}</th><th>{sortButton('rangeSeconds', 'Tiempo Sprint')}</th><th>{sortButton('totalSeconds', 'Tiempo Total')}</th><th>{sortButton('corrections', 'Correcciones y Mejoras')}</th><th>{sortButton('grouped', 'Agrupar')}</th><th>{sortButton('comments', 'Comentarios')}</th></tr></thead>
                   <tbody>{issues.map((issue) => (
                     <Fragment key={issue.issueId}>
                     {timeReportDragOverIssueId === issue.issueId && timeReportDraggedIssueId !== issue.issueId ? (
@@ -3401,7 +3460,7 @@ export default function App() {
                         <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
                         <td><input type="checkbox" checked={draggedIssue?.selected === true} readOnly aria-hidden="true" /></td>
                         <td className="time-report-issue-key">{draggedIssue?.issueKey}</td>
-                        <td className="time-report-issue-type">{draggedIssue?.issueType}</td>
+                        <td className={`time-report-issue-type ${issueTypeColorClass(draggedIssue?.issueType)}`}>{draggedIssue?.issueType}</td>
                         <td className="time-reports-summary-cell">{draggedIssue?.summary}</td>
                         <td>{draggedIssue?.status}</td>
                         <td>{formatTimeReportDuration(draggedIssue?.rangeSeconds ?? 0)}</td>
@@ -3415,6 +3474,7 @@ export default function App() {
                           ) : '0'}
                         </td>
                         <td className="time-reports-group-cell"><input type="checkbox" checked={draggedIssue?.grouped === true} readOnly aria-hidden="true" /></td>
+                        <td>{renderComments(draggedIssue)}</td>
                       </tr>
                     ) : null}
                     <tr
@@ -3427,7 +3487,7 @@ export default function App() {
                         setTimeReportDraggedIssueId(null);
                         setTimeReportDragOverIssueId(null);
                       }}
-                      className={timeReportDraggedIssueId === issue.issueId ? 'is-dragging' : ''}
+                      className={`${timeReportDraggedIssueId === issue.issueId ? 'is-dragging ' : ''}${issue.grouped === true ? 'is-grouped' : ''}`}
                     >
                       <td className="time-reports-drag-cell">
                         <button
@@ -3452,7 +3512,7 @@ export default function App() {
                       </td>
                       <td><input type="checkbox" checked={issue.selected} disabled={timeReportLoading} onChange={(event) => setTimeReport((current) => ({ ...current, issues: current.issues.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item) }))} aria-label={`Incluir ${issue.issueKey}`} /></td>
                       <td className="time-report-issue-key">{issue.issueKey}</td>
-                      <td className="time-report-issue-type">{issue.issueType || 'Sin tipo'}</td>
+                      <td className={`time-report-issue-type ${issueTypeColorClass(issue.issueType)}`}>{issue.issueType || 'Sin tipo'}</td>
                       <td className="time-reports-summary-cell">
                         {timeReportEditingIssueId === issue.issueId ? (
                           <AutoResizeTextarea
@@ -3511,6 +3571,7 @@ export default function App() {
                         })()}
                       </td>
                       <td className="time-reports-group-cell"><input type="checkbox" checked={issue.grouped === true} disabled={timeReportLoading || timeReportGenerating} onChange={(event) => handleTimeReportGroupToggle(issue.issueId, event.target.checked)} aria-label={`Agrupar ${issue.issueKey} en el PDF`} /></td>
+                      <td>{renderComments(issue)}</td>
                     </tr>
                     </Fragment>
                   ))}</tbody>
@@ -3545,7 +3606,7 @@ export default function App() {
                           <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
                           <td><input type="checkbox" checked={pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.selected === true} readOnly aria-hidden="true" /></td>
                           <td className="time-report-issue-key">{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueKey}</td>
-                          <td className="time-report-issue-type">{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueType}</td>
+                          <td className={`time-report-issue-type ${issueTypeColorClass(pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueType)}`}>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueType}</td>
                           <td className="time-reports-summary-cell">{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.summary}</td>
                           <td>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.status}</td>
                           <td>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.reporter}</td>
@@ -3578,7 +3639,7 @@ export default function App() {
                         <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
                         <td><input type="checkbox" checked={issue.selected === true} onChange={(event) => setPendingTimeReportIssues((current) => current.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item))} aria-label={`Incluir ${issue.issueKey}`} /></td>
                         <td className="time-report-issue-key">{issue.issueKey}</td>
-                        <td className="time-report-issue-type">{issue.issueType || 'Sin tipo'}</td>
+                        <td className={`time-report-issue-type ${issueTypeColorClass(issue.issueType)}`}>{issue.issueType || 'Sin tipo'}</td>
                         <td className="time-reports-summary-cell">{issue.summary}</td>
                         <td>{issue.status}</td>
                         <td>{issue.reporter || 'Sin informador'}</td>
@@ -3601,6 +3662,35 @@ export default function App() {
                 + Acción de Mejora
               </button>
             </div>
+            {timeReportCommentsIssue ? createPortal((
+              <div className="time-reports-comments-dialog" role="dialog" aria-modal="true" aria-label={`Comentarios de ${timeReportCommentsIssue.issue.issueKey}`}>
+                <div
+                  className="time-reports-comments-dialog-card"
+                  style={{ left: `${timeReportCommentsIssue.position.left}px`, top: `${timeReportCommentsIssue.position.top}px` }}
+                >
+                  <h3>Comentarios de {timeReportCommentsIssue.issue.issueKey}</h3>
+                  <div className="time-reports-comments-copy-area">
+                    {(timeReportCommentsIssue.issue.comments ?? []).length > 0 ? <h4>Comentarios</h4> : null}
+                    {(timeReportCommentsIssue.issue.comments ?? []).map((comment, index) => (
+                      <div className="time-report-comment-detail" key={`${comment.created ?? 'comment'}-${index}`}>
+                        <small>{formatBogotaDate(comment.created)}</small>
+                        <p>{comment.text}</p>
+                      </div>
+                    ))}
+                    {(timeReportCommentsIssue.issue.timeDescriptions ?? []).length > 0 ? <h4>Descripción de Tiempo</h4> : null}
+                    {(timeReportCommentsIssue.issue.timeDescriptions ?? []).map((description, index) => (
+                      <div className="time-report-comment-detail" key={`${description.created ?? 'description'}-${index}`}>
+                        <small>{formatBogotaDate(description.created)}</small>
+                        <p>{description.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="time-reports-improvement-dialog-actions">
+                    <button type="button" className="secondary-button" onClick={() => setTimeReportCommentsIssue(null)}>Cerrar</button>
+                  </div>
+                </div>
+              </div>
+            ), document.body) : null}
             {timeReportImprovementIssueId ? (() => {
               const improvementIssue = issues.find((issue) => String(issue.issueId) === String(timeReportImprovementIssueId));
               if (!improvementIssue) return null;
@@ -4345,8 +4435,21 @@ export default function App() {
             </button>
           </div>
         </div>
-        {activeTab === 'config' ? <div className="configuration-layout">
+        {activeTab === 'config' ? <div className={`configuration-layout${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}>
         <aside className="configuration-sidebar" aria-label="Secciones de configuración">
+          <button
+            type="button"
+            className="configuration-sidebar-toggle"
+            onClick={() => setSidebarCollapsed((current) => {
+              const next = !current;
+              localStorage.setItem('configuration-sidebar-collapsed', String(next));
+              return next;
+            })}
+            aria-label={sidebarCollapsed ? 'Mostrar nombres del panel' : 'Ocultar nombres del panel'}
+            title={sidebarCollapsed ? 'Mostrar panel completo' : 'Mostrar solo iconos'}
+          >
+            <LineIcon name={sidebarCollapsed ? 'arrowRight' : 'arrowLeft'} />
+          </button>
           <div>
             <p className="configuration-sidebar-title">Configuración</p>
             <div className="configuration-menu">
@@ -4355,6 +4458,7 @@ export default function App() {
                   type="button"
                   key={section.id}
                   className={configSection === section.id ? 'configuration-menu-item is-active' : 'configuration-menu-item'}
+                  data-tooltip={section.label}
                   onClick={() => setConfigSection(section.id)}
                 >
                   <span className="configuration-menu-icon"><LineIcon name={section.icon} /></span>
