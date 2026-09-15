@@ -3069,10 +3069,11 @@ export default function App() {
           pendingIssueOrderIds: pendingTimeReportIssues.map((issue) => issue.issueId),
         }),
       });
-      setTimeReportDownloadUrl(result.downloadUrl);
+      const viewerUrl = `${result.downloadUrl}#zoom=page-width`;
+      setTimeReportDownloadUrl(viewerUrl);
       setTimeReportMessage({ type: 'success', text: `PDF creado con ${result.pages} pagina(s).` });
       if (pdfWindow && !pdfWindow.closed) {
-        pdfWindow.location.href = result.downloadUrl;
+        pdfWindow.location.href = viewerUrl;
       }
     } catch (error) {
       if (pdfWindow && !pdfWindow.closed) {
@@ -3430,7 +3431,7 @@ export default function App() {
           <div className="time-reports-results">
             {issues.length > 0 ? (
               <div className="time-reports-table-wrap">
-                <table className="time-reports-table">
+                <table className="time-reports-table time-reports-main-table">
                   <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input
                     type="checkbox"
                     checked={issues.length > 0 && selectedCount === issues.length}
@@ -3695,7 +3696,7 @@ export default function App() {
               const improvementIssue = issues.find((issue) => String(issue.issueId) === String(timeReportImprovementIssueId));
               if (!improvementIssue) return null;
               const memoLength = timeReportImprovementMemo.length;
-              return (
+              return createPortal(
                 <div className="time-reports-improvement-dialog" role="dialog" aria-modal="true" aria-label="Acción de mejora">
                   <div className="time-reports-improvement-dialog-card">
                     <h3>Acción de Mejora</h3>
@@ -3707,7 +3708,7 @@ export default function App() {
                           setTimeReportImprovementMemo(next.improvement?.memo ?? '');
                         }
                       }}>
-                        {issues.map((issue) => <option key={issue.issueId} value={issue.issueId}>{issue.issueKey}</option>)}
+                        {issues.map((issue) => <option key={issue.issueId} value={issue.issueId}>{issue.issueKey} - {issue.summary || 'Sin resumen'}</option>)}
                       </select>
                     </label>
                     <label>Texto de la acción
@@ -3721,7 +3722,7 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-              );
+              , document.body);
             })() : null}
           </div>
         ) : null}

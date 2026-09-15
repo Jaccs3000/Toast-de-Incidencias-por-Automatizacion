@@ -1649,6 +1649,53 @@ body {
   height: 16px;
 }
 
+.dashboard-time-reports .time-reports-actions > .save-action-button,
+.dashboard-time-reports .time-reports-actions > .secondary-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 150px;
+  min-width: 150px;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 15px;
+  border-radius: 9px;
+  font-size: .76rem;
+  font-weight: 750;
+  letter-spacing: .01em;
+  line-height: 1;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.dashboard-time-reports .time-reports-actions > .save-action-button {
+  border: 1px solid rgba(104, 255, 180, .9);
+  background: linear-gradient(180deg, rgba(31, 133, 91, .62), rgba(12, 69, 50, .72));
+  color: #e5fff1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 16px rgba(76, 255, 167, .3);
+}
+.dashboard-time-reports .time-reports-actions > .secondary-button {
+  border: 1px solid rgba(132, 157, 255, .8);
+  background: linear-gradient(180deg, rgba(54, 72, 157, .5), rgba(27, 40, 102, .5));
+  color: #e5eaff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 14px rgba(89, 119, 255, .24);
+}
+.dashboard-time-reports .time-reports-actions > .save-action-button:hover:not(:disabled),
+.dashboard-time-reports .time-reports-actions > .secondary-button:hover:not(:disabled),
+.dashboard-time-reports .time-reports-actions > .save-action-button:focus-visible,
+.dashboard-time-reports .time-reports-actions > .secondary-button:focus-visible {
+  transform: translateY(-1px);
+}
+.dashboard-time-reports .time-reports-actions > .save-action-button:hover:not(:disabled),
+.dashboard-time-reports .time-reports-actions > .save-action-button:focus-visible {
+  border-color: #8affc2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 0 22px rgba(76, 255, 167, .56);
+}
+.dashboard-time-reports .time-reports-actions > .secondary-button:hover:not(:disabled),
+.dashboard-time-reports .time-reports-actions > .secondary-button:focus-visible {
+  border-color: #aebcff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 0 20px rgba(89, 119, 255, .5);
+}
+
 /* Keep report actions compact while giving them the same visual weight as the rest of the app. */
 .dashboard-time-reports .time-reports-toolbar .primary-button,
 .dashboard-time-reports .time-reports-toolbar .time-reports-clear-button {
@@ -1866,6 +1913,42 @@ body .configuration-workspace .dashboard-time-reports .time-reports-improvement-
 .time-reports-improvement-dialog-card textarea { resize: vertical; }
 .time-reports-improvement-dialog-card small { color: #9ba8d2; text-align: right; }
 .time-reports-improvement-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.time-reports-improvement-dialog-actions .secondary-button,
+.time-reports-improvement-dialog-actions .save-action-button {
+  min-height: 38px;
+  padding: 9px 18px;
+  border-radius: 9px;
+  font-weight: 750;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.time-reports-improvement-dialog-actions .secondary-button {
+  border: 1px solid rgba(132, 157, 255, .8);
+  background: linear-gradient(180deg, rgba(54, 72, 157, .5), rgba(27, 40, 102, .5));
+  color: #e5eaff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 0 14px rgba(89, 119, 255, .24);
+}
+.time-reports-improvement-dialog-actions .save-action-button {
+  border: 1px solid rgba(104, 255, 180, .9);
+  background: linear-gradient(180deg, rgba(31, 133, 91, .62), rgba(12, 69, 50, .72));
+  color: #e5fff1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 16px rgba(76, 255, 167, .3);
+}
+.time-reports-improvement-dialog-actions .secondary-button:hover:not(:disabled),
+.time-reports-improvement-dialog-actions .save-action-button:hover:not(:disabled),
+.time-reports-improvement-dialog-actions .secondary-button:focus-visible,
+.time-reports-improvement-dialog-actions .save-action-button:focus-visible {
+  transform: translateY(-1px);
+}
+.time-reports-improvement-dialog-actions .secondary-button:hover:not(:disabled),
+.time-reports-improvement-dialog-actions .secondary-button:focus-visible {
+  border-color: #aebcff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 0 20px rgba(89, 119, 255, .5);
+}
+.time-reports-improvement-dialog-actions .save-action-button:hover:not(:disabled),
+.time-reports-improvement-dialog-actions .save-action-button:focus-visible {
+  border-color: #8affc2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 0 22px rgba(76, 255, 167, .56);
+}
 
 .time-report-comments-button {
   position: relative;
@@ -2089,6 +2172,7 @@ body .configuration-workspace .dashboard-time-reports .time-reports-improvement-
 .time-report-issue-type.issue-type-color-4 { color: #79e3a0; }
 .time-report-issue-type.issue-type-color-5 { color: #f28fa7; }
 .time-report-issue-type.issue-type-color-6 { color: #9bb8f2; }
+.time-reports-main-table .time-report-issue-type.issue-type-color-3 { color: #e5a2ff; }
 
 .time-reports-summary-cell {
   min-width: 220px;

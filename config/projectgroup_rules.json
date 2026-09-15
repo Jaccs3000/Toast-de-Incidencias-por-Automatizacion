@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "defaultValue": "No definido",
+  "defaultValue": "",
   "rules": [
     {
       "priority": 1,

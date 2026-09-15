@@ -429,7 +429,7 @@ test('renders the selected user total and correction-only continuation pages', (
   assert.match(html, /1h 30m/);
   assert.match(html, /Tiempo reportado en Sprint/);
   assert.match(html, /Tiempo Total/);
-  assert.match(html, /size: Letter landscape/);
+  assert.match(html, /size: 338\.67mm 190\.5mm/);
   assert.match(html, /report-icon-calendar/);
   assert.match(html, /report-icon-user/);
   assert.match(html, /report-icon-target/);

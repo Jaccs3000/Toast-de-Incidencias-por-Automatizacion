@@ -1,245 +1,4 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { chromium } from 'playwright-chromium';
-import { formatReportDuration } from '../../shared/reports/timeReport.js';
-import { compactPersonName } from '../../shared/people/compactPersonName.js';
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function displayDate(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat('es-CO', {
-    timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(date);
-}
-
-function reportDateLabel(value) {
-  if (!value) return '';
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return displayDate(value);
-  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sept', 'Oct', 'Nov', 'Dic'];
-  return `${match[3]}-${months[Number(match[2]) - 1]}-${match[1]}`;
-}
-
-function reportHeaderMeta(report) {
-  return `<span class="report-range-header"><span>Reporte de tiempo</span><span>${escapeHtml(reportDateLabel(report.fromDate))} &#8594; ${escapeHtml(reportDateLabel(report.toDate))}</span><span>${escapeHtml(compactPersonName(report.userDisplayName))}</span></span>`;
-}
-
-function reportIcon(name) {
-  const paths = {
-    calendar: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
-    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
-    target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
-    stopwatch: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6M12 2v3"/>',
-    project: '<path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3M4 12h16M10 12v2h4v-2"/>',
-  };
-  return `<svg class="report-icon report-icon-${name}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[name] ?? ''}</svg>`;
-}
-
-function statusClass(value) {
-  const normalized = String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLocaleLowerCase();
-  if (/en progreso|trabajando|en curso|desarrollo/.test(normalized)) return 'status-progress';
-  if (/espera|pendiente|pausad|bloquead/.test(normalized)) return 'status-waiting';
-  if (/cerrad|aceptad|resuelt|finalizad|completad|terminad/.test(normalized)) return 'status-closed';
-  if (/produccion|productiv/.test(normalized)) return 'status-production';
-  if (/cancelad|rechazad|fallid|error/.test(normalized)) return 'status-danger';
-  if (/cread|nuev|abiert|por hacer|solicitad/.test(normalized)) return 'status-new';
-  return 'status-other';
-}
-
-function safeImageUrl(value) {
-  const source = String(value ?? '').trim();
-  return /^(https?:\/\/|data:image\/)/i.test(source) ? source : '';
-}
-
-function jiraIssueIcon(issue) {
-  const imageUrl = safeImageUrl(issue?.projectIconUrl) || safeImageUrl(issue?.issueTypeIconUrl);
-  const image = imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="" />` : '';
-  return `<span class="jira-issue-icon">${reportIcon('project')}${image}</span>`;
-}
-
-function jiraIssueTypeIcon(issue) {
-  const imageUrl = safeImageUrl(
-    issue?.issueTypeIconUrl
-      ?? issue?.issuetypeIconUrl
-      ?? issue?.issuetype_icon_url
-      ?? issue?.fields?.issuetype?.iconUrl,
-  );
-  const image = imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="" />` : '';
-  return `<span class="jira-issue-icon jira-issue-type-icon">${reportIcon('target')}${image}</span>`;
-}
-
-function correctionRows(corrections) {
-  return corrections.map((correction) => `
-    <div class="correction-row">
-      <span class="correction-key">${jiraIssueIcon(correction)}<b>${escapeHtml(correction.correctionKey)}</b></span>
-      <span>${escapeHtml(correction.summary)}</span>
-      <span class="correction-status ${statusClass(correction.status)}"><span class="status-marker" aria-hidden="true"></span>${escapeHtml(correction.status)}</span>
-    </div>`).join('');
-}
-
-function reportField(icon, label, value, valueClass = '', fieldClass = '') {
-  const className = valueClass ? ` class="${valueClass}"` : '';
-  const fieldName = fieldClass ? ` ${fieldClass}` : '';
-  return `<div class="report-field${fieldName}"><div class="meta-label"><span class="meta-icon">${reportIcon(icon)}</span><label>${label}</label></div><strong${className}>${escapeHtml(value)}</strong></div>`;
-}
-
-function formatReportTimeWithPercentage(seconds, plannedSeconds) {
-  const duration = formatReportDuration(seconds);
-  const planned = Number(plannedSeconds);
-  const value = Number(seconds);
-  if (!Number.isFinite(planned) || planned <= 0 || !Number.isFinite(value)) return duration;
-  return `${duration} (${Math.round((value / planned) * 100)}%)`;
-}
-
-function reportRemainingSeconds(issue) {
-  const planned = Number(issue?.plannedSeconds);
-  const total = Number(issue?.totalSeconds);
-  if (!Number.isFinite(planned) || !Number.isFinite(total)) return issue?.remainingSeconds;
-  return Math.max(planned - total, 0);
-}
-
-function reportPage(issue, report, corrections) {
-  const rows = correctionRows(corrections);
-  return `<section class="page">
-    <header class="report-header">
-      <div><span class="eyebrow">${reportHeaderMeta(report)}</span><div class="issue-heading">${jiraIssueTypeIcon(issue)}<h1 class="issue-key">${escapeHtml(issue.issueKey)}</h1><span class="status ${statusClass(issue.status)}"><span class="status-marker" aria-hidden="true"></span>${escapeHtml(issue.status)}</span></div><p class="issue-summary">${escapeHtml(issue.summary)}</p></div>
-    </header>
-    <div class="report-details-grid">
-      ${reportField('project', 'Tipo de incidencia', issue.issueType, '', 'field-type')}
-      ${reportField('user', 'Responsable', compactPersonName(issue.assignee), '', 'field-responsible')}
-      ${reportField('user', 'Informador', compactPersonName(issue.reporter), '', 'field-reporter')}
-      ${reportField('calendar', 'Fecha de creacion', displayDate(issue.created), '', 'field-created')}
-      ${reportField('user', 'Tester', compactPersonName(issue.tester), '', 'field-tester')}
-      ${reportField('project', 'Estado General', issue.estadoGeneral, `general-state ${statusClass(issue.estadoGeneral)}`, 'field-general')}
-      <div class="report-divider report-divider-general" aria-hidden="true"></div>
-      ${reportField('calendar', 'F. Asignacion', displayDate(issue.assignedAt), '', 'field-assigned')}
-      ${reportField('calendar', 'F. Inicio', displayDate(issue.startedAt), '', 'field-started')}
-      ${reportField('calendar', 'F. Cierre', displayDate(issue.closedAt), '', 'field-closed')}
-      <div class="report-divider report-divider-dates" aria-hidden="true"></div>
-      ${reportField('target', 'Planeado', formatReportDuration(issue.plannedSeconds), '', 'field-planned')}
-      ${reportField('calendar', 'Tiempo reportado en Sprint', formatReportTimeWithPercentage(issue.rangeSeconds, issue.plannedSeconds), '', 'field-sprint')}
-      ${reportField('stopwatch', 'Tiempo Total', formatReportTimeWithPercentage(issue.totalSeconds, issue.plannedSeconds), '', 'field-total')}
-      ${reportField('stopwatch', 'Tiempo Restante', formatReportTimeWithPercentage(reportRemainingSeconds(issue), issue.plannedSeconds), '', 'field-remaining')}
-    </div>
-    <div class="corrections"><div class="section-title">Problemas presentados</div>${rows || '<p class="empty">No hay correcciones asociadas.</p>'}</div>
-    ${issue.improvement ? `<div class="improvement-panel"><div class="section-title">Acción de mejora</div><p>${escapeHtml(issue.improvement.memo)}</p></div>` : ''}
-    <footer></footer>
-  </section>`;
-}
-
-function correctionContinuationPage(issue, report, corrections, pageNumber) {
-  const rows = correctionRows(corrections);
-  return `<section class="page correction-continuation-page">
-    <header class="report-header continuation-header">
-      <div><span class="eyebrow">${reportHeaderMeta(report)}</span><div class="issue-heading">${jiraIssueTypeIcon(issue)}<h1 class="issue-key">${escapeHtml(issue.issueKey)}</h1><span class="status status-other">Correcciones ${escapeHtml(pageNumber)}</span></div><p class="issue-summary">${escapeHtml(issue.summary)}</p></div>
-    </header>
-    <div class="corrections corrections-only"><div class="section-title">Correcciones asociadas</div>${rows || '<p class="empty">No hay correcciones asociadas.</p>'}</div>
-    <footer></footer>
-  </section>`;
-}
-
-function groupedIssueRows(issues) {
-  return issues.map((issue) => `
-    <tr>
-      <td>${escapeHtml(issue.issueKey)}</td>
-      <td><span class="issue-type-badge ${issueTypeColorClass(issue.issueType)}">${escapeHtml(issue.issueType)}</span></td>
-      <td>${escapeHtml(issue.summary)}</td>
-      <td>${escapeHtml(formatReportDuration(issue.rangeSeconds))}</td>
-      <td><span class="status ${statusClass(issue.status)}"><span class="status-marker" aria-hidden="true"></span>${escapeHtml(issue.status)}</span></td>
-    </tr>`).join('');
-}
-
-function groupedIssuesPage(issues, report, pageNumber) {
-  return `<section class="page grouped-issues-page">
-    <header class="report-header grouped-issues-header">
-      <div><span class="eyebrow">${reportHeaderMeta(report)}</span><div class="grouped-issues-heading"><h1>Tiempos adicionales en el Sprint</h1>${pageNumber > 1 ? `<span class="status status-other">Pagina ${escapeHtml(pageNumber)}</span>` : ''}</div></div>
-    </header>
-    <div class="grouped-issues-grid-wrap">
-      <table class="grouped-issues-grid">
-        <thead><tr><th>Incidencia</th><th>Tipo Incidencia</th><th>Asunto</th><th>Tiempo Sprint</th><th>Estado</th></tr></thead>
-        <tbody>${groupedIssueRows(issues)}</tbody>
-      </table>
-    </div>
-    <footer></footer>
-  </section>`;
-}
-
-function issueTypeColorClass(value) {
-  const text = String(value ?? '');
-  const hash = [...text].reduce((total, character) => total + character.charCodeAt(0), 0);
-  return `issue-type-color-${(hash % 6) + 1}`;
-}
-
-function pendingIssueRows(issues) {
-  return issues.map((issue) => `
-    <tr>
-      <td>${escapeHtml(issue.issueKey)}</td>
-      <td><span class="issue-type-badge ${issueTypeColorClass(issue.issueType)}">${escapeHtml(issue.issueType)}</span></td>
-      <td>${escapeHtml(issue.summary)}</td>
-      <td>${escapeHtml(compactPersonName(issue.reporter))}</td>
-      <td><span class="status ${statusClass(issue.status)}"><span class="status-marker" aria-hidden="true"></span>${escapeHtml(issue.status)}</span></td>
-    </tr>`).join('');
-}
-
-function pendingIssuesPage(issues, report, pageNumber) {
-  return `<section class="page grouped-issues-page">
-    <header class="report-header grouped-issues-header">
-      <div><span class="eyebrow">${reportHeaderMeta(report)}</span><div class="grouped-issues-heading"><h1>Tareas Pendientes</h1>${pageNumber > 1 ? `<span class="status status-other">Pagina ${escapeHtml(pageNumber)}</span>` : ''}</div></div>
-    </header>
-    <div class="grouped-issues-grid-wrap">
-      <table class="grouped-issues-grid">
-        <thead><tr><th>Incidencia</th><th>Tipo Incidencia</th><th>Asunto</th><th>Informador</th><th>Estado</th></tr></thead>
-        <tbody>${pendingIssueRows(issues)}</tbody>
-      </table>
-    </div>
-    <footer></footer>
-  </section>`;
-}
-
-function buildReportPages(report) {
-  const pages = [];
-  const selectedIssues = report.issues.filter((item) => item.selected);
-  for (const issue of selectedIssues.filter((item) => item.grouped !== true)) {
-    const corrections = issue.corrections ?? [];
-    pages.push(reportPage(issue, report, corrections.slice(0, 6)));
-    for (let index = 6; index < corrections.length; index += 10) {
-      pages.push(correctionContinuationPage(
-        issue,
-        report,
-        corrections.slice(index, index + 10),
-        `${Math.floor((index - 6) / 10) + 2}`,
-      ));
-    }
-  }
-  const groupedIssues = selectedIssues.filter((item) => item.grouped === true);
-  for (let index = 0; index < groupedIssues.length; index += 12) {
-    pages.push(groupedIssuesPage(groupedIssues.slice(index, index + 12), report, (index / 12) + 1));
-  }
-  const pendingIssues = report.pendingIssues ?? [];
-  for (let index = 0; index < pendingIssues.length; index += 12) {
-    pages.push(pendingIssuesPage(pendingIssues.slice(index, index + 12), report, (index / 12) + 1));
-  }
-  return pages;
-}
-
-export function buildTimeReportHtml(report) {
-  const pages = buildReportPages(report);
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+<!doctype html><html><head><meta charset="utf-8"><style>
       @page { size: Letter landscape; margin: 0; } * { box-sizing: border-box; } body { margin: 0; background: #070d20; color: #edf1ff; font-family: "Segoe UI", Arial, sans-serif; } .page { position: relative; width: 279.4mm; min-height: 215.9mm; padding: 14mm 16mm 13mm; page-break-after: always; background: radial-gradient(circle at top right, rgba(83,105,218,.22), transparent 40%), #091128; } .page:last-child { page-break-after: auto; } .report-header { display: flex; justify-content: space-between; gap: 20px; align-items: start; padding-bottom: 12px; border-bottom: 1px solid rgba(145,160,255,.35); } .continuation-header { margin-bottom: 14px; } .eyebrow { color: #9eafff; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; } .issue-key { margin: 6px 0 4px; font-size: 18px; line-height: 1.15; font-weight: 600; } .report-header p.issue-summary { margin: 0; color: #edf1ff; font-size: 19px; line-height: 1.25; font-weight: 600; } .status { display:inline-flex; align-items:center; gap:6px; padding: 6px 12px; border:1px solid color-mix(in srgb, var(--status-color), transparent 45%); border-radius:99px; color:var(--status-color); background:color-mix(in srgb, var(--status-color), transparent 88%); font-size:11px; font-weight:600; } .status-progress, .correction-status.status-progress { --status-color:#71e6a4; } .status-waiting, .correction-status.status-waiting { --status-color:#f3c15b; } .status-closed, .correction-status.status-closed { --status-color:#ff7c87; } .status-production, .correction-status.status-production { --status-color:#5bdbe0; } .status-danger, .correction-status.status-danger { --status-color:#ff7c87; } .status-new, .correction-status.status-new { --status-color:#b9a5ff; } .status-other, .correction-status.status-other { --status-color:#9eafff; } .status-marker { display:inline-block; width:6px; height:6px; flex:0 0 6px; border-radius:50%; background:var(--status-color); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-color), transparent 82%); } label { display:block; color:#93a2d0; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; } strong { font-size:13px; font-weight:500; } .meta-label { display:flex; align-items:center; gap:6px; } .report-icon { width:14px; height:14px; flex:0 0 14px; fill:none; stroke:#9eafff; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; } .meta-grid, .dates { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; padding:14px 0; border-bottom:1px solid rgba(145,160,255,.2); } .dates { grid-template-columns:repeat(3,1fr); } .time-panel { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin:16px 0; padding:14px 16px; border:1px solid rgba(145,160,255,.35); border-radius:14px; background:rgba(20,31,67,.65); } .time-panel > div { min-width:72px; } .corrections { margin-top:12px; padding:14px 16px; border:1px solid rgba(145,160,255,.3); border-radius:14px; } .corrections-only { margin-top:0; } .section-title { margin-bottom:10px; color:#c9d3ff; font-size:15px; font-weight:700; } .correction-row { display:grid; grid-template-columns:92px 1fr 100px; gap:10px; align-items:center; padding:8px 0; border-top:1px solid rgba(145,160,255,.15); font-size:11px; } .correction-row > b { color:#d8def3; font-weight:600; } .correction-row > span:not(.correction-status) { color:#d8def3; } .correction-status { display:inline-flex; width:max-content; max-width:100%; align-items:center; gap:5px; padding:3px 7px; border:1px solid color-mix(in srgb, var(--status-color), transparent 45%); border-radius:99px; color:var(--status-color); background:color-mix(in srgb, var(--status-color), transparent 90%); font-size:10px; line-height:1.2; white-space:normal; } .empty { color:#99a6ce; font-size:11px; } footer { position:absolute; bottom:8mm; color:#7786b6; font-size:9px; }
       .issue-heading { display:flex; align-items:center; flex-wrap:wrap; gap:12px; } .issue-heading .issue-key { margin:6px 0 4px; } .report-header p.issue-summary { max-width: 920px; } .status { flex:0 0 auto; } .meta-label { display:flex; align-items:center; gap:8px; margin-bottom:5px; } .meta-label label { margin:0; line-height:1.1; } .meta-icon, .time-metric-icon, .project-icon { display:grid; place-items:center; border:1px solid rgba(126,153,255,.42); background:rgba(45,77,160,.28); } .meta-icon { width:24px; height:24px; border-radius:7px; } .report-icon { width:15px; height:15px; flex:0 0 15px; fill:none; stroke:#a9bbff; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; } .time-metric-label { display:flex; align-items:center; gap:8px; margin-bottom:7px; } .time-metric-label label { margin:0; line-height:1.1; } .time-metric-icon { width:26px; height:26px; border-color:rgba(104,171,255,.5); border-radius:8px; background:rgba(32,91,179,.25); } .time-metric-icon .report-icon { width:16px; height:16px; } .correction-row { grid-template-columns:124px 1fr 110px; } .correction-key { display:flex; min-width:0; align-items:center; gap:7px; } .correction-key b { overflow-wrap:anywhere; color:#d8def3; font-weight:600; } .project-icon { width:22px; height:22px; flex:0 0 22px; border-color:rgba(126,153,255,.42); border-radius:6px; background:rgba(45,77,160,.24); } .project-icon .report-icon { width:13px; height:13px; }
       /* Final visual hierarchy for the PDF. These overrides keep the source layout compact. */
@@ -343,7 +102,7 @@ export function buildTimeReportHtml(report) {
       .grouped-issues-heading h1 { margin:0; font-size:26px; line-height:1.15; font-weight:650; }
       .grouped-issues-header > div:first-child { padding-right:0; }
       .grouped-issues-header .grouped-issues-heading h1 { max-width:100%; }
-      .grouped-issues-grid-wrap { margin-top:18px; overflow:hidden; border:1px solid rgba(145,160,255,.3); border-radius:13px; }
+      .grouped-issues-grid-wrap { overflow:hidden; border:1px solid rgba(145,160,255,.3); border-radius:13px; }
       .grouped-issues-grid { width:100%; border-collapse:collapse; color:#f4f6ff; font-size:16.6px; }
       .grouped-issues-grid th, .grouped-issues-grid td { padding:10px 12px; border-bottom:1px solid rgba(145,160,255,.16); text-align:left; vertical-align:middle; }
       .grouped-issues-grid th { color:#a9b6e2; font-size:13px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
@@ -373,56 +132,117 @@ export function buildTimeReportHtml(report) {
       .status-closed, .correction-status.status-closed { --status-color:#ff8b99; }
       @page { size: 338.67mm 190.5mm; margin: 0; }
       .page { width:338.67mm !important; height:190.5mm !important; min-height:190.5mm !important; max-height:190.5mm !important; }
-    </style></head><body>${pages.join('')}</body></html>`;
-}
-
-const PDF_BROWSER_OPTIONS = [
-  { engine: 'Google Chrome', options: { channel: 'chrome', headless: true } },
-  { engine: 'Microsoft Edge', options: { channel: 'msedge', headless: true } },
-  { engine: 'Chromium integrado', options: { headless: true } },
-];
-
-export async function launchPdfBrowser(launch = chromium.launch.bind(chromium)) {
-  const failures = [];
-  for (const attempt of PDF_BROWSER_OPTIONS) {
-    try {
-      return {
-        browser: await launch(attempt.options),
-        engine: attempt.engine,
-      };
-    } catch (error) {
-      failures.push({ engine: attempt.engine, error });
-    }
-  }
-
-  const error = new Error(
-    'No se pudo iniciar el motor para crear el PDF. Verifica que Google Chrome o Microsoft Edge esten disponibles y que Windows permita ejecutarlos.',
-  );
-  error.cause = failures.at(-1)?.error;
-  error.attempts = failures.map(({ engine, error: failure }) => ({ engine, message: failure.message }));
-  throw error;
-}
-
-export class TimeReportPdfGenerator {
-  constructor({ exportsDir = path.join(process.cwd(), 'exports') } = {}) {
-    this.exportsDir = exportsDir;
-  }
-
-  async generate(report) {
-    await fs.mkdir(this.exportsDir, { recursive: true });
-    const safeName = String(report.userDisplayName ?? 'usuario').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'usuario';
-    const fileName = `informe-tiempos-${safeName}-${report.fromDate}-${report.toDate}.pdf`;
-    const filePath = path.join(this.exportsDir, fileName);
-    const pages = buildReportPages(report);
-    const html = buildTimeReportHtml(report);
-    const { browser } = await launchPdfBrowser();
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'load' });
-      await page.pdf({ path: filePath, width: '338.67mm', height: '190.5mm', printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
-    } finally {
-      await browser.close();
-    }
-    return { fileName, filePath, pages: pages.length };
-  }
-}
+    </style></head><body><section class="page grouped-issues-page">
+    <header class="report-header grouped-issues-header">
+      <div><span class="eyebrow"><span class="report-range-header"><span>Reporte de tiempo</span><span>08-Sept-2026 &#8594; 15-Sept-2026</span><span>Jesus Clavijo</span></span></span><div class="grouped-issues-heading"><h1>Tareas Pendientes</h1></div></div>
+    </header>
+    <div class="grouped-issues-grid-wrap">
+      <table class="grouped-issues-grid">
+        <thead><tr><th>Incidencia</th><th>Tipo Incidencia</th><th>Asunto</th><th>Informador</th><th>Estado</th></tr></thead>
+        <tbody>
+    <tr>
+      <td>PEN-1</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 1</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-2</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 2</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-3</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 3</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-4</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 4</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-5</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 5</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-6</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 6</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-7</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 7</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-8</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 8</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-9</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 9</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-10</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 10</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-11</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 11</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr>
+    <tr>
+      <td>PEN-12</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 12</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr></tbody>
+      </table>
+    </div>
+    <footer></footer>
+  </section><section class="page grouped-issues-page">
+    <header class="report-header grouped-issues-header">
+      <div><span class="eyebrow"><span class="report-range-header"><span>Reporte de tiempo</span><span>08-Sept-2026 &#8594; 15-Sept-2026</span><span>Jesus Clavijo</span></span></span><div class="grouped-issues-heading"><h1>Tareas Pendientes</h1><span class="status status-other">Pagina 2</span></div></div>
+    </header>
+    <div class="grouped-issues-grid-wrap">
+      <table class="grouped-issues-grid">
+        <thead><tr><th>Incidencia</th><th>Tipo Incidencia</th><th>Asunto</th><th>Informador</th><th>Estado</th></tr></thead>
+        <tbody>
+    <tr>
+      <td>PEN-13</td>
+      <td><span class="issue-type-badge issue-type-color-2">Tarea</span></td>
+      <td>Tarea pendiente de verificacion visual 13</td>
+      <td>Jesus Clavijo</td>
+      <td><span class="status status-progress"><span class="status-marker" aria-hidden="true"></span>En Progreso</span></td>
+    </tr></tbody>
+      </table>
+    </div>
+    <footer></footer>
+  </section></body></html>

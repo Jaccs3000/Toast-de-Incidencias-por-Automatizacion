@@ -27,7 +27,7 @@ const defaultGraphConfig = {
 
 const defaultProjectGroupRulesConfig = {
   version: 1,
-  defaultValue: 'Creado',
+  defaultValue: '',
   rules: [],
 };
 
@@ -120,7 +120,7 @@ function validateGraphConfig(config) {
 function validateProjectGroupRulesConfig(config) {
   const normalized = { ...defaultProjectGroupRulesConfig, ...config };
 
-  if (typeof normalized.defaultValue !== 'string' || !normalized.defaultValue.trim()) {
+  if (typeof normalized.defaultValue !== 'string') {
     normalized.defaultValue = defaultProjectGroupRulesConfig.defaultValue;
   }
 

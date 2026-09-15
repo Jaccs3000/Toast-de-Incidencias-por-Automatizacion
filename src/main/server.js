@@ -419,7 +419,7 @@ async function handleBootstrapContext(res) {
     alertFields: state.runtime.configuration?.alertFields?.fields ?? [],
     alertOperators: state.runtime.configuration?.alertFields?.operators ?? [],
     projectGroupRules: state.runtime.configuration?.projectGroupRules ?? {
-      defaultValue: 'No definido',
+      defaultValue: '',
       rules: [],
     },
     jiraCatalog: state.runtime.jiraCatalog ?? {
