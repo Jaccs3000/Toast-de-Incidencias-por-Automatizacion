@@ -582,6 +582,7 @@ async function handleLogin(res) {
       baseUrl: result.baseUrl,
       headers: result.headers,
     });
+    state.runtime.timeReports.clearWorklogCache?.();
     state.runtime.jiraCatalog = await state.runtime.jiraCatalogService.refresh(
       state.runtime.jira,
       result,
@@ -612,6 +613,7 @@ async function handleSync(res) {
   await refreshState();
 
   try {
+    state.runtime.timeReports.clearWorklogCache?.();
     const result = await state.runtime.syncService.run({ signal: syncAbortController.signal });
     state.lastSyncResult = result;
     await refreshState();
@@ -669,6 +671,7 @@ async function handleDatabaseReset(res) {
   }
 
   await state.runtime.persistence.reset();
+  state.runtime.timeReports.clearWorklogCache?.();
   state.syncStatus = await state.runtime.persistence.syncStatus.getCurrent();
   state.lastSyncResult = null;
   state.appState = state.session?.ok ? 'ready' : 'auth_required';
@@ -1383,6 +1386,7 @@ async function runSyncCycle({ automatic = false } = {}) {
   await refreshState();
 
   try {
+    state.runtime.timeReports.clearWorklogCache?.();
     const result = await state.runtime.syncService.run({ signal: syncAbortController.signal });
     state.lastSyncResult = result;
     await refreshState();

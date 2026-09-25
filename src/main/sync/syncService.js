@@ -7,6 +7,22 @@ function secondsToMinutes(value) {
   return Number.isFinite(seconds) ? Math.round(seconds / 60) : 0;
 }
 
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw new DOMException('ProjectGroup refresh canceled.', 'AbortError');
+}
+
+async function runWithConcurrency(items, concurrency, worker, signal = null) {
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      throwIfAborted(signal);
+      const current = items[nextIndex];
+      nextIndex += 1;
+      await worker(current);
+    }
+  }));
+}
+
 export class SyncService {
   constructor({
     persistence,
@@ -251,18 +267,32 @@ export class SyncService {
     if (!Array.isArray(seedIssues) || seedIssues.length === 0) return;
     if (!this.graph || !this.jira || !this.persistence) return;
     const issueCache = new Map(seedIssues.filter((issue) => issue?.key).map((issue) => [issue.key, issue]));
-    const batchLoader = new JiraBatchLoader({ jira: this.jira, signal, batchSize: 100, concurrency: 2 });
+    const batchLoader = new JiraBatchLoader({ jira: this.jira, signal, batchSize: 100, concurrency: 4 });
     const startedAt = new Date().toISOString();
     const refreshed = new Set();
+    const eligibleSeeds = [];
+    const seenSeedKeys = new Set();
 
     for (const seedIssue of seedIssues) {
       if (!seedIssue?.key || !this.graph.isAllowedSeed(seedIssue)) continue;
-      if (signal?.aborted) throw new DOMException('ProjectGroup refresh canceled.', 'AbortError');
+      const normalizedKey = String(seedIssue.key).trim().toLocaleUpperCase('en');
+      if (seenSeedKeys.has(normalizedKey)) continue;
+      seenSeedKeys.add(normalizedKey);
+      eligibleSeeds.push(seedIssue);
+    }
+
+    const groupsBySeed = new Map();
+    await runWithConcurrency(eligibleSeeds, 3, async (seedIssue) => {
       const groups = await this.graph.buildProjectGroups(seedIssue, async (issueKey) => batchLoader.load(issueKey), {
         signal,
         issueCache,
         metrics: { seedReuses: 0, issueLoads: 0, cacheHits: 0 },
       });
+      groupsBySeed.set(seedIssue.key, groups);
+    }, signal);
+
+    for (const seedIssue of eligibleSeeds) {
+      const groups = groupsBySeed.get(seedIssue.key) ?? [];
       for (const group of groups) {
         if (!group.issues?.some((issue) => String(issue?.id ?? issue?.key) === String(seedIssue.id ?? seedIssue.key))) continue;
         const signature = this.getProjectGroupSignature(group);

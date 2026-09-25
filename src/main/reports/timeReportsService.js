@@ -15,6 +15,9 @@ const ISSUE_FIELDS = [
   'issuelinks', 'comment',
 ];
 const CORRECTION_TYPES = ['Correccion por Testing', 'Correccion por Testing (migrated)'];
+const WORKLOG_CONCURRENCY = 4;
+const CHANGELOG_CONCURRENCY = 4;
+const WORKLOG_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const normalizeUserSearchText = (value) => String(value ?? '')
   .normalize('NFD')
@@ -163,6 +166,11 @@ export class TimeReportsService {
     this.syncService = syncService;
     this.pdfGenerator = pdfGenerator ?? new TimeReportPdfGenerator();
     this.pdfIssueTypeIconCache = new Map();
+    this.worklogCache = new Map();
+  }
+
+  clearWorklogCache() {
+    this.worklogCache.clear();
   }
 
   async embedSelectedIssueTypeIcons(report) {
@@ -293,38 +301,56 @@ export class TimeReportsService {
 
   async loadIssueWorklogAggregate(issueReference, accountId, range, signal = null) {
     throwIfAborted(signal);
-    const worklogs = await this.jira.listIssueWorklogs(issueReference, {
-      expandProperties: true,
-      maxResults: 1000,
-      maxRetries: 3,
-      retryBaseDelayMs: 250,
-      signal,
-    });
-    throwIfAborted(signal);
-    const hasTempoWorklogs = worklogs.some((worklog) => (
-      worklog?.properties?.some((property) => property?.key === 'tempo')
-    ));
-    const tempoWorklog = worklogs.find((worklog) => worklog.issueId);
-    let tempoAudit = [];
-    if (hasTempoWorklogs && tempoWorklog) {
-      try {
-        tempoAudit = await this.jira.listTempoWorklogAudit(tempoWorklog.issueId, { issueKey: issueReference, signal });
-      } catch (error) {
-        if (error?.name === 'AbortError') throw error;
-        if (error?.status !== 503) throw error;
-        await this.logs?.warn('Tempo worklog audit unavailable; continuing without audit enrichment', {
-          issueKey: issueReference,
-          status: error.status,
-          message: String(error.message ?? error).slice(0, 300),
-        });
+    const cacheKey = String(issueReference ?? '').trim();
+    const cached = this.worklogCache.get(cacheKey);
+    let enrichedWorklogs;
+    let worklogCount;
+    let cacheHit = false;
+    if (cached && Date.now() - cached.fetchedAt < WORKLOG_CACHE_TTL_MS) {
+      enrichedWorklogs = cached.worklogs;
+      worklogCount = cached.worklogCount;
+      cacheHit = true;
+    } else {
+      const worklogs = await this.jira.listIssueWorklogs(issueReference, {
+        expandProperties: true,
+        maxResults: 1000,
+        maxRetries: 3,
+        retryBaseDelayMs: 250,
+        signal,
+      });
+      throwIfAborted(signal);
+      const hasTempoWorklogs = worklogs.some((worklog) => (
+        worklog?.properties?.some((property) => property?.key === 'tempo')
+      ));
+      const tempoWorklog = worklogs.find((worklog) => worklog.issueId);
+      let tempoAudit = [];
+      if (hasTempoWorklogs && tempoWorklog) {
+        try {
+          tempoAudit = await this.jira.listTempoWorklogAudit(tempoWorklog.issueId, { issueKey: issueReference, signal });
+        } catch (error) {
+          if (error?.name === 'AbortError') throw error;
+          if (error?.status !== 503) throw error;
+          await this.logs?.warn('Tempo worklog audit unavailable; continuing without audit enrichment', {
+            issueKey: issueReference,
+            status: error.status,
+            message: String(error.message ?? error).slice(0, 300),
+          });
+        }
       }
+      throwIfAborted(signal);
+      enrichedWorklogs = enrichTempoWorklogs(worklogs, tempoAudit);
+      worklogCount = worklogs.length;
+      this.worklogCache.set(cacheKey, {
+        fetchedAt: Date.now(),
+        worklogs: enrichedWorklogs,
+        worklogCount,
+      });
     }
-    throwIfAborted(signal);
-    const enrichedWorklogs = enrichTempoWorklogs(worklogs, tempoAudit);
     return {
       aggregate: aggregateUserWorklogs(enrichedWorklogs, accountId, range.fromDate, range.toDate),
       timeDescriptions: normalizeWorklogDescriptions(enrichedWorklogs, accountId, range),
-      worklogCount: worklogs.length,
+      worklogCount,
+      cacheHit,
     };
   }
 
@@ -339,11 +365,13 @@ export class TimeReportsService {
 
     const results = new Map();
     let worklogCount = 0;
-    await withConcurrency(issueReferences, 2, async (issueReference) => {
+    let cacheHits = 0;
+    await withConcurrency(issueReferences, WORKLOG_CONCURRENCY, async (issueReference) => {
       const result = await this.loadIssueWorklogAggregate(issueReference, accountId, range, signal);
       worklogCount += result.worklogCount;
+      if (result.cacheHit) cacheHits += 1;
       const rangeAggregate = rangeAggregates.get(issueReference);
-      if (result.aggregate.totalSeconds > 0 || rangeAggregate?.rangeSeconds > 0) {
+      if (result.aggregate.rangeSeconds > 0 || rangeAggregate?.rangeSeconds > 0) {
         results.set(issueReference, {
           rangeSeconds: rangeAggregate?.rangeSeconds ?? result.aggregate.rangeSeconds,
           totalSeconds: result.aggregate.totalSeconds,
@@ -357,6 +385,7 @@ export class TimeReportsService {
         .filter((issueReference) => results.has(issueReference))
         .map((issueReference) => [issueReference, results.get(issueReference)])),
       worklogCount,
+      cacheHits,
     };
   }
 
@@ -434,7 +463,7 @@ export class TimeReportsService {
       }
     }
 
-    await withConcurrency(pending, 2, async (issue) => {
+    await withConcurrency(pending, CHANGELOG_CONCURRENCY, async (issue) => {
       const changelog = await this.jira.listIssueChangelog(issue.issueKey, {
         maxResults: 1000,
         maxRetries: 3,
@@ -478,6 +507,7 @@ export class TimeReportsService {
     let aggregates = new Map();
     let sourceWorklogCount = 0;
     let historicalWorklogCount = 0;
+    let historicalWorklogCacheHits = 0;
     const worklogStartedAt = Date.now();
     let rangeAggregates = new Map();
     const tempoTimeDescriptions = new Map();
@@ -562,6 +592,7 @@ export class TimeReportsService {
       const historical = await historicalTask;
       aggregates = historical.aggregates;
       historicalWorklogCount = historical.worklogCount;
+      historicalWorklogCacheHits = historical.cacheHits ?? 0;
       selectedIssueReferences = [...aggregates.keys()];
     }
 
@@ -579,7 +610,6 @@ export class TimeReportsService {
       throw error;
     }
     const detailedIssues = detailed.issues;
-    await this.syncService?.refreshProjectGroupsForIssues(detailedIssues, { signal });
     const reportIssues = new Map(detailedIssues.map((issue) => {
       const normalized = normalizeIssue(issue);
       const aggregate = getIssueAggregate(rangeAggregates, normalized);
@@ -594,23 +624,21 @@ export class TimeReportsService {
       }];
     }));
 
-    const issueIds = [...reportIssues.values()].map((issue) => issue.issueId);
     const lifecycleStartedAt = Date.now();
     const lifecycleTask = this.loadLifecycleDates([...reportIssues.values()], accountId, signal).finally(() => {
       phaseTimings.lifecycleMs = Date.now() - lifecycleStartedAt;
     });
-    const projectGroupDetailsTask = this.loadProjectGroupDetails(issueIds, signal);
-    const correctionsTask = this.loadCorrections(issueIds, signal);
 
     let historical;
     try {
       historical = await historicalTask;
     } catch (error) {
-      await Promise.allSettled([lifecycleTask, projectGroupDetailsTask, correctionsTask]);
+      await Promise.allSettled([lifecycleTask]);
       throw error;
     }
     aggregates = historical.aggregates;
     historicalWorklogCount = historical.worklogCount;
+    historicalWorklogCacheHits = historical.cacheHits ?? 0;
     phaseTimings.worklogsMs ??= Date.now() - worklogStartedAt;
     for (const issue of reportIssues.values()) {
       const aggregate = getIssueAggregate(aggregates, issue);
@@ -631,6 +659,17 @@ export class TimeReportsService {
     for (const [issueId, issue] of reportIssues) {
       if (!hasSprintTime(issue)) reportIssues.delete(issueId);
     }
+
+    const projectGroupsStartedAt = Date.now();
+    await this.syncService?.refreshProjectGroupsForIssues(
+      detailedIssues.filter((issue) => reportIssues.has(String(issue?.key ?? ''))),
+      { signal },
+    );
+    phaseTimings.projectGroupsMs = Date.now() - projectGroupsStartedAt;
+
+    const issueIds = [...reportIssues.values()].map((issue) => issue.issueId);
+    const projectGroupDetailsTask = this.loadProjectGroupDetails(issueIds, signal);
+    const correctionsTask = this.loadCorrections(issueIds, signal);
 
     const [lifecycle, projectGroupDetails, correctionRows] = await Promise.all([
       lifecycleTask,
@@ -688,6 +727,7 @@ export class TimeReportsService {
         user: accountId,
         sourceWorklogCount,
         historicalWorklogCount,
+        historicalWorklogCacheHits,
         candidateIssues: selectedIssueReferences.length,
         detailedBatchMetrics: detailed.stats,
         lifecycle,

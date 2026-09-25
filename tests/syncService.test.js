@@ -88,6 +88,56 @@ test('maps Testing issues in progress or in testing to the TEST general state', 
   }
 });
 
+test('refreshes unique time-report seeds concurrently and persists each group once', async () => {
+  let activeBuilds = 0;
+  let maxActiveBuilds = 0;
+  let buildCount = 0;
+  const persistedGroups = [];
+  const service = new SyncService({
+    persistence: {
+      projectGroups: { async upsert() {} },
+      issues: { async upsertMany() {} },
+      projectGroupIssues: { async replaceForGroup() {} },
+      relationships: { async replaceForGroup() {} },
+    },
+    jira: { async bulkFetchIssues() { return { issues: [] }; } },
+    graph: {
+      isAllowedSeed() { return true; },
+      async buildProjectGroups(seedIssue) {
+        buildCount += 1;
+        activeBuilds += 1;
+        maxActiveBuilds = Math.max(maxActiveBuilds, activeBuilds);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        activeBuilds -= 1;
+        return [{
+          id: `group-${seedIssue.key}`,
+          rootIssueId: seedIssue.id,
+          rootIssueKey: seedIssue.key,
+          issues: [seedIssue],
+          members: [{ issueId: seedIssue.id, isRoot: true }],
+          relationships: [],
+        }];
+      },
+    },
+    logs: { async info() {} },
+  });
+  const originalPersist = service.persistProjectGroup.bind(service);
+  service.persistProjectGroup = async (group, seedIssue, startedAt, options) => {
+    persistedGroups.push(group.id);
+    return originalPersist(group, seedIssue, startedAt, options);
+  };
+
+  await service.refreshProjectGroupsForIssues([
+    { id: '1', key: 'ABC-1', fields: {} },
+    { id: '1', key: 'ABC-1', fields: {} },
+    { id: '2', key: 'ABC-2', fields: {} },
+  ]);
+
+  assert.equal(buildCount, 2);
+  assert.equal(maxActiveBuilds, 2);
+  assert.deepEqual(persistedGroups, ['time-report:group-ABC-1', 'time-report:group-ABC-2']);
+});
+
 test('keeps the explicit login-required status when headless recovery fails', async () => {
   const statusUpdates = [];
   const service = new SyncService({

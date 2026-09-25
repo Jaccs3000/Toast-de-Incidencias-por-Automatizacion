@@ -158,6 +158,18 @@ export function formatReportDuration(seconds) {
   return `${hours}h${rest ? ` ${rest}m` : ''}`;
 }
 
+function getIssueProjectKey(issue) {
+  const project = String(issue?.project ?? '').trim();
+  if (project) return project.toLocaleUpperCase();
+  const issueKey = String(issue?.issueKey ?? '').trim();
+  const separatorIndex = issueKey.indexOf('-');
+  return separatorIndex > 0 ? issueKey.slice(0, separatorIndex).toLocaleUpperCase() : '';
+}
+
 export function isSprintOnlyProject(issue) {
-  return String(issue?.project ?? '').trim().toLocaleUpperCase() === 'TA2';
+  return getIssueProjectKey(issue) === 'TA2';
+}
+
+export function isZeroTotalProject(issue) {
+  return getIssueProjectKey(issue) === 'TA';
 }

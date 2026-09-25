@@ -525,14 +525,15 @@ export class JiraClient {
     if (!selectedAccountId) throw new Error('accountId is required.');
 
     const context = await this.getTempoContext(issueKey, { signal });
-    const body = {
-      accountIds: [selectedAccountId],
-      userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    };
-    if (fromDate) body.from = fromDate;
-    if (toDate) body.to = toDate;
+    const commonBody = {};
+    if (fromDate) commonBody.from = fromDate;
+    if (toDate) commonBody.to = toDate;
+    const payloads = [
+      commonBody,
+      { ...commonBody, workerKeys: [selectedAccountId] },
+    ];
 
-    const load = async (currentContext) => {
+    const load = async (currentContext, body) => {
       const worklogs = [];
       let nextPageToken = null;
       const seenPageTokens = new Set();
@@ -548,7 +549,7 @@ export class JiraClient {
                 Accept: 'application/json',
                 'Content-Type': 'application/json',
                 Authorization: `Tempo-Bearer ${currentContext.token}`,
-                'Tempo-User-TimeZone': body.userTimeZone,
+                'Tempo-User-TimeZone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
                 'x-atlassian-force-account-id': 'true',
               },
               body: JSON.stringify(requestBody),
@@ -580,12 +581,25 @@ export class JiraClient {
       return worklogs;
     };
 
+    const loadWithCompatiblePayload = async (currentContext) => {
+      let lastError;
+      for (const body of payloads) {
+        try {
+          return await load(currentContext, body);
+        } catch (error) {
+          lastError = error;
+          if (error?.name === 'AbortError' || error?.status !== 400 || body.workerKeys !== undefined) throw error;
+        }
+      }
+      throw lastError;
+    };
+
     try {
-      return await load(context);
+      return await loadWithCompatiblePayload(context);
     } catch (error) {
       if (error?.status !== 401) throw error;
       this.tempoContext = null;
-      return load(await this.getTempoContext(issueKey, { signal }));
+      return loadWithCompatiblePayload(await this.getTempoContext(issueKey, { signal }));
     }
   }
 

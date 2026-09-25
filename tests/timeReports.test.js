@@ -7,6 +7,7 @@ import {
   extractFirstLifecycleDates,
   formatReportDuration,
   isSprintOnlyProject,
+  isZeroTotalProject,
 } from '../src/shared/reports/timeReport.js';
 import { TimeReportsService } from '../src/main/reports/timeReportsService.js';
 import { buildTimeReportHtml, launchPdfBrowser } from '../src/main/reports/timeReportPdfGenerator.js';
@@ -474,12 +475,40 @@ test('limits and paginates the Tempo worklog search', async () => {
     assert.equal(result.length, 2);
     assert.equal(requests.length, 2);
     assert.deepEqual(requests[0].body, {
-      accountIds: [userId],
-      userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       from: '2026-09-01',
       to: '2026-09-04',
     });
     assert.equal(requests[1].body.nextPageToken, 'next-page');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('falls back to a workerKeys filter only when the date-only Tempo payload is rejected', async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    requests.push(JSON.parse(options.body));
+    if (requests.length === 1) {
+      return {
+        ok: false,
+        status: 400,
+        async text() { return '{"errors":"A worker filter is required"}'; },
+        headers: new Headers(),
+      };
+    }
+    return { ok: true, async json() { return { worklogs: [] }; } };
+  };
+
+  try {
+    const jira = new JiraClient({ baseUrl: 'https://jira.example.test' });
+    jira.getTempoContext = async () => ({ origin: 'https://tempo.example.test', token: 'tempo-token' });
+    const result = await jira.searchTempoWorklogs({ accountId: userId, issueKey: 'ABC-1' });
+
+    assert.deepEqual(result, []);
+    assert.equal(requests.length, 2);
+    assert.deepEqual(requests[0], {});
+    assert.deepEqual(requests[1].workerKeys, [userId]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -684,6 +713,14 @@ test('identifies TA2 as sprint-time-only without changing other projects', () =>
   assert.equal(isSprintOnlyProject({ project: 'ta2' }), true);
   assert.equal(isSprintOnlyProject({ project: 'TA' }), false);
   assert.equal(isSprintOnlyProject({ project: 'TA20' }), false);
+});
+
+test('identifies TA as the project whose total time is shown as zero', () => {
+  assert.equal(isZeroTotalProject({ project: 'TA' }), true);
+  assert.equal(isZeroTotalProject({ project: 'ta' }), true);
+  assert.equal(isZeroTotalProject({ issueKey: 'TA-16' }), true);
+  assert.equal(isZeroTotalProject({ project: 'TA2', issueKey: 'TA2-16' }), false);
+  assert.equal(isZeroTotalProject({ project: 'TA20', issueKey: 'TA20-16' }), false);
 });
 
 test('keeps the problems panel and applies the table icon and two-line limits', () => {
@@ -1165,10 +1202,20 @@ test('uses Tempo worklog search to group the selected user by Jira issue', async
   assert.equal(tempoSearchOptions.fromDate, '2026-09-01');
   assert.equal(tempoSearchOptions.toDate, '2026-09-04');
   assert.deepEqual(worklogCalls.sort(), ['1', '2']);
+
+  const cachedResult = await service.search({
+    fromDate: '2026-09-01', toDate: '2026-09-04', user: { accountId: userId, displayName: 'Jesus Clavijo' },
+  });
+  assert.deepEqual(cachedResult.issues.map((issue) => [issue.issueKey, issue.rangeSeconds, issue.totalSeconds]), [
+    ['ABC-1', 3600, 5400],
+    ['ABC-2', 7200, 7200],
+  ]);
+  assert.deepEqual(worklogCalls.sort(), ['1', '2']);
 });
 
 test('excludes issues with only historical time outside the sprint range', async () => {
   let saved;
+  let loadedReferences;
   const persistence = {
     timeReports: {
       async clear() {},
@@ -1193,6 +1240,7 @@ test('excludes issues with only historical time outside the sprint range', async
         : [{ author: { accountId: userId }, startDate: '2026-08-30', timeSpentSeconds: 7200 }];
     },
     async bulkFetchIssues(issueReferences) {
+      loadedReferences = [...issueReferences];
       return {
         issues: issueReferences.map((key, index) => ({
           id: String(index + 1),
@@ -1218,6 +1266,7 @@ test('excludes issues with only historical time outside the sprint range', async
 
   assert.deepEqual(result.issues.map((issue) => [issue.issueKey, issue.rangeSeconds]), [['ABC-1', 3600]]);
   assert.deepEqual(saved.issues.map((issue) => issue.issueKey), ['ABC-1']);
+  assert.deepEqual(loadedReferences, ['ABC-1']);
 });
 
 test('cancels a time report search without persisting partial results', async () => {

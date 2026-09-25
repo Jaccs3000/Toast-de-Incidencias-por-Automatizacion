@@ -4,7 +4,8 @@ import { validateAlertConditionConfig } from '../shared/alerts/alertConditionVal
 import { requiresVisibleJiraLogin } from '../shared/auth/sessionRequirement.js';
 import { REPORTED_TIMES_FIELD } from '../shared/grids/reportedTimes.js';
 import { compactPersonName } from '../shared/people/compactPersonName.js';
-import { calculateSecondFriday, isSprintOnlyProject } from '../shared/reports/timeReport.js';
+import { buildIssueTypeColorMap, getIssueTypeColor } from '../shared/reports/issueTypeColors.js';
+import { calculateSecondFriday, isSprintOnlyProject, isZeroTotalProject } from '../shared/reports/timeReport.js';
 
 function getLocalDateInputValue(date = new Date()) {
   const year = date.getFullYear();
@@ -150,12 +151,6 @@ function formatGridIssueDetailValue(field, value) {
 function hasGridIssueDetailValue(field, value) {
   const formatted = formatGridIssueDetailValue(field, value);
   return formatted !== '-' && formatted.trim() !== '';
-}
-
-function issueTypeColorClass(value) {
-  const text = String(value ?? 'Sin tipo');
-  const hash = [...text].reduce((total, character) => total + character.charCodeAt(0), 0);
-  return `issue-type-color-${(hash % 6) + 1}`;
 }
 
 function isNegativeGridTimeRemaining(field, value) {
@@ -650,6 +645,7 @@ function LineIcon({ name }) {
     upload: <><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 14v6h14v-6" /></>,
     download: <><path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M5 14v6h14v-6" /></>,
     stop: <rect x="7" y="7" width="10" height="10" rx="1" />,
+    comment: <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />,
   };
   return <svg className="line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] ?? paths.pulse}</svg>;
 }
@@ -3271,6 +3267,29 @@ export default function App() {
     const sortIssues = (left, right, sortState = timeReportSort) => compareTimeReportIssues(left, right, sortState);
     const issues = [...(timeReport?.issues ?? [])].sort(sortIssues);
     const draggedIssue = issues.find((issue) => String(issue.issueId) === String(timeReportDraggedIssueId));
+    const renderTimeReportTotal = (issue) => {
+      const totalSeconds = Number(issue?.totalSeconds ?? 0);
+      if (isZeroTotalProject(issue) || isSprintOnlyProject(issue) || !Number.isFinite(totalSeconds) || totalSeconds <= 0) return '-';
+      return formatTimeReportDuration(totalSeconds);
+    };
+    const renderTimeReportIssueKey = (issue) => {
+      const issueKey = String(issue?.issueKey ?? '').trim();
+      if (!issueKey) return null;
+      const baseUrl = String(jiraBaseUrl ?? '').replace(/\/+$/, '');
+      if (!baseUrl) return issueKey;
+      return (
+        <a
+          className="time-report-issue-link"
+          href={`${baseUrl}/browse/${encodeURIComponent(issueKey)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Abrir ${issueKey} en Jira`}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {issueKey}
+        </a>
+      );
+    };
     const sortButton = (field, label, sortState = timeReportSort, setSortState = setTimeReportSort) => {
       const isSorted = sortState.field === field;
       const direction = isSorted ? sortState.direction : null;
@@ -3324,7 +3343,7 @@ export default function App() {
             });
           }}
         >
-          <span aria-hidden="true">&#128172;</span>
+          <LineIcon name="comment" />
           <span className="time-report-comments-tooltip" role="tooltip">
             {comments.length > 0 ? <strong className="time-report-comment-section-title">Comentarios</strong> : null}
             {renderEntries(comments)}
@@ -3335,6 +3354,7 @@ export default function App() {
       );
     };
     const pendingIssues = [...pendingTimeReportIssues].sort((left, right) => sortIssues(left, right, pendingTimeReportSort));
+    const issueTypeColorMap = buildIssueTypeColorMap([...issues, ...pendingIssues]);
     const pendingSelectedCount = pendingIssues.filter((issue) => issue.selected).length;
     const handlePendingSelectAll = (event) => {
       const selected = event.target.checked;
@@ -3503,7 +3523,7 @@ export default function App() {
         {timeReport ? (
           <div className="time-reports-results">
             {issues.length > 0 ? (
-              <div className="time-reports-table-wrap">
+              <div className="time-reports-table-wrap time-reports-main-table-wrap">
                 <table className="time-reports-table time-reports-main-table">
                   <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input
                     type="checkbox"
@@ -3533,19 +3553,19 @@ export default function App() {
                       >
                         <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
                         <td><input type="checkbox" checked={draggedIssue?.selected === true} readOnly aria-hidden="true" /></td>
-                        <td className="time-report-issue-key">{draggedIssue?.issueKey}</td>
-                        <td className={`time-report-issue-type ${issueTypeColorClass(draggedIssue?.issueType)}`}>{draggedIssue?.issueType}</td>
+                        <td className="time-report-issue-key">{renderTimeReportIssueKey(draggedIssue)}</td>
+                        <td className="time-report-issue-type" style={{ color: getIssueTypeColor(draggedIssue?.issueType, issueTypeColorMap) }}>{draggedIssue?.issueType}</td>
                         <td className="time-reports-summary-cell">{draggedIssue?.summary}</td>
                         <td>{draggedIssue?.status}</td>
                         <td>{formatTimeReportDuration(draggedIssue?.rangeSeconds ?? 0)}</td>
-                        <td>{isSprintOnlyProject(draggedIssue) ? '-' : formatTimeReportDuration(draggedIssue?.totalSeconds ?? 0)}</td>
+                        <td>{renderTimeReportTotal(draggedIssue)}</td>
                         <td className="time-reports-corrections-cell">
                           {Array.isArray(draggedIssue?.corrections) && draggedIssue.corrections.length > 0 ? (
                             <label className="time-reports-corrections-option">
                               <span>{draggedIssue.corrections.length}</span>
                               <input type="checkbox" checked={draggedIssue.includeCorrections !== false} readOnly aria-hidden="true" />
                             </label>
-                          ) : '0'}
+                          ) : '-'}
                         </td>
                         <td className="time-reports-group-cell"><input type="checkbox" checked={draggedIssue?.grouped === true} readOnly aria-hidden="true" /></td>
                         <td>{renderComments(draggedIssue)}</td>
@@ -3585,8 +3605,8 @@ export default function App() {
                         </button>
                       </td>
                       <td><input type="checkbox" checked={issue.selected} disabled={timeReportLoading} onChange={(event) => setTimeReport((current) => ({ ...current, issues: current.issues.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item) }))} aria-label={`Incluir ${issue.issueKey}`} /></td>
-                      <td className="time-report-issue-key">{issue.issueKey}</td>
-                      <td className={`time-report-issue-type ${issueTypeColorClass(issue.issueType)}`}>{issue.issueType || 'Sin tipo'}</td>
+                      <td className="time-report-issue-key">{renderTimeReportIssueKey(issue)}</td>
+                      <td className="time-report-issue-type" style={{ color: getIssueTypeColor(issue.issueType, issueTypeColorMap) }}>{issue.issueType || 'Sin tipo'}</td>
                       <td className="time-reports-summary-cell">
                         {timeReportEditingIssueId === issue.issueId ? (
                           <AutoResizeTextarea
@@ -3610,13 +3630,13 @@ export default function App() {
                       </td>
                       <td>{issue.status}</td>
                       <td>{formatTimeReportDuration(issue.rangeSeconds)}</td>
-                      <td>{isSprintOnlyProject(issue) ? '-' : formatTimeReportDuration(issue.totalSeconds)}</td>
+                      <td>{renderTimeReportTotal(issue)}</td>
                         <td className="time-reports-corrections-cell">
                         {(() => {
                           const correctionCount = Array.isArray(issue.corrections) ? issue.corrections.length : 0;
                           if (correctionCount === 0) return (
                             <label className="time-reports-corrections-option is-empty">
-                              <span>0</span>
+                              <span>-</span>
                               <input
                                 type="checkbox"
                                 checked={issue.grouped !== true && issue.includeCorrections !== false}
@@ -3659,7 +3679,7 @@ export default function App() {
               </div>
               {pendingIssues.length > 0 ? (
                 <div className="time-reports-table-wrap">
-                  <table className="time-reports-table">
+                  <table className="time-reports-table time-reports-pending-table">
                     <thead><tr><th aria-label="Mover registros"></th><th><span className="time-reports-select-all"><input type="checkbox" checked={pendingSelectedCount === pendingIssues.length} ref={(element) => { if (element) element.indeterminate = pendingSelectedCount > 0 && pendingSelectedCount < pendingIssues.length; }} onChange={handlePendingSelectAll} aria-label="Seleccionar todas las tareas pendientes" /></span></th><th>{pendingSortButton('issueKey', 'Incidencia')}</th><th>{pendingSortButton('issueType', 'Tipo Incidencia')}</th><th>{pendingSortButton('summary', 'Resumen')}</th><th>{pendingSortButton('status', 'Estado')}</th><th>{pendingSortButton('reporter', 'Informador')}</th></tr></thead>
                     <tbody>{pendingIssues.map((issue) => (
                       <Fragment key={issue.issueId}>
@@ -3679,11 +3699,11 @@ export default function App() {
                         >
                           <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
                           <td><input type="checkbox" checked={pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.selected === true} readOnly aria-hidden="true" /></td>
-                          <td className="time-report-issue-key">{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueKey}</td>
-                          <td className={`time-report-issue-type ${issueTypeColorClass(pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueType)}`}>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueType}</td>
+                          <td className="time-report-issue-key">{renderTimeReportIssueKey(pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId))}</td>
+                          <td className="time-report-issue-type" style={{ color: getIssueTypeColor(pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueType, issueTypeColorMap) }}>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.issueType}</td>
                           <td className="time-reports-summary-cell">{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.summary}</td>
                           <td>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.status}</td>
-                          <td>{pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.reporter}</td>
+                          <td>{compactPersonName(pendingIssues.find((item) => item.issueId === pendingTimeReportDraggedIssueId)?.reporter)}</td>
                         </tr>
                       ) : null}
                       <tr
@@ -3712,11 +3732,11 @@ export default function App() {
                       >
                         <td className="time-reports-drag-cell"><span className="time-reports-drag-icon" aria-hidden="true">↕</span></td>
                         <td><input type="checkbox" checked={issue.selected === true} onChange={(event) => setPendingTimeReportIssues((current) => current.map((item) => item.issueId === issue.issueId ? { ...item, selected: event.target.checked } : item))} aria-label={`Incluir ${issue.issueKey}`} /></td>
-                        <td className="time-report-issue-key">{issue.issueKey}</td>
-                        <td className={`time-report-issue-type ${issueTypeColorClass(issue.issueType)}`}>{issue.issueType || 'Sin tipo'}</td>
+                        <td className="time-report-issue-key">{renderTimeReportIssueKey(issue)}</td>
+                        <td className="time-report-issue-type" style={{ color: getIssueTypeColor(issue.issueType, issueTypeColorMap) }}>{issue.issueType || 'Sin tipo'}</td>
                         <td className="time-reports-summary-cell">{issue.summary}</td>
                         <td>{issue.status}</td>
-                        <td>{issue.reporter || 'Sin informador'}</td>
+                        <td>{issue.reporter ? compactPersonName(issue.reporter) : 'Sin informador'}</td>
                       </tr>
                       </Fragment>
                     ))}</tbody>

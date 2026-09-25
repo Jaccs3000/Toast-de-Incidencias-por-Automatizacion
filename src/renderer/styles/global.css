@@ -2188,6 +2188,18 @@ body .configuration-workspace .dashboard-time-reports .time-reports-improvement-
   vertical-align: middle;
 }
 
+.time-report-issue-link {
+  color: inherit;
+  text-decoration: underline solid currentColor;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.time-report-issue-link:hover,
+.time-report-issue-link:focus-visible {
+  color: #e7ebff;
+}
+
 .time-reports-sort-button {
   display: flex;
   width: 100%;
@@ -6083,7 +6095,7 @@ h1 {
 }
 
 /* Common action-button geometry across configuration sections. */
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search) {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger) {
   display: inline-flex !important;
   min-height: 46px !important;
   align-items: center !important;
@@ -6098,11 +6110,11 @@ h1 {
   transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search):hover:not(:disabled) {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search):focus-visible {
+.configuration-workspace button:not(.app-tab):not(.grid-sort-button):not(.grid-pagination-button):not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
@@ -6183,7 +6195,7 @@ h1 {
 }
 
 /* Final button system: every interface button shares this geometry and an explicit color variant. */
-.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search) {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger) {
   display: inline-flex !important;
   min-height: 46px !important;
   align-items: center !important;
@@ -6200,25 +6212,25 @@ h1 {
   line-height: 1.1 !important;
 }
 
-.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):hover:not(:disabled) {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):hover:not(:disabled) {
   border-color: rgba(174, 184, 255, .9) !important;
   background: rgba(25, 36, 72, .78) !important;
   color: #eef1ff !important;
   transform: translateY(-1px);
 }
 
-.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):focus-visible {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
 
-.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):disabled {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):disabled {
   opacity: .5;
   cursor: not-allowed;
 }
 
 /* Keep dynamic button labels inside their available space. */
-.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search) {
+.configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle) {
   min-width: 0 !important;
   max-width: 100%;
   height: auto !important;
@@ -7533,11 +7545,11 @@ body .configuration-workspace .dashboard-time-reports .time-reports-inline-searc
 }
 
 body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger .line-icon {
-  width: 40px !important;
-  height: 40px !important;
+  width: 21px !important;
+  height: 21px !important;
   stroke: currentColor !important;
   stroke-width: 2.4 !important;
-  transform: scale(1.35);
+  transform: none !important;
 }
 
 /* Keep time-report sorting headers consistent with grid sorting headers. */
@@ -7837,6 +7849,108 @@ body .configuration-workspace .dashboard-time-reports .time-reports-table tbody 
 body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(4),
 body .configuration-workspace .dashboard-time-reports .time-reports-table tbody tr.time-reports-drop-placeholder td:nth-child(5) {
   text-align: left !important;
+}
+
+/* Pending tasks use the complete panel width and prioritize the summary column. */
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-section {
+  width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table-wrap,
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-section .time-reports-table-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  table-layout: fixed !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table th:nth-child(1),
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table td:nth-child(1) { width: 4% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table th:nth-child(2),
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table td:nth-child(2) { width: 5% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table th:nth-child(3),
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table td:nth-child(3) { width: 10% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table th:nth-child(4),
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table td:nth-child(4) { width: 15% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table th:nth-child(5),
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table td:nth-child(5) {
+  width: 45% !important;
+  text-align: left !important;
+  overflow-wrap: anywhere;
+}
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table th:nth-child(6),
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table td:nth-child(6) { width: 9% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table th:nth-child(7),
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table td:nth-child(7) { width: 12% !important; }
+
+/* The main report table must fill the complete report panel as well. */
+body .configuration-workspace .dashboard-time-reports {
+  width: 100% !important;
+  max-width: 1450px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table-wrap,
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table + * {
+  width: 100% !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  table-layout: fixed !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(1) { width: 3% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(2) { width: 4% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(3) { width: 9% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(4) { width: 18% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(5) { width: 19% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(6) { width: 9% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(7) { width: 8% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(8) { width: 8% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(9) { width: 9% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(10) { width: 4% !important; }
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(11) { width: 9% !important; }
+
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table thead th {
+  font-size: 14px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-pending-table tbody td {
+  font-size: 15px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table thead th {
+  font-size: 14px !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-main-table tbody td {
+  font-size: 15px !important;
+}
+
+/* Add room for issue types when the viewport has space, without horizontal overflow. */
+body .configuration-workspace[data-section="time-reports"] {
+  width: min(calc(100% + 150px), calc(100vw - 20px)) !important;
+  max-width: calc(100vw - 20px) !important;
+}
+
+@media (max-width: 900px) {
+  body .configuration-workspace[data-section="time-reports"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+body .configuration-layout:not(.is-sidebar-collapsed) .configuration-workspace[data-section="time-reports"] {
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 body .configuration-workspace .dashboard-time-reports .time-reports-drop-placeholder span {
@@ -8526,7 +8640,7 @@ body .configuration-workspace .dashboard-jql .alert-builder-form.has-conditions 
 }
 
 /* The comment marker is an inline indicator, not an action button card. */
-body .configuration-workspace .time-report-comments-button {
+body .configuration-workspace button.time-report-comments-button.time-report-comments-button {
   width: 42px !important;
   height: 42px !important;
   min-width: 42px !important;
@@ -8536,16 +8650,134 @@ body .configuration-workspace .time-report-comments-button {
   border-radius: 50% !important;
   background: transparent !important;
   color: #b9e8fa !important;
-  font-size: 36px !important;
+  outline: none !important;
   line-height: 1 !important;
   box-shadow: none !important;
 }
 
-body .configuration-workspace .time-report-comments-button:hover,
-body .configuration-workspace .time-report-comments-button:focus-visible {
+body .configuration-workspace button.time-report-comments-button.time-report-comments-button .line-icon {
+  display: block !important;
+  width: 27px !important;
+  height: 27px !important;
+  margin: 0 !important;
+  color: #b9e8fa !important;
+  stroke: currentColor !important;
+}
+
+body .configuration-workspace button.time-report-comments-button.time-report-comments-button:hover,
+body .configuration-workspace button.time-report-comments-button.time-report-comments-button:focus-visible {
   border: 0 !important;
   background: rgba(96, 190, 224, .12) !important;
   color: #e8fbff !important;
+  outline: none !important;
   box-shadow: none !important;
   transform: none !important;
+}
+
+/* Keep report controls compact and inside their intended layout boxes. */
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button {
+  display: inline-flex !important;
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button:hover,
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button:focus-visible,
+body .configuration-workspace .dashboard-time-reports .time-reports-sort-button.is-sorted {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-drag-handle {
+  display: inline-flex !important;
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger {
+  position: absolute !important;
+  top: 1px !important;
+  right: 1px !important;
+  display: grid !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 10px !important;
+  border: 0 !important;
+  border-radius: 0 8px 8px 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-trigger .line-icon {
+  width: 21px !important;
+  height: 21px !important;
+  transform: none !important;
+}
+
+@media (max-width: 900px) {
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+  }
+
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th,
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table td {
+    min-width: 0 !important;
+  }
+
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(1) { width: 3% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(2) { width: 4% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(3) { width: 9% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(4) { width: 18% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(5) { width: 19% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(6) { width: 9% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(7) { width: 8% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(8) { width: 8% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(9) { width: 9% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(10) { width: 4% !important; }
+  body .configuration-workspace .dashboard-time-reports .time-reports-main-table th:nth-child(11) { width: 9% !important; }
+}
+
+/* Use all horizontal space available to the time-report workspace. */
+body .configuration-workspace[data-section="time-reports"] {
+  width: min(calc(85vw + 74px), 1774px) !important;
+  max-width: 1774px !important;
+}
+
+body .configuration-workspace[data-section="time-reports"] .dashboard-time-reports {
+  width: 100% !important;
+  max-width: 1700px !important;
+}
+
+@media (max-width: 900px) {
+  body .configuration-workspace[data-section="time-reports"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  body .configuration-workspace[data-section="time-reports"] .dashboard-time-reports {
+    max-width: 100% !important;
+  }
 }
