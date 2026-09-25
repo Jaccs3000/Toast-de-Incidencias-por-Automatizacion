@@ -4,7 +4,7 @@ import { validateAlertConditionConfig } from '../shared/alerts/alertConditionVal
 import { requiresVisibleJiraLogin } from '../shared/auth/sessionRequirement.js';
 import { REPORTED_TIMES_FIELD } from '../shared/grids/reportedTimes.js';
 import { compactPersonName } from '../shared/people/compactPersonName.js';
-import { calculateSecondFriday } from '../shared/reports/timeReport.js';
+import { calculateSecondFriday, isSprintOnlyProject } from '../shared/reports/timeReport.js';
 
 function getLocalDateInputValue(date = new Date()) {
   const year = date.getFullYear();
@@ -55,6 +55,50 @@ function formatBogotaDate(value) {
   }, {});
 
   return `${parts.day}-${parts.month}-${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function formatBogotaSyncDate(value) {
+  if (!value) {
+    return '-';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+
+  const parts = new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+  return `${parts.day} ${months[Number(parts.month) - 1]} - ${parts.hour}:${parts.minute}`;
+}
+
+function compareTimeReportIssues(left, right, sortState = {}) {
+  if (!sortState?.field) return 0;
+  const value = (issue, field) => {
+    if (field === 'corrections') return Array.isArray(issue.corrections) ? issue.corrections.length : 0;
+    if (field === 'comments') return Array.isArray(issue.comments) ? issue.comments.length : 0;
+    if (field === 'grouped') return issue.grouped === true ? 1 : 0;
+    if (['rangeSeconds', 'totalSeconds'].includes(field)) return Number(issue[field] ?? 0);
+    return String(issue[field] ?? '');
+  };
+  const leftValue = value(left, sortState.field);
+  const rightValue = value(right, sortState.field);
+  const comparison = typeof leftValue === 'number' && typeof rightValue === 'number'
+    ? leftValue - rightValue
+    : String(leftValue).localeCompare(String(rightValue), 'es', { numeric: true, sensitivity: 'base' });
+  return comparison * (sortState.direction === 'desc' ? -1 : 1);
 }
 
 const gridIssueDetailFields = [
@@ -572,8 +616,13 @@ function renderAlertMessage(message, jiraBaseUrl) {
 function LineIcon({ name }) {
   const paths = {
     sync: <><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.6 9a7 7 0 0 1 11.7-2L20 8.5" /><path d="M17.4 15a7 7 0 0 1-11.7 2L4 15.5" /></>,
-    refresh: <><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" /><path d="M21 3v5h-5" /></>,
-    restart: <><path d="M21 12a9 9 0 0 0-15.5-6.2L3 8.3" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 15.5 6.2L21 15.7" /><path d="M21 21v-5h-5" /></>,
+    refresh: <><path d="M18.5 8.5A8.5 8.5 0 1 0 18 16" /><path d="M18.5 3.5v5h-5" /></>,
+    restart: <>
+      <path d="M7 4v15" stroke="#ff7180" />
+      <path d="m3.5 15.5 3.5 3.5 3.5-3.5" stroke="#ff7180" />
+      <path d="M17 20V5" stroke="#71e7a0" />
+      <path d="m13.5 8.5 3.5-3.5 3.5 3.5" stroke="#71e7a0" />
+    </>,
     sliders: <><path d="M4 6h7M16 6h4M4 12h3M12 12h8M4 18h11M20 18h0" /><circle cx="14" cy="6" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="17" cy="18" r="2" /></>,
     search: <><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4 4" /></>,
     bell: <><path d="M18 10a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 22h4" /></>,
@@ -599,6 +648,8 @@ function LineIcon({ name }) {
     arrowLeft: <><path d="m15 18-6-6 6-6" /><path d="M9 12h10" /></>,
     arrowRight: <><path d="m9 18 6-6-6-6" /><path d="M5 12h10" /></>,
     upload: <><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 14v6h14v-6" /></>,
+    download: <><path d="M12 4v12" /><path d="m7 11 5 5 5-5" /><path d="M5 14v6h14v-6" /></>,
+    stop: <rect x="7" y="7" width="10" height="10" rx="1" />,
   };
   return <svg className="line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] ?? paths.pulse}</svg>;
 }
@@ -1075,6 +1126,7 @@ export default function App() {
   const [timeReportLoading, setTimeReportLoading] = useState(false);
   const [timeReportCanceling, setTimeReportCanceling] = useState(false);
   const [timeReportGenerating, setTimeReportGenerating] = useState(false);
+  const [timeReportPdfTheme, setTimeReportPdfTheme] = useState('oscuro');
   const [timeReportMessage, setTimeReportMessage] = useState(null);
   const [timeReportDownloadUrl, setTimeReportDownloadUrl] = useState(null);
   const [timeReportEditingIssueId, setTimeReportEditingIssueId] = useState(null);
@@ -1183,10 +1235,12 @@ export default function App() {
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [gridPage, setGridPage] = useState(1);
   const [gridSort, setGridSort] = useState(null);
+  const [gridSearches, setGridSearches] = useState({});
   const [gridVisiblePageSize, setGridVisiblePageSize] = useState(10);
   const gridTableWrapRef = useRef(null);
   const gridPaginationRef = useRef(null);
   const gridVisualRegistryRef = useRef(createGridVisualRegistry());
+  const gridDataRequestRef = useRef(0);
   const [gridTableAvailableWidth, setGridTableAvailableWidth] = useState(0);
   const [draggedGridColumnIndex, setDraggedGridColumnIndex] = useState(null);
   const [gridValidationShown, setGridValidationShown] = useState(false);
@@ -1194,6 +1248,7 @@ export default function App() {
   const [draggedGridAttribute, setDraggedGridAttribute] = useState(null);
 
   const syncStatus = bootstrapContext?.syncStatus ?? null;
+  const activeGridSearch = activeTab === 'config' ? '' : (gridSearches[activeTab] ?? '');
   const visibleGridCountSignature = grids
     .filter((grid) => grid.visible !== false)
     .map((grid) => `${grid.id}:${grid.updated ?? ''}`)
@@ -1401,23 +1456,37 @@ export default function App() {
     )).filter(([, count]) => Number.isFinite(count))));
   };
 
-  const refreshGridData = async (id = activeTab, page = gridPage, pageSize = gridVisiblePageSize, sort = gridSort) => {
+  const refreshGridData = async (
+    id = activeTab,
+    page = gridPage,
+    pageSize = gridVisiblePageSize,
+    sort = gridSort,
+    search = gridSearches[id] ?? '',
+  ) => {
     if (!id || id === 'config') return;
+    const requestId = gridDataRequestRef.current + 1;
+    gridDataRequestRef.current = requestId;
     setGridLoading(true);
     try {
       const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (search.trim()) query.set('search', search.trim());
       if (sort?.field) {
         query.set('sortField', sort.field);
         query.set('sortIssueType', sort.issueType ?? '');
         query.set('sortDirection', sort.direction);
       }
       const result = await api(`/api/grids/${encodeURIComponent(id)}/data?${query.toString()}`);
+      if (requestId !== gridDataRequestRef.current) return;
       setGridData(result);
-      setGridRecordCounts((current) => ({ ...current, [id]: Number(result.total ?? 0) }));
+      setGridRecordCounts((current) => ({
+        ...current,
+        [id]: Number(result.totalUnfiltered ?? result.total ?? 0),
+      }));
     } catch (error) {
+      if (requestId !== gridDataRequestRef.current) return;
       showUiToast(`No se pudo cargar el grid: ${error.message}`, 'error');
     } finally {
-      setGridLoading(false);
+      if (requestId === gridDataRequestRef.current) setGridLoading(false);
     }
   };
 
@@ -1616,14 +1685,17 @@ export default function App() {
     }
   };
 
-  const showNativeNotification = (title, body, onClick, icon = null) => {
+  const showNativeNotification = (title, body, onClick, icon = null, { preventFocus = false } = {}) => {
     if (!('Notification' in window) || Notification.permission !== 'granted') {
       return false;
     }
 
     try {
       const notification = new Notification(title, { body, ...(icon ? { icon } : {}) });
-      notification.onclick = () => {
+      notification.onclick = (event) => {
+        if (preventFocus) {
+          event.preventDefault();
+        }
         notification.close();
         onClick?.();
       };
@@ -1639,11 +1711,23 @@ export default function App() {
       return false;
     }
 
-    if (!('serviceWorker' in navigator)) {
-      return false;
-    }
-
     try {
+      const readUrl = new URL('/api/alerts/read', window.location.href).toString();
+      const shownDirectly = showNativeNotification(
+        title,
+        body,
+        () => fetch(readUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: alertId }),
+        }).catch(() => {}),
+        icon,
+        { preventFocus: true },
+      );
+      if (shownDirectly) return true;
+
+      if (!('serviceWorker' in navigator)) return false;
       const registration = notificationWorkerRegistrationRef.current
         ?? await navigator.serviceWorker.ready;
       await registration.showNotification(title, {
@@ -1653,7 +1737,7 @@ export default function App() {
         renotify: true,
         data: {
           alertId,
-          readUrl: new URL('/api/alerts/read', window.location.href).toString(),
+          readUrl,
         },
       });
       return true;
@@ -1942,7 +2026,7 @@ export default function App() {
     if (activeTab !== 'config') {
       refreshGridData(activeTab, gridPage, gridVisiblePageSize);
     }
-  }, [activeTab, gridPage, gridVisiblePageSize, gridSort, bootstrapContext?.syncStatus?.last_success_at]);
+  }, [activeTab, activeGridSearch, gridPage, gridVisiblePageSize, gridSort, bootstrapContext?.syncStatus?.last_success_at]);
 
   useEffect(() => {
     if (configSection !== 'time-reports' || !jiraSessionUser) return;
@@ -3028,6 +3112,9 @@ export default function App() {
 
   const handleTimeReportPdf = async () => {
     if (!timeReport) return;
+    const orderedIssues = [...timeReport.issues].sort((left, right) => compareTimeReportIssues(left, right, timeReportSort));
+    const orderedPendingIssues = [...pendingTimeReportIssues]
+      .sort((left, right) => compareTimeReportIssues(left, right, pendingTimeReportSort));
     const selectedIssueIds = timeReport.issues.filter((issue) => issue.selected).map((issue) => issue.issueId);
     if (selectedIssueIds.length === 0) {
       setTimeReportMessage({ type: 'error', text: 'Selecciona al menos una incidencia.' });
@@ -3060,13 +3147,14 @@ export default function App() {
         body: JSON.stringify({
           reportId: timeReport.id,
           selectedIssueIds,
-          issueOrderIds: timeReport.issues.map((issue) => issue.issueId),
+          issueOrderIds: orderedIssues.map((issue) => issue.issueId),
           summaryOverrides: Object.fromEntries(timeReport.issues.map((issue) => [String(issue.issueId), issue.summary ?? ''])),
           includeCorrectionsIssueIds,
           groupedIssueIds,
           pendingIssues: pendingTimeReportIssues,
           selectedPendingIssueIds: pendingTimeReportIssues.filter((issue) => issue.selected).map((issue) => issue.issueId),
-          pendingIssueOrderIds: pendingTimeReportIssues.map((issue) => issue.issueId),
+          pendingIssueOrderIds: orderedPendingIssues.map((issue) => issue.issueId),
+          pdfTheme: timeReportPdfTheme,
         }),
       });
       const viewerUrl = `${result.downloadUrl}#zoom=page-width`;
@@ -3180,22 +3268,7 @@ export default function App() {
   };
 
   const renderTimeReports = () => {
-    const sortIssues = (left, right, sortState = timeReportSort) => {
-      if (!sortState.field) return 0;
-      const value = (issue, field) => {
-        if (field === 'corrections') return Array.isArray(issue.corrections) ? issue.corrections.length : 0;
-        if (field === 'comments') return Array.isArray(issue.comments) ? issue.comments.length : 0;
-        if (field === 'grouped') return issue.grouped === true ? 1 : 0;
-        if (['rangeSeconds', 'totalSeconds'].includes(field)) return Number(issue[field] ?? 0);
-        return String(issue[field] ?? '');
-      };
-      const leftValue = value(left, sortState.field);
-      const rightValue = value(right, sortState.field);
-      const comparison = typeof leftValue === 'number' && typeof rightValue === 'number'
-        ? leftValue - rightValue
-        : String(leftValue).localeCompare(String(rightValue), 'es', { numeric: true, sensitivity: 'base' });
-      return comparison * (sortState.direction === 'desc' ? -1 : 1);
-    };
+    const sortIssues = (left, right, sortState = timeReportSort) => compareTimeReportIssues(left, right, sortState);
     const issues = [...(timeReport?.issues ?? [])].sort(sortIssues);
     const draggedIssue = issues.find((issue) => String(issue.issueId) === String(timeReportDraggedIssueId));
     const sortButton = (field, label, sortState = timeReportSort, setSortState = setTimeReportSort) => {
@@ -3465,7 +3538,7 @@ export default function App() {
                         <td className="time-reports-summary-cell">{draggedIssue?.summary}</td>
                         <td>{draggedIssue?.status}</td>
                         <td>{formatTimeReportDuration(draggedIssue?.rangeSeconds ?? 0)}</td>
-                        <td>{formatTimeReportDuration(draggedIssue?.totalSeconds ?? 0)}</td>
+                        <td>{isSprintOnlyProject(draggedIssue) ? '-' : formatTimeReportDuration(draggedIssue?.totalSeconds ?? 0)}</td>
                         <td className="time-reports-corrections-cell">
                           {Array.isArray(draggedIssue?.corrections) && draggedIssue.corrections.length > 0 ? (
                             <label className="time-reports-corrections-option">
@@ -3537,7 +3610,7 @@ export default function App() {
                       </td>
                       <td>{issue.status}</td>
                       <td>{formatTimeReportDuration(issue.rangeSeconds)}</td>
-                      <td>{formatTimeReportDuration(issue.totalSeconds)}</td>
+                      <td>{isSprintOnlyProject(issue) ? '-' : formatTimeReportDuration(issue.totalSeconds)}</td>
                         <td className="time-reports-corrections-cell">
                         {(() => {
                           const correctionCount = Array.isArray(issue.corrections) ? issue.corrections.length : 0;
@@ -3652,6 +3725,13 @@ export default function App() {
               ) : <p className="time-reports-empty">No hay tareas pendientes para este usuario.</p>}
             </section>
             <div className="time-reports-actions">
+              <label className="time-reports-pdf-theme-control">
+                <span>Tema del PDF</span>
+                <select value={timeReportPdfTheme} onChange={(event) => setTimeReportPdfTheme(event.target.value)} disabled={timeReportLoading || timeReportGenerating}>
+                  <option value="oscuro">Oscuro</option>
+                  <option value="claro">Claro</option>
+                </select>
+              </label>
               <button type="button" className="save-action-button" onClick={handleTimeReportPdf} disabled={timeReportLoading || timeReportGenerating || issues.length === 0 || selectedCount === 0}>
                 <LineIcon name="file" />
                 {timeReportGenerating ? 'Creando PDF...' : 'Crear PDF'}
@@ -4058,6 +4138,43 @@ export default function App() {
     registerGridVisualValues(gridVisualRegistryRef.current, rows, columns);
     return (
       <section className="grid-tab-view">
+        <div className="grid-search-bar" role="search">
+          <label className="grid-search-label" htmlFor={`grid-search-${activeTab}`}>Buscar en este grid</label>
+          <div className="grid-search-control">
+            <LineIcon name="search" />
+            <input
+              id={`grid-search-${activeTab}`}
+              type="search"
+              value={activeGridSearch}
+              onChange={(event) => {
+                const value = event.target.value;
+                setGridSearches((current) => ({ ...current, [activeTab]: value }));
+                setGridPage(1);
+              }}
+              placeholder="Buscar en los campos visibles..."
+              aria-label={`Buscar en ${gridData?.grid?.name ?? 'este grid'}`}
+            />
+            {activeGridSearch ? (
+              <button
+                type="button"
+                className="grid-search-clear"
+                onClick={() => {
+                  setGridSearches((current) => ({ ...current, [activeTab]: '' }));
+                  setGridPage(1);
+                }}
+                aria-label="Limpiar busqueda"
+                title="Limpiar busqueda"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+          </div>
+          {activeGridSearch ? (
+            <span className="grid-search-result-count" aria-live="polite">
+              {totalRecords} {totalRecords === 1 ? 'registro encontrado' : 'registros encontrados'}
+            </span>
+          ) : null}
+        </div>
         <div className={`grid-table-wrap${gridLoading ? ' is-loading' : ''}${horizontalScrollRequired ? ' has-horizontal-overflow' : ''}`} ref={gridTableWrapRef} aria-busy={gridLoading}>
           <table className="project-grid" style={{ minWidth: `${tableMinimumWidth}px` }}>
             <colgroup>
@@ -4395,6 +4512,18 @@ export default function App() {
                   </div>
               ) : null}
             </div>
+            <button
+              type="button"
+              className={syncInProgress ? 'header-tool-button header-sync-button is-syncing' : 'header-tool-button header-sync-button'}
+              onClick={handleSync}
+              disabled={syncCanceling}
+              aria-label={syncInProgress ? 'Detener sincronizacion' : 'Sincronizar con Jira'}
+              title={syncInProgress
+                ? (syncCanceling ? 'Deteniendo sincronizacion...' : 'Detener sincronizacion')
+                : 'Sincronizar con Jira'}
+            >
+              <LineIcon name={syncInProgress ? 'stop' : 'download'} />
+            </button>
             <div className="header-sync-summary" aria-live="polite">
               <span className={`header-sync-result${syncInProgress ? ' sync-status-pulsing' : ''}${sessionExpired ? ' session-required' : ''}${syncHasError ? ' sync-error' : ''}`}>
                 {sessionExpired ? (
@@ -4410,7 +4539,7 @@ export default function App() {
                 ) : (syncInProgress ? 'Sincronizando...' : syncResultLabel)}
               </span>
               <div className="header-sync-timing">
-                <span>Ultima: {formatBogotaDate(syncStatus?.last_finished_at)}</span>
+                <span>Ultima: {formatBogotaSyncDate(syncStatus?.last_finished_at)}</span>
                 <span>Proxima: {autoSyncEnabled ? (syncInProgress ? 'En curso' : formatCountdown(syncStatus?.next_sync_at, countdownNow)) : 'Apagada'}</span>
               </div>
             </div>

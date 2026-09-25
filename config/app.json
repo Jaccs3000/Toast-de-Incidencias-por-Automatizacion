@@ -3,7 +3,7 @@
   "jiraBaseUrl": "https://puertodecartagena.atlassian.net/",
   "chromeUserDataDir": "",
   "chromeProfileDirectory": "Default",
-  "syncIntervalSeconds": 3600,
+  "syncIntervalSeconds": 2400,
   "queryDelaySeconds": 1,
   "retentionDays": 5,
   "startMinimized": true,

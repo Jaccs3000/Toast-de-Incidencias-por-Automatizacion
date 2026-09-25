@@ -129,6 +129,11 @@ function getIssueAggregate(aggregates, issue) {
   return { rangeSeconds: 0, totalSeconds: 0 };
 }
 
+function hasSprintTime(issue) {
+  const rangeSeconds = Number(issue?.rangeSeconds);
+  return Number.isFinite(rangeSeconds) && rangeSeconds > 0;
+}
+
 function issueTypeIconUrl(issue) {
   return String(
     issue?.issueTypeIconUrl
@@ -163,8 +168,13 @@ export class TimeReportsService {
   async embedSelectedIssueTypeIcons(report) {
     if (typeof this.jira?.fetchSessionImageData !== 'function') return report;
 
-    const urls = [...new Set((report?.issues ?? [])
-      .filter((issue) => issue.selected)
+    const issueSources = [
+      ...(report?.issues ?? []),
+      ...(report?.pendingIssues ?? []),
+      ...(report?.issues ?? []).flatMap((issue) => issue.corrections ?? []),
+    ];
+    const urls = [...new Set(issueSources
+      .filter((issue) => issue.selected !== false)
       .map(issueTypeIconUrl)
       .filter((url) => /^https?:\/\//i.test(url)))];
     if (urls.length === 0) return report;
@@ -181,12 +191,21 @@ export class TimeReportsService {
       }
     }));
 
+    const withEmbeddedIcon = (issue) => {
+      const embeddedIcon = this.pdfIssueTypeIconCache.get(issueTypeIconUrl(issue));
+      const corrections = Array.isArray(issue.corrections)
+        ? issue.corrections.map(withEmbeddedIcon)
+        : null;
+      return {
+        ...issue,
+        ...(embeddedIcon ? { issueTypeIconUrl: embeddedIcon } : {}),
+        ...(corrections ? { corrections } : {}),
+      };
+    };
     return {
       ...report,
-      issues: report.issues.map((issue) => {
-        const embeddedIcon = this.pdfIssueTypeIconCache.get(issueTypeIconUrl(issue));
-        return embeddedIcon ? { ...issue, issueTypeIconUrl: embeddedIcon } : issue;
-      }),
+      issues: (report.issues ?? []).map(withEmbeddedIcon),
+      pendingIssues: (report.pendingIssues ?? []).map(withEmbeddedIcon),
     };
   }
 
@@ -215,7 +234,9 @@ export class TimeReportsService {
     const typePlaceholders = CORRECTION_TYPES.map(() => '?').join(', ');
     const corrections = await this.persistence.query(`
       SELECT source.key AS issue_key, correction.key AS correction_key,
-             correction.summary, correction.status, pgi.project_group_id
+             correction.summary, correction.status,
+             correction.issuetype_icon_url AS issue_type_icon_url,
+             pgi.project_group_id
       FROM JIRA_PROJECT_GROUP_ISSUES pgi
       JOIN JIRA_ISSUES source ON source.id = pgi.issue_id
       JOIN JIRA_PROJECT_GROUP_ISSUES correction_pgi ON correction_pgi.project_group_id = pgi.project_group_id
@@ -604,6 +625,13 @@ export class TimeReportsService {
       ));
     }
 
+    // The report is scoped to the selected sprint range. Historical worklogs
+    // may give an issue a positive total while its sprint time is zero; those
+    // issues must not appear in the report grid or PDF.
+    for (const [issueId, issue] of reportIssues) {
+      if (!hasSprintTime(issue)) reportIssues.delete(issueId);
+    }
+
     const [lifecycle, projectGroupDetails, correctionRows] = await Promise.all([
       lifecycleTask,
       projectGroupDetailsTask,
@@ -632,6 +660,8 @@ export class TimeReportsService {
           correctionKey: row.correction_key,
           summary: row.summary,
           status: row.status,
+          issueTypeIconUrl: row.issue_type_icon_url ?? '',
+          projectIconUrl: '',
           projectGroupId: row.project_group_id,
         })),
       });
@@ -641,7 +671,15 @@ export class TimeReportsService {
       for (const issue of snapshot.issues) {
         issue.corrections = corrections
           .filter((row) => row.issue_key === issue.issueKey)
-          .map((row) => ({ correctionKey: row.correction_key, summary: row.summary, status: row.status }));
+          .map((row) => ({
+            issueKey: row.issue_key,
+            correctionKey: row.correction_key,
+            summary: row.summary,
+            status: row.status,
+            issueTypeIconUrl: row.issue_type_icon_url ?? '',
+            projectIconUrl: '',
+            projectGroupId: row.project_group_id,
+          }));
       }
       await this.logs?.info('Time report preview created', {
         reportId,
@@ -683,6 +721,7 @@ export class TimeReportsService {
     pendingIssues = [],
     selectedPendingIssueIds = [],
     pendingIssueOrderIds = [],
+    pdfTheme = 'oscuro',
   }) {
     const snapshot = await this.persistence.timeReports.getSnapshot(reportId);
     if (!snapshot) throw new Error('El informe temporal no existe. Busca las incidencias nuevamente.');
@@ -735,7 +774,6 @@ export class TimeReportsService {
           - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
       }),
     };
-    const pdfReport = await this.embedSelectedIssueTypeIcons(selectedForPdf);
     const pendingSelection = new Set((Array.isArray(selectedPendingIssueIds) ? selectedPendingIssueIds : [])
       .map((issueId) => String(issueId)));
     const pendingForPdf = (Array.isArray(pendingIssues) ? pendingIssues : [])
@@ -746,7 +784,11 @@ export class TimeReportsService {
         return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex)
           - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
       });
-    pdfReport.pendingIssues = pendingForPdf;
+    const pdfReport = await this.embedSelectedIssueTypeIcons({
+      ...selectedForPdf,
+      pendingIssues: pendingForPdf,
+    });
+    pdfReport.pdfTheme = pdfTheme;
     const result = await this.pdfGenerator.generate(pdfReport);
     await this.persistence.timeReports.markGenerated(reportId, result.fileName);
     await this.logs?.info('Time report PDF generated', { reportId, fileName: result.fileName, pages: result.pages });

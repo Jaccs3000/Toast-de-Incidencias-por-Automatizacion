@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-15T13:57:41.436Z",
+  "updatedAt": "2026-09-25T14:54:09.084Z",
   "projects": [
     {
       "value": "AP",
@@ -153,6 +153,10 @@
     {
       "value": "PDD2",
       "label": "Paso Documentos Docuware-NUBE"
+    },
+    {
+      "value": "PDB",
+      "label": "Planeación de buques"
     },
     {
       "value": "PSC2",
@@ -323,6 +327,7 @@
     "DE_SUB_TAREA",
     "Documentar Criterios de Aceptación",
     "Email",
+    "Epic",
     "Épica",
     "Error",
     "Fibra Optica",
@@ -350,6 +355,7 @@
     "PC - Estacion de Trabajo",
     "Personas",
     "Peticion Juridica",
+    "Planeación de motonave",
     "PRE-PROD - Intervención DBA",
     "PRE-PROD - Intervención Infraestructura",
     "PRE-PROD - Validación Montaje Dev",
@@ -383,6 +389,7 @@
     "Soporte Interno",
     "Soporte Puerta",
     "Subtarea",
+    "Subtarea de motonave",
     "Subtarea proyecto GH",
     "Switch",
     "Switch (PoE)",
@@ -404,6 +411,7 @@
   ],
   "statuses": [
     "Aceptado",
+    "Ajustes/Nov. durante Operación",
     "Aprobación solicitante",
     "Aprobado seguridad",
     "Archivado",
@@ -416,6 +424,7 @@
     "Cerrado",
     "Clasificado",
     "Creado",
+    "Departure Notice",
     "En analisis",
     "En desarrollo",
     "En ejecución",
@@ -435,19 +444,31 @@
     "En revisión",
     "En Revisión",
     "En validacion",
+    "Envío de Planos de Cargue",
+    "Envío Departure",
     "Finalizado",
     "Identificado",
+    "Inicio de Gestión",
+    "Motonave Aprobada",
     "No Aceptado",
+    "Operación COCNR",
+    "Operación SPRC",
     "Pendiente de Backup",
     "Pendiente de cierre",
+    "Planeación del Buque",
     "Planeado",
+    "Plano de Arribo",
+    "Plano de Cargue",
     "Por asignar",
     "Por hacer",
     "Por pasar a producción",
     "Por Probar",
+    "Predeparture Notice",
     "Reabierto",
     "Rechazado",
     "Recibido",
+    "Recibido Vessel Final",
+    "Reporte de Novedades",
     "Respondido",
     "Resuelto / En Producción",
     "Revisado y aprobado redes",
@@ -455,6 +476,9 @@
     "SEGUIMIENTO",
     "Sub-task cerradas",
     "Tareas por hacer",
-    "Terminado"
+    "Terminado",
+    "Validación de Preaviso",
+    "Validación Departure Notice",
+    "Zarpa"
   ]
 }

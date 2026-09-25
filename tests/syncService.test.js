@@ -40,6 +40,54 @@ test('does not normalize an ambiguous group reassignment', () => {
   assert.equal(result.moves.size, 0);
 });
 
+test('supports explicit production-state exceptions by Jira issue key', () => {
+  const service = new SyncService({
+    configuration: {
+      projectGroupRules: {
+        defaultValue: '',
+        rules: [{
+          priority: 0,
+          enabled: true,
+          output: 'En Producción',
+          when: { match: 'issueKey', issueKeys: ['NCUATRO-12761', 'ONL-19562'] },
+        }],
+      },
+    },
+  });
+  const state = service.evaluateProjectGroupState({
+    issues: [{ key: 'NCUATRO-12761', fields: { issuetype: { name: 'Tarea' }, status: { name: 'Cerrado' } } }],
+  });
+
+  assert.equal(state, 'En Producción');
+});
+
+test('maps Testing issues in progress or in testing to the TEST general state', () => {
+  const service = new SyncService({
+    configuration: {
+      projectGroupRules: {
+        defaultValue: '',
+        rules: [{
+          priority: 4,
+          enabled: true,
+          output: 'Probando en TEST',
+          when: {
+            any: [
+              { issueType: 'Testing', status: 'En Progreso' },
+              { issueType: 'Testing', status: 'En Pruebas' },
+            ],
+          },
+        }],
+      },
+    },
+  });
+
+  for (const status of ['En Progreso', 'En Pruebas']) {
+    assert.equal(service.evaluateProjectGroupState({
+      issues: [{ key: 'TEST-1', fields: { issuetype: { name: 'Testing' }, status: { name: status } } }],
+    }), 'Probando en TEST');
+  }
+});
+
 test('keeps the explicit login-required status when headless recovery fails', async () => {
   const statusUpdates = [];
   const service = new SyncService({

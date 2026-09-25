@@ -8,6 +8,7 @@ import { saveAppConfig } from './config/configLoader.js';
 import { validateAlertConditionConfig } from '../shared/alerts/alertConditionValidation.js';
 import { isJiraAuthenticationSyncFailure } from '../shared/auth/sessionRequirement.js';
 import { gridConditionMatches } from '../shared/grids/gridCondition.js';
+import { gridRowMatchesSearch } from '../shared/grids/gridSearch.js';
 import {
   SUBTASK_COUNT_FIELDS,
   SUBTASK_COUNT_ISSUE_TYPES,
@@ -713,14 +714,37 @@ async function handleDatabaseSql(req, res) {
   json(res, 200, { ok: true, type: 'write', message: 'Consulta ejecutada correctamente.' });
 }
 
-function reportSessionIsReady(res) {
-  if (state.session?.ok) return true;
-  json(res, 401, { ok: false, error: 'Inicia sesion en Jira para consultar reportes de tiempos.' });
+async function reportSessionIsReady(res) {
+  const currentSession = await state.runtime.auth.validateSession();
+  if (currentSession?.ok) {
+    state.session = currentSession;
+    state.runtime.jira.setSession(currentSession);
+    state.appState = 'ready';
+    return true;
+  }
+
+  log('time report request found an invalid Jira session; trying headless recovery');
+  const recoveredSession = await state.runtime.auth.tryHeadlessContinue();
+  if (recoveredSession?.ok) {
+    state.session = recoveredSession;
+    state.runtime.jira.setSession(recoveredSession);
+    state.appState = 'ready';
+    log('time report request recovered the Jira session through headless continuation');
+    return true;
+  }
+
+  state.session = recoveredSession ?? currentSession;
+  state.appState = 'auth_required';
+  json(res, 401, {
+    ok: false,
+    code: 'JIRA_LOGIN_REQUIRED',
+    error: 'Se requiere iniciar sesion en Jira para consultar reportes de tiempos.',
+  });
   return false;
 }
 
 async function handleTimeReportUsers(req, res, url) {
-  if (!reportSessionIsReady(res)) return;
+  if (!await reportSessionIsReady(res)) return;
   const query = String(url.searchParams.get('query') ?? '').trim();
   if (query.length < 2) {
     json(res, 200, { users: [] });
@@ -735,7 +759,7 @@ async function handleTimeReportSearch(req, res) {
     json(res, 409, { ok: false, error: 'No se puede generar un reporte durante una sincronizacion.' });
     return;
   }
-  if (!reportSessionIsReady(res)) return;
+  if (!await reportSessionIsReady(res)) return;
   if (timeReportSearchInProgress) {
     json(res, 409, { ok: false, error: 'Ya hay una busqueda de incidencias en curso.' });
     return;
@@ -786,7 +810,7 @@ async function handleTimeReportPdf(req, res) {
     json(res, 409, { ok: false, error: 'No se puede generar un reporte durante una sincronizacion.' });
     return;
   }
-  if (!reportSessionIsReady(res)) return;
+  if (!await reportSessionIsReady(res)) return;
   const body = await readBody(req);
   const result = await state.runtime.timeReports.generatePdf({
     reportId: body?.reportId,
@@ -798,6 +822,7 @@ async function handleTimeReportPdf(req, res) {
     pendingIssues: body?.pendingIssues,
     selectedPendingIssueIds: body?.selectedPendingIssueIds,
     pendingIssueOrderIds: body?.pendingIssueOrderIds,
+    pdfTheme: body?.pdfTheme,
   });
   json(res, 200, {
     ok: true,
@@ -809,7 +834,7 @@ async function handleTimeReportPdf(req, res) {
 }
 
 async function handleTimeReportImprovement(req, res, method) {
-  if (!reportSessionIsReady(res)) return;
+  if (!await reportSessionIsReady(res)) return;
   const body = await readBody(req);
   if (method === 'DELETE') {
     await state.runtime.timeReports.deleteImprovement({ reportId: body?.reportId, issueId: body?.issueId });
@@ -1001,12 +1026,6 @@ async function handleGridData(req, res, id) {
       index === 0 ? match : (grid.conditions[index].connector === 'OR' ? result || match : result && match)
     ), false);
   });
-  const searchParams = new URL(req.url, 'http://127.0.0.1').searchParams;
-  const page = Math.max(1, Number(searchParams.get('page') ?? 1));
-  const requestedPageSize = Number(searchParams.get('pageSize'));
-  const pageSize = Number.isInteger(requestedPageSize) && requestedPageSize > 0
-    ? Math.min(requestedPageSize, grid.pageSize)
-    : grid.pageSize;
   const data = projectGroups.map((group) => {
     const result = {
       projectGroupId: group.id,
@@ -1040,6 +1059,18 @@ async function handleGridData(req, res, id) {
     return result;
   });
 
+  const searchParams = new URL(req.url, 'http://127.0.0.1').searchParams;
+  const search = String(searchParams.get('search') ?? '').trim();
+  const totalUnfiltered = data.length;
+  const filteredData = search
+    ? data.filter((row) => gridRowMatchesSearch(row, grid.columns, search))
+    : data;
+  const page = Math.max(1, Number(searchParams.get('page') ?? 1));
+  const requestedPageSize = Number(searchParams.get('pageSize'));
+  const pageSize = Number.isInteger(requestedPageSize) && requestedPageSize > 0
+    ? Math.min(requestedPageSize, grid.pageSize)
+    : grid.pageSize;
+
   const sortField = String(searchParams.get('sortField') ?? '').trim();
   const sortIssueType = String(searchParams.get('sortIssueType') ?? '');
   const sortDirection = searchParams.get('sortDirection') === 'desc' ? 'desc' : 'asc';
@@ -1047,16 +1078,18 @@ async function handleGridData(req, res, id) {
     column.field === sortField && String(column.issueType ?? '') === sortIssueType
   ));
   if (sortColumn) {
-    data.sort((left, right) => compareGridRows(left, right, sortColumn, sortDirection));
+    filteredData.sort((left, right) => compareGridRows(left, right, sortColumn, sortDirection));
   }
 
-  const pagedData = data.slice((page - 1) * pageSize, page * pageSize);
+  const pagedData = filteredData.slice((page - 1) * pageSize, page * pageSize);
   json(res, 200, {
     grid,
     rows: pagedData,
-    total: projectGroups.length,
+    total: filteredData.length,
+    totalUnfiltered,
     page,
     pageSize,
+    search,
     sort: sortColumn ? { issueType: sortColumn.issueType ?? null, field: sortColumn.field, direction: sortDirection } : null,
   });
 }

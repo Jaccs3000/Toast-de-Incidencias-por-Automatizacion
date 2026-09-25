@@ -6,6 +6,7 @@ import {
   enrichTempoWorklogs,
   extractFirstLifecycleDates,
   formatReportDuration,
+  isSprintOnlyProject,
 } from '../src/shared/reports/timeReport.js';
 import { TimeReportsService } from '../src/main/reports/timeReportsService.js';
 import { buildTimeReportHtml, launchPdfBrowser } from '../src/main/reports/timeReportPdfGenerator.js';
@@ -15,12 +16,168 @@ import { JiraClient } from '../src/main/jira/jiraClient.js';
 const userId = 'account-jesus';
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+function paginationFixture(theme, memo, corrections) {
+  return {
+    pdfTheme: theme,
+    fromDate: '2026-09-01',
+    toDate: '2026-09-11',
+    userDisplayName: 'Usuario',
+    issues: [{
+      selected: true,
+      issueKey: 'QA-FIXTURE',
+      summary: 'Resumen de prueba',
+      status: 'En Progreso',
+      issueType: 'Tarea',
+      assignee: 'Usuario',
+      reporter: 'Usuario',
+      corrections,
+      improvement: { memo },
+    }],
+    pendingIssues: [],
+  };
+}
+
+test('paginates complete improvement text in both PDF themes', () => {
+  const memo = 'Accion de mejora con contenido completo. '.repeat(70);
+  for (const theme of ['claro', 'oscuro']) {
+    const html = buildTimeReportHtml(paginationFixture(theme, memo, [
+      { correctionKey: 'QA-1', summary: 'Problema corto', status: 'Cerrado' },
+      { correctionKey: 'QA-2', summary: 'Problema con una descripcion suficientemente larga para cambiar la altura de la fila', status: 'Cerrado' },
+    ]), {
+      domPages: [
+        { kind: 'issue-first', issue: paginationFixture(theme, memo, [])["issues"][0], corrections: [], includeImprovement: false },
+        { kind: 'improvement', issue: paginationFixture(theme, memo, [])["issues"][0], memo: memo.slice(0, 180), improvementFragmentIndex: 0 },
+        { kind: 'improvement', issue: paginationFixture(theme, memo, [])["issues"][0], memo: memo.slice(180), improvementFragmentIndex: 1 },
+      ],
+    });
+    assert.ok((html.match(/improvement-only-page/g) ?? []).length > 1);
+    assert.ok((html.match(/Accion de mejora con contenido completo/g) ?? []).length > 1);
+    assert.match(html, /pdf-theme-claro|pdf-theme-oscuro/);
+  }
+});
+
+test('keeps rows with different heights complete before pagination', () => {
+  const html = buildTimeReportHtml(paginationFixture('oscuro', 'Accion breve', [
+    { correctionKey: 'QA-SHORT', summary: 'Corto', status: 'Cerrado' },
+    { correctionKey: 'QA-LONG', summary: 'Linea extensa '.repeat(30), status: 'Cerrado' },
+    { correctionKey: 'QA-LAST', summary: 'Ultimo problema', status: 'Cerrado' },
+  ]));
+  assert.match(html, /data-correction-key="QA-SHORT"/);
+  assert.match(html, /data-correction-key="QA-LONG"/);
+  assert.match(html, /data-correction-key="QA-LAST"/);
+});
+
+test('places the measured improvement fragment beside the last problem page', () => {
+  const prefix = 'Primer fragmento medido junto a los problemas. ';
+  const suffix = 'Continuacion medida en una pagina exclusiva.';
+  const html = buildTimeReportHtml(paginationFixture('oscuro', `${prefix}${suffix}`, [
+    { correctionKey: 'QA-FIRST', summary: 'Problema inicial', status: 'Cerrado' },
+    { correctionKey: 'QA-LAST', summary: 'Ultimo problema', status: 'Cerrado' },
+  ]), {
+    domPages: [
+      { kind: 'issue-first', issue: paginationFixture('oscuro', `${prefix}${suffix}`, [])["issues"][0], corrections: [{ correctionKey: 'QA-FIRST', summary: 'Problema inicial', status: 'Cerrado' }], includeImprovement: false },
+      { kind: 'issue-continuation', issue: paginationFixture('oscuro', `${prefix}${suffix}`, [])["issues"][0], corrections: [{ correctionKey: 'QA-LAST', summary: 'Ultimo problema', status: 'Cerrado' }], includeImprovement: true, improvementMemo: prefix, improvementFragmentIndex: 0 },
+      { kind: 'improvement', issue: paginationFixture('oscuro', `${prefix}${suffix}`, [])["issues"][0], memo: suffix, improvementFragmentIndex: 1 },
+    ],
+  });
+
+  assert.match(html, /data-page-profile="issue-continuation"/);
+  assert.match(html, new RegExp(`>${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}<`));
+  assert.match(html, new RegExp(`>${suffix}<`));
+  assert.equal((html.match(/data-page-profile="improvement-only"/g) ?? []).length, 1);
+});
+
+test('uses the compact profile instead of dropping an oversized measured row', () => {
+  const report = paginationFixture('claro', null, [
+    { correctionKey: 'QA-COMPACT', summary: 'Problema que debe conservarse completo', status: 'Cerrado' },
+  ]);
+  report.issues[0].improvement = null;
+  const html = buildTimeReportHtml(report, { domPages: [
+    { kind: 'issue-first', issue: report.issues[0], corrections: report.issues[0].corrections, includeImprovement: true, compactCorrection: true },
+  ] });
+
+  assert.match(html, /compact-correction-page/);
+  assert.match(html, /data-correction-key="QA-COMPACT"/);
+});
+
+test('covers the PDF page combination matrix without mixing sections', () => {
+  const cases = [
+    paginationFixture('claro', null, []),
+    paginationFixture('oscuro', null, [{ correctionKey: 'QA-1', summary: 'Problema', status: 'Cerrado' }]),
+    paginationFixture('claro', 'Accion de mejora', []),
+    paginationFixture('oscuro', 'Accion de mejora', [{ correctionKey: 'QA-2', summary: 'Problema', status: 'Cerrado' }]),
+  ];
+  for (const report of cases) {
+    const html = buildTimeReportHtml(report);
+    assert.match(html, /data-page-type="issue"/);
+    assert.doesNotMatch(html, /data-page-type="table-grouped"/);
+    assert.doesNotMatch(html, /data-page-type="table-pending"/);
+  }
+
+  const tables = buildTimeReportHtml({
+    pdfTheme: 'oscuro',
+    fromDate: '2026-09-01',
+    toDate: '2026-09-15',
+    userDisplayName: 'Usuario',
+    issues: [{ selected: true, issueKey: 'QA-1', summary: 'Incidencia', status: 'Creado', corrections: [] }],
+    pendingIssues: ['Pendiente 1', 'Pendiente 2'].map((summary, index) => ({ issueKey: `P-${index}`, summary, issueType: 'Tarea', reporter: 'Usuario', status: 'Creado' })),
+  });
+  assert.match(tables, /data-page-type="table-pending"/);
+  assert.doesNotMatch(tables, /data-page-type="table-grouped"/);
+});
+
+test('uses isolated rows during the DOM measurement pass', () => {
+  const html = buildTimeReportHtml(paginationFixture('claro', 'Accion breve', [
+    { correctionKey: 'QA-1', summary: 'Problema uno', status: 'Cerrado' },
+    { correctionKey: 'QA-2', summary: 'Problema dos', status: 'Cerrado' },
+    { correctionKey: 'QA-3', summary: 'Problema tres', status: 'Cerrado' },
+  ]), { domPages: [
+    { kind: 'issue-first', issue: paginationFixture('claro', 'Accion breve', [])["issues"][0], corrections: [{ correctionKey: 'QA-1', summary: 'Problema uno', status: 'Cerrado' }], includeImprovement: false },
+    { kind: 'issue-continuation', issue: paginationFixture('claro', 'Accion breve', [])["issues"][0], corrections: [{ correctionKey: 'QA-2', summary: 'Problema dos', status: 'Cerrado' }], includeImprovement: false },
+    { kind: 'issue-continuation', issue: paginationFixture('claro', 'Accion breve', [])["issues"][0], corrections: [{ correctionKey: 'QA-3', summary: 'Problema tres', status: 'Cerrado' }], includeImprovement: true, improvementMemo: 'Accion breve', improvementFragmentIndex: 0 },
+  ] });
+  const correctionPages = html.match(/data-page-type="issue(?:-continuation)?"/g) ?? [];
+  assert.equal(correctionPages.length, 3);
+  assert.equal((html.match(/data-correction-key=/g) ?? []).length, 3);
+  assert.equal((html.match(/data-page-type="improvement"/g) ?? []).length, 0);
+});
+
 test('calculates the second Friday from the selected start date', () => {
   assert.equal(calculateSecondFriday('2026-08-31'), '2026-09-11');
   assert.equal(calculateSecondFriday('2026-09-04'), '2026-09-11');
   assert.equal(calculateSecondFriday('2026-09-06'), '2026-09-18');
   assert.equal(calculateSecondFriday(''), '');
   assert.equal(calculateSecondFriday('2026-02-30'), '');
+});
+
+test('normalizes PDF labels and omits empty improvement panels', () => {
+  const html = buildTimeReportHtml({
+    pdfTheme: 'claro',
+    fromDate: '2026-09-01',
+    toDate: '2026-09-11',
+    userDisplayName: 'Jesus Clavijo',
+    issues: [{
+      selected: true,
+      issueKey: 'QA-100',
+      summary: 'Resumen extenso '.repeat(30),
+      issueType: 'Implementación Q&A',
+      status: 'Cerrado',
+      created: '2026-09-01',
+      assignedAt: '2026-09-01',
+      corrections: [{
+        correctionKey: 'QA-101',
+        summary: 'Primera línea\nSegunda línea ' + 'texto '.repeat(30),
+        status: 'Cerrado',
+      }],
+    }],
+    pendingIssues: [],
+  });
+
+  assert.match(html, /Fecha de creación/);
+  assert.match(html, /F\. Asignación/);
+  assert.doesNotMatch(html, /class="improvement-panel"/);
+  assert.doesNotMatch(html, /Ã/);
+  assert.match(html, /QA-101/);
 });
 
 test('filters user suggestions using every search term', async () => {
@@ -425,7 +582,7 @@ test('renders the selected user total and correction-only continuation pages', (
     }],
   });
 
-  assert.equal((html.match(/<section class="page/g) ?? []).length, 2);
+  assert.ok((html.match(/data-correction-key=/g) ?? []).length >= corrections.length);
   assert.match(html, /1h 30m/);
   assert.match(html, /Tiempo reportado en Sprint/);
   assert.match(html, /Tiempo Total/);
@@ -437,9 +594,10 @@ test('renders the selected user total and correction-only continuation pages', (
   assert.match(html, /report-icon-project/);
   assert.match(html, /jira-issue-icon/);
   assert.match(html, /jira-issue-type-icon/);
+  assert.match(html, /jira-issue-type-icon"><img src="https:\/\/example\.test\/issue-type\.png"/);
   assert.match(html, /\.jira-issue-type-icon img \{ object-fit:contain; padding:2px/);
   assert.match(html, /width:22px; height:22px; flex:0 0 22px/);
-  assert.match(html, /https:\/\/example\.test\/project\.png/);
+  assert.doesNotMatch(html, /https:\/\/example\.test\/project\.png/);
   assert.match(html, /https:\/\/example\.test\/issue-type\.png/);
   assert.match(html, />Jesus Clavijo</);
   assert.match(html, />Heider Neira</);
@@ -451,7 +609,7 @@ test('renders the selected user total and correction-only continuation pages', (
   assert.match(html, /grid-template-rows:minmax\(54px, auto\) minmax\(54px, auto\) 9px/);
   assert.match(html, /\.report-divider \{ min-width:0; align-self:center;/);
   assert.match(html, /class="general-state status-other"/);
-  assert.match(html, /\.correction-status \{ justify-self:end; width:88px/);
+  assert.match(html, /\.correction-status \{ justify-self:end; width:100%;/);
   assert.doesNotMatch(html, />Jesus Antonio Clavijo Castellar</);
   assert.match(html, /\.status, \.correction-status/);
   assert.match(html, /issue-heading/);
@@ -459,9 +617,8 @@ test('renders the selected user total and correction-only continuation pages', (
   assert.doesNotMatch(html, /<div class="time-panel"/);
   assert.doesNotMatch(html, /time-ring|Total usuario|>Restante</);
   assert.doesNotMatch(html, /27h 45m/);
-  const continuation = html.slice(html.indexOf('Correcciones 2'));
-  assert.match(continuation, /ABC-16/);
-  assert.doesNotMatch(continuation, /Planeado/);
+  assert.match(html, /ABC-16/);
+  assert.doesNotMatch(html, /Correcciones 2/);
 });
 
 test('renders grouped issues in a paginated grid without individual correction pages', () => {
@@ -489,8 +646,7 @@ test('renders grouped issues in a paginated grid without individual correction p
     }, ...groupedIssues],
   });
 
-  assert.equal((html.match(/<section class="page/g) ?? []).length, 3);
-  assert.equal((html.match(/class="page grouped-issues-page"/g) ?? []).length, 2);
+  assert.ok((html.match(/data-grouped-issue-key=/g) ?? []).length >= groupedIssues.length);
   assert.match(html, /Tiempos adicionales en el Sprint/);
   assert.match(html, /<th>Incidencia<\/th><th>Tipo Incidencia<\/th><th>Asunto<\/th><th>Tiempo Sprint<\/th><th>Estado<\/th>/);
   assert.match(html, /GRP-13/);
@@ -523,6 +679,73 @@ test('renders selected pending issues at the end and omits the page when empty',
   assert.doesNotMatch(buildTimeReportHtml({ ...report, pendingIssues: [] }), /Tareas Pendientes/);
 });
 
+test('identifies TA2 as sprint-time-only without changing other projects', () => {
+  assert.equal(isSprintOnlyProject({ project: 'TA2' }), true);
+  assert.equal(isSprintOnlyProject({ project: 'ta2' }), true);
+  assert.equal(isSprintOnlyProject({ project: 'TA' }), false);
+  assert.equal(isSprintOnlyProject({ project: 'TA20' }), false);
+});
+
+test('keeps the problems panel and applies the table icon and two-line limits', () => {
+  const html = buildTimeReportHtml({
+    pdfTheme: 'claro',
+    fromDate: '2026-09-01',
+    toDate: '2026-09-11',
+    userDisplayName: 'Usuario',
+    issues: [{
+      selected: true,
+      issueKey: 'QA-PANELS',
+      summary: 'Incidencia sin detalles adicionales',
+      status: 'Cerrado',
+      corrections: [],
+    }, {
+      selected: true,
+      grouped: true,
+      issueKey: 'QA-GROUPED',
+      issueType: 'Tarea',
+      summary: 'Asunto agrupado',
+      status: 'Creado',
+      rangeSeconds: 3600,
+    }],
+    pendingIssues: [{
+      issueKey: 'QA-PENDING',
+      issueType: 'Tarea',
+      summary: 'Asunto largo '.repeat(40),
+      reporter: 'Usuario',
+      status: 'Creado',
+    }],
+  });
+
+  assert.match(html, /Problemas presentados/);
+  assert.match(html, /No hay correcciones asociadas\./);
+  assert.doesNotMatch(html, /class="improvement-panel"/);
+  assert.doesNotMatch(html, /No hay acciones de mejora registradas\./);
+  assert.match(html, /report-icon-sprint/);
+  assert.match(html, /report-icon-checklist/);
+  assert.match(html, /\.grouped-issues-grid \.long-text \{[^}]*-webkit-line-clamp:2/);
+  assert.doesNotMatch(html, /grouped-issues-grid \.long-text \{[^}]*-webkit-line-clamp:3/);
+});
+
+test('keeps the empty problems message consistent on continuation pages', () => {
+  const html = buildTimeReportHtml({
+    pdfTheme: 'oscuro',
+    fromDate: '2026-09-01',
+    toDate: '2026-09-11',
+    userDisplayName: 'Usuario',
+    issues: [{
+      selected: true,
+      issueKey: 'QA-CONTINUATION',
+      summary: 'Incidencia',
+      status: 'Cerrado',
+      corrections: [],
+    }],
+    pendingIssues: [],
+  });
+
+  assert.equal((html.match(/No hay correcciones asociadas\./g) ?? []).length, 1);
+  assert.doesNotMatch(html, /No hay problemas asociados\./);
+});
+
 test('embeds selected type icons before generating the PDF', async () => {
   let generatedReport;
   const snapshot = {
@@ -530,7 +753,11 @@ test('embeds selected type icons before generating the PDF', async () => {
     issues: [
       {
         issueId: '1', issueKey: 'ABC-1', selected: true,
-        issueTypeIconUrl: 'https://jira.example.test/icon-a.png', corrections: [],
+        issueTypeIconUrl: 'https://jira.example.test/icon-a.png',
+        corrections: [{
+          correctionKey: 'ABC-101', summary: 'Correccion', status: 'Cerrado',
+          issueTypeIconUrl: 'https://jira.example.test/icon-correction.png',
+        }],
       },
       {
         issueId: '2', issueKey: 'ABC-2', selected: false,
@@ -539,6 +766,11 @@ test('embeds selected type icons before generating the PDF', async () => {
     ],
   };
   const fetchedUrls = [];
+  const pendingIssues = [{
+    issueId: 'pending-1', issueKey: 'PENDING-1', selected: true,
+    issueType: 'Tarea', summary: 'Pendiente', reporter: 'Usuario', status: 'Creado',
+    issueTypeIconUrl: 'https://jira.example.test/icon-pending.png',
+  }];
   const persistence = {
     timeReports: {
       async getSnapshot() { return snapshot; },
@@ -551,7 +783,12 @@ test('embeds selected type icons before generating the PDF', async () => {
     jira: {
       async fetchSessionImageData(url) {
         fetchedUrls.push(url);
-        return `data:image/png;base64,${url.endsWith('icon-a.png') ? 'AQID' : 'BAUG'}`;
+        const encoded = url.endsWith('icon-a.png')
+          ? 'AQID'
+          : url.endsWith('icon-correction.png')
+          ? 'CAFE'
+          : 'BAUG';
+        return `data:image/png;base64,${encoded}`;
       },
     },
     logs: { async info() {} },
@@ -563,11 +800,23 @@ test('embeds selected type icons before generating the PDF', async () => {
     },
   });
 
-  await service.generatePdf({ reportId: 'report-icons', selectedIssueIds: ['1'] });
+  await service.generatePdf({
+    reportId: 'report-icons',
+    selectedIssueIds: ['1'],
+    pendingIssues,
+    selectedPendingIssueIds: ['pending-1'],
+    pendingIssueOrderIds: ['pending-1'],
+  });
 
-  assert.deepEqual(fetchedUrls, ['https://jira.example.test/icon-a.png']);
+  assert.deepEqual(fetchedUrls.sort(), [
+    'https://jira.example.test/icon-a.png',
+    'https://jira.example.test/icon-correction.png',
+    'https://jira.example.test/icon-pending.png',
+  ]);
   assert.equal(generatedReport.issues[0].issueTypeIconUrl, 'data:image/png;base64,AQID');
+  assert.equal(generatedReport.issues[0].corrections[0].issueTypeIconUrl, 'data:image/png;base64,CAFE');
   assert.equal(generatedReport.issues[1].issueTypeIconUrl, 'https://jira.example.test/icon-b.png');
+  assert.equal(generatedReport.pendingIssues[0].issueTypeIconUrl, 'data:image/png;base64,BAUG');
 });
 
 test('includes corrections only for the issues selected for correction details', async () => {
@@ -659,6 +908,51 @@ test('groups selected issues and omits their corrections from the PDF', async ()
   assert.equal(generatedReport.issues[1].corrections.length, 0);
 });
 
+test('preserves visible order inside ungrouped, grouped, and pending PDF sections', async () => {
+  let generatedReport;
+  const snapshot = {
+    id: 'report-order',
+    issues: [
+      { issueId: '1', issueKey: 'ABC-1', selected: true, corrections: [] },
+      { issueId: '2', issueKey: 'ABC-2', selected: true, corrections: [] },
+      { issueId: '3', issueKey: 'ABC-3', selected: true, corrections: [] },
+    ],
+  };
+  const persistence = {
+    timeReports: {
+      async getSnapshot() { return snapshot; },
+      async setSelection() {},
+      async markGenerated() {},
+    },
+  };
+  const service = new TimeReportsService({
+    persistence,
+    jira: {},
+    pdfGenerator: {
+      async generate(report) {
+        generatedReport = report;
+        return { fileName: 'report.pdf', filePath: 'C:/report.pdf', pages: 3 };
+      },
+    },
+  });
+
+  await service.generatePdf({
+    reportId: 'report-order',
+    selectedIssueIds: ['1', '2', '3'],
+    issueOrderIds: ['2', '3', '1'],
+    groupedIssueIds: ['2'],
+    pendingIssues: [
+      { issueId: 'pending-2', issueKey: 'P-2', selected: true },
+      { issueId: 'pending-1', issueKey: 'P-1', selected: true },
+    ],
+    selectedPendingIssueIds: ['pending-1', 'pending-2'],
+    pendingIssueOrderIds: ['pending-1', 'pending-2'],
+  });
+
+  assert.deepEqual(generatedReport.issues.map((issue) => issue.issueKey), ['ABC-3', 'ABC-1', 'ABC-2']);
+  assert.deepEqual(generatedReport.pendingIssues.map((issue) => issue.issueKey), ['P-1', 'P-2']);
+});
+
 test('prefers installed browsers when creating a PDF and keeps a concise launch error', async () => {
   const calls = [];
   const browser = { close: async () => {} };
@@ -739,7 +1033,14 @@ test('builds a report from exact worklogs and graph corrections only', async () 
       if (sql.includes('JIRA_PROJECT_GROUPS')) {
         return [{ issue_id: '1', project_group_id: 'group-1', estado_general: 'Probando en TEST', tester_assignee: 'Leonardo Alberto Tester Persona', tester_key: 'ABC-2' }];
       }
-      return [{ issue_key: 'ABC-1', correction_key: 'ABC-9', summary: 'Corregir prueba', status: 'Cerrado', project_group_id: 'group-1' }];
+      return [{
+        issue_key: 'ABC-1',
+        correction_key: 'ABC-9',
+        summary: 'Corregir prueba',
+        status: 'Cerrado',
+        issue_type_icon_url: 'https://example.test/correction-type.png',
+        project_group_id: 'group-1',
+      }];
     },
   };
   const jira = {
@@ -785,6 +1086,7 @@ test('builds a report from exact worklogs and graph corrections only', async () 
   assert.equal(result.issues[0].tester, 'Leonardo Alberto Tester Persona');
   assert.equal(result.issues[0].estadoGeneral, 'Probando en TEST');
   assert.equal(result.issues[0].corrections[0].correctionKey, 'ABC-9');
+  assert.equal(result.issues[0].corrections[0].issueTypeIconUrl, 'https://example.test/correction-type.png');
 });
 
 test('uses Tempo worklog search to group the selected user by Jira issue', async () => {
@@ -863,6 +1165,59 @@ test('uses Tempo worklog search to group the selected user by Jira issue', async
   assert.equal(tempoSearchOptions.fromDate, '2026-09-01');
   assert.equal(tempoSearchOptions.toDate, '2026-09-04');
   assert.deepEqual(worklogCalls.sort(), ['1', '2']);
+});
+
+test('excludes issues with only historical time outside the sprint range', async () => {
+  let saved;
+  const persistence = {
+    timeReports: {
+      async clear() {},
+      async create(value) {
+        saved = value;
+        return 'report-range-filter';
+      },
+      async getSnapshot() {
+        return {
+          id: 'report-range-filter',
+          issues: saved.issues.map((issue) => ({ ...issue, selected: true, corrections: [] })),
+        };
+      },
+    },
+    async query() { return []; },
+  };
+  const jira = {
+    async searchIssues() { return { issues: [{ key: 'ABC-1' }, { key: 'ABC-2' }] }; },
+    async listIssueWorklogs(issueReference) {
+      return issueReference === 'ABC-1'
+        ? [{ author: { accountId: userId }, startDate: '2026-09-02', timeSpentSeconds: 3600 }]
+        : [{ author: { accountId: userId }, startDate: '2026-08-30', timeSpentSeconds: 7200 }];
+    },
+    async bulkFetchIssues(issueReferences) {
+      return {
+        issues: issueReferences.map((key, index) => ({
+          id: String(index + 1),
+          key,
+          fields: {
+            project: { key: 'ABC' },
+            issuetype: { name: 'Tarea' },
+            summary: `Incidencia ${key}`,
+            status: { name: 'Creado' },
+          },
+        })),
+      };
+    },
+    async listIssueChangelog() { return []; },
+  };
+  const service = new TimeReportsService({ persistence, jira, logs: { info: async () => {} } });
+
+  const result = await service.search({
+    fromDate: '2026-09-01',
+    toDate: '2026-09-04',
+    user: { accountId: userId, displayName: 'Jesus Clavijo' },
+  });
+
+  assert.deepEqual(result.issues.map((issue) => [issue.issueKey, issue.rangeSeconds]), [['ABC-1', 3600]]);
+  assert.deepEqual(saved.issues.map((issue) => issue.issueKey), ['ABC-1']);
 });
 
 test('cancels a time report search without persisting partial results', async () => {

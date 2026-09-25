@@ -1,0 +1,12 @@
+[2026-09-17T21:15:10.541Z] [INFO] ========================================================================================================================
+[2026-09-17T21:15:10.541Z] [INFO] Initializing MAM Client.
+App: com.microsoft.edge 153.0.4234.32
+SDK: 2.1.367.0
+OS: windows 10.0.26200.6899
+DeviceType: Desktop
+Manufacturer: Dell Inc.
+Model: Latitude 3510
+Telemetry: yes
+Managed device support: enabled
+[2026-09-17T21:15:10.542Z] [INFO] Telemetry session 9f3950ab-3d66-428d-95a8-1b8031a17343.
+[2026-09-17T21:15:10.542Z] [INFO] Initializing cache (v1).

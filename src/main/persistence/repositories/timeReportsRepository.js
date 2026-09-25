@@ -106,7 +106,11 @@ export class TimeReportsRepository {
       [reportId],
     );
     const correctionRows = await this.persistence.query(
-      'SELECT * FROM TIME_REPORT_CORRECTIONS WHERE report_id = ? ORDER BY issue_key, correction_key',
+      `SELECT correction_row.*, correction_issue.issuetype_icon_url AS correction_issue_type_icon_url
+       FROM TIME_REPORT_CORRECTIONS correction_row
+       LEFT JOIN JIRA_ISSUES correction_issue ON correction_issue.key = correction_row.correction_key
+       WHERE correction_row.report_id = ?
+       ORDER BY correction_row.issue_key, correction_row.correction_key`,
       [reportId],
     );
     const improvementRows = await this.persistence.query(
@@ -129,7 +133,9 @@ export class TimeReportsRepository {
         status: row.status,
         projectGroupId: row.project_group_id,
         projectIconUrl: sourceIssue.projectIconUrl ?? '',
-        issueTypeIconUrl: sourceIssue.issueTypeIconUrl ?? '',
+        issueTypeIconUrl: row.correction_issue_type_icon_url
+          ?? sourceIssue.issueTypeIconUrl
+          ?? '',
       });
       correctionsByIssue.set(row.issue_key, list);
     }

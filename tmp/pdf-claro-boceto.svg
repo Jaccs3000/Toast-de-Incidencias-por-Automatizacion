@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1365" height="768" viewBox="0 0 1365 768">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="0.58" stop-color="#eef5fb"/>
+      <stop offset="1" stop-color="#dfeafb"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#eaf3fc"/>
+      <stop offset="1" stop-color="#e2edf9"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#5c78a0" flood-opacity=".14"/>
+    </filter>
+    <style>
+      .title { font: 700 28px 'Segoe UI', Arial, sans-serif; fill:#1e2d46; }
+      .key { font: 700 24px 'Segoe UI', Arial, sans-serif; fill:#12628f; }
+      .summary { font: 600 27px 'Segoe UI', Arial, sans-serif; fill:#1d2940; }
+      .meta { font: 12px 'Segoe UI', Arial, sans-serif; letter-spacing:1px; fill:#39735c; }
+      .value { font: 700 17px 'Segoe UI', Arial, sans-serif; fill:#244f3d; }
+      .date { font: 700 17px 'Segoe UI', Arial, sans-serif; fill:#514477; }
+      .time { font: 700 18px 'Segoe UI', Arial, sans-serif; fill:#245d79; }
+      .report { font: 700 15px 'Segoe UI', Arial, sans-serif; fill:#956300; }
+      .small { font: 14px 'Segoe UI', Arial, sans-serif; fill:#53627a; }
+      .section { font: 700 20px 'Segoe UI', Arial, sans-serif; fill:#304f82; }
+      .row { font: 15px 'Segoe UI', Arial, sans-serif; fill:#1d2638; }
+      .icon { fill:#dceafa; stroke:#4770ae; stroke-width:1.5; }
+      .rule { stroke:#9db2d1; stroke-width:1.5; }
+    </style>
+  </defs>
+  <rect width="1365" height="768" fill="url(#bg)"/>
+  <text x="57" y="77" class="key">AC-18489</text>
+  <rect x="208" y="55" width="88" height="28" rx="14" fill="#fff0d9" stroke="#c28a38"/>
+  <circle cx="222" cy="69" r="4" fill="#956300"/><text x="232" y="74" class="report">En Espera</text>
+  <text x="1152" y="57" class="report">Reporte de tiempo</text>
+  <text x="1064" y="80" class="report">08-Sept-2026 → 15-Sept-2026</text>
+  <text x="1202" y="102" class="report">Jesús Clavijo</text>
+  <text x="62" y="118" class="summary">Lista de Chequeo y seguimiento QA - Migración del prevalidadorgpc</text>
+  <text x="62" y="151" class="summary">a spring boot y angular</text>
+  <line x1="56" y1="168" x2="1305" y2="168" class="rule"/>
+
+  <g transform="translate(57 182)"><rect width="28" height="28" rx="8" class="icon"/><text x="8" y="19" fill="#4770ae">▣</text><text x="38" y="19" class="meta">TIPO DE INCIDENCIA</text><text x="0" y="52" class="value">Implementación Q&amp;A</text><rect y="67" width="28" height="28" rx="8" class="icon"/><text x="8" y="86" fill="#4770ae">♙</text><text x="38" y="86" class="meta">TESTER</text><text x="0" y="119" class="value">Victor Romero</text></g>
+  <g transform="translate(371 182)"><rect width="28" height="28" rx="8" class="icon"/><text x="8" y="19" fill="#4770ae">♙</text><text x="38" y="19" class="meta">RESPONSABLE</text><text x="0" y="52" class="value">Jesús Clavijo</text><rect y="67" width="28" height="28" rx="8" class="icon"/><text x="8" y="86" fill="#4770ae">♙</text><text x="38" y="86" class="meta">INFORMADOR</text><text x="0" y="119" class="value">Jesús Clavijo</text></g>
+  <g transform="translate(691 182)"><rect width="28" height="28" rx="8" class="icon"/><text x="8" y="19" fill="#4770ae">□</text><text x="38" y="19" class="meta">FECHA DE CREACION</text><text x="0" y="52" class="value">27/04/2026</text></g>
+  <g transform="translate(1006 182)"><rect width="28" height="28" rx="8" class="icon"/><text x="8" y="19" fill="#4770ae">▣</text><text x="38" y="19" class="meta">ESTADO GENERAL</text><text x="0" y="52" class="report">En Producción</text></g>
+  <line x1="56" y1="315" x2="1305" y2="315" class="rule"/>
+  <g transform="translate(57 321)"><text x="38" y="19" class="meta">F. ASIGNACION</text><text x="0" y="52" class="date">27/05/2026</text><rect width="28" height="28" rx="8" class="icon"/><text x="8" y="19" fill="#4770ae">□</text></g>
+  <g transform="translate(371 321)"><text x="38" y="19" class="meta">F. INICIO</text><text x="0" y="52" class="date">07/09/2026</text><rect width="28" height="28" rx="8" class="icon"/><text x="8" y="19" fill="#4770ae">□</text></g>
+  <g transform="translate(691 321)"><text x="38" y="19" class="meta">F. CIERRE</text><rect width="28" height="28" rx="8" class="icon"/><text x="8" y="19" fill="#4770ae">□</text></g>
+  <line x1="56" y1="388" x2="1305" y2="388" class="rule"/>
+  <g transform="translate(57 396)"><text x="38" y="19" class="meta">PLANEADO</text><rect width="28" height="28" rx="8" class="icon"/></g>
+  <g transform="translate(371 396)"><text x="38" y="19" class="meta">TIEMPO REPORTADO EN SPRINT</text><text x="0" y="52" class="time">1h 30m</text><rect width="28" height="28" rx="8" class="icon"/></g>
+  <g transform="translate(691 396)"><text x="38" y="19" class="meta">TIEMPO TOTAL</text><text x="0" y="52" class="time">0m</text><rect width="28" height="28" rx="8" class="icon"/></g>
+  <g transform="translate(1006 396)"><text x="38" y="19" class="meta">TIEMPO RESTANTE</text><text x="0" y="52" class="time">0m</text><rect width="28" height="28" rx="8" class="icon"/></g>
+
+  <rect x="56" y="468" width="1249" height="216" rx="14" fill="url(#panel)" stroke="#8ea9cf" filter="url(#shadow)"/>
+  <text x="78" y="503" class="section">Problemas presentados</text>
+  <line x1="78" y1="517" x2="1283" y2="517" stroke="#c1d1e6"/>
+  <g class="row"><text x="112" y="543">AC-18503</text><text x="245" y="543">XML de version migrada esta enviando atributos peso=&quot;0&quot; que version actual de produccion no posee</text><rect x="1194" y="526" width="91" height="25" rx="13" fill="#fde5ea" stroke="#c9586f"/><circle cx="1207" cy="538" r="4" fill="#b32645"/><text x="1217" y="543" fill="#a3294d">Cerrado</text></g>
+  <line x1="78" y1="559" x2="1283" y2="559" stroke="#cbd8e8"/>
+  <g class="row"><text x="112" y="585">AC-18504</text><text x="245" y="585">Se solicita Mejorar el Formato del campo &quot;Fecha atraque&quot;</text><rect x="1194" y="568" width="91" height="25" rx="13" fill="#fde5ea" stroke="#c9586f"/><circle cx="1207" cy="580" r="4" fill="#b32645"/><text x="1217" y="585" fill="#a3294d">Cerrado</text></g>
+  <line x1="78" y1="601" x2="1283" y2="601" stroke="#cbd8e8"/>
+  <g class="row"><text x="112" y="627">AC-18524</text><text x="245" y="627">Nombre de la Hoja en Archivo XLS es diferente al de la version anterior</text><rect x="1194" y="610" width="91" height="25" rx="13" fill="#fde5ea" stroke="#c9586f"/><circle cx="1207" cy="622" r="4" fill="#b32645"/><text x="1217" y="627" fill="#a3294d">Cerrado</text></g>
+  <line x1="78" y1="643" x2="1283" y2="643" stroke="#cbd8e8"/>
+  <g class="row"><text x="112" y="669">AC-18538</text><text x="245" y="669">Mensaje cuando UVI no posee fecha de atraque, es distinto en version migrada</text><rect x="1194" y="652" width="91" height="25" rx="13" fill="#fde5ea" stroke="#c9586f"/><circle cx="1207" cy="664" r="4" fill="#b32645"/><text x="1217" y="669" fill="#a3294d">Cerrado</text></g>
+</svg>

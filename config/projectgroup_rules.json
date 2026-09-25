@@ -3,6 +3,15 @@
   "defaultValue": "",
   "rules": [
     {
+      "priority": 0,
+      "enabled": true,
+      "output": "En Producción",
+      "when": {
+        "match": "issueKey",
+        "issueKeys": ["NCUATRO-12761", "ONL-19562"]
+      }
+    },
+    {
       "priority": 1,
       "enabled": true,
       "output": "Definiendo Criterios",
@@ -36,8 +45,10 @@
       "enabled": true,
       "output": "Probando en TEST",
       "when": {
-        "issueType": "Testing",
-        "status": "En Progreso"
+        "any": [
+          { "issueType": "Testing", "status": "En Progreso" },
+          { "issueType": "Testing", "status": "En Pruebas" }
+        ]
       }
     },
     {

@@ -50,6 +50,10 @@ export class SyncService {
     return String(issue?.fields?.status?.name ?? '').trim();
   }
 
+  getIssueKey(issue) {
+    return String(issue?.key ?? issue?.fields?.key ?? '').trim();
+  }
+
   getIssueProjectName(issue) {
     return String(issue?.fields?.project?.name ?? issue?.fields?.project?.key ?? '').trim();
   }
@@ -109,6 +113,12 @@ export class SyncService {
     const issuesByType = this.getIssuesByType(groupIssues);
 
     const conditions = {
+      issueKey: (condition) => {
+        const expectedKeys = [condition.issueKey, ...(Array.isArray(condition.issueKeys) ? condition.issueKeys : [])]
+          .map((value) => String(value ?? '').trim())
+          .filter(Boolean);
+        return expectedKeys.length > 0 && groupIssues.some((issue) => expectedKeys.includes(this.getIssueKey(issue)));
+      },
       exists: (condition) => this.issueExists(issuesByType, condition.issueType, (issue) => {
         if (condition.project && this.getIssueProjectName(issue) !== condition.project) {
           return false;
@@ -199,6 +209,10 @@ export class SyncService {
 
       if (node.match === 'linkedProjectNot' && node.issueType) {
         return conditions.linkedProjectNot(node);
+      }
+
+      if (node.match === 'issueKey' && (node.issueKey || Array.isArray(node.issueKeys))) {
+        return conditions.issueKey(node);
       }
 
       if (node.issueType && node.status && node.statusNot) {

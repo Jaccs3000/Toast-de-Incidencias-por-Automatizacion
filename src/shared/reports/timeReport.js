@@ -157,3 +157,7 @@ export function formatReportDuration(seconds) {
   if (hours === 0) return `${rest}m`;
   return `${hours}h${rest ? ` ${rest}m` : ''}`;
 }
+
+export function isSprintOnlyProject(issue) {
+  return String(issue?.project ?? '').trim().toLocaleUpperCase() === 'TA2';
+}
