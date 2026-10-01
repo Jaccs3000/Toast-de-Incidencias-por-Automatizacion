@@ -7552,6 +7552,73 @@ body .configuration-workspace .dashboard-time-reports .time-reports-date-picker-
   transform: none !important;
 }
 
+/* Restore the semantic button colors after legacy shared button overrides. */
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.save-action-button, .alert-save-button) {
+  border-color: #62e99b !important;
+  background: linear-gradient(180deg, rgba(35, 158, 91, .58), rgba(16, 83, 51, .58)) !important;
+  color: #e4ffef !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 0 12px rgba(61, 239, 135, .2) !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.save-action-button, .alert-save-button):is(:hover:not(:disabled), :focus-visible) {
+  border-color: #a2ffc4 !important;
+  background: linear-gradient(180deg, rgba(48, 190, 112, .76), rgba(20, 111, 66, .78)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 0 20px rgba(61, 239, 135, .38) !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.grid-cancel-button, .alert-cancel-button, .secondary-button) {
+  border-color: #e7ad61 !important;
+  background: linear-gradient(180deg, rgba(151, 94, 34, .48), rgba(78, 48, 20, .5)) !important;
+  color: #ffe0ad !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.grid-cancel-button, .alert-cancel-button, .secondary-button):is(:hover:not(:disabled), :focus-visible) {
+  border-color: #ffd38e !important;
+  background: linear-gradient(180deg, rgba(187, 119, 44, .66), rgba(105, 65, 25, .68)) !important;
+  color: #fff1d7 !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.action-shutdown, .action-login, .alert-condition-delete, .jql-delete, .sql-query-delete, .alert-delete-rule, .grid-delete-button, .danger-button) {
+  border-color: #ff6f87 !important;
+  background: linear-gradient(180deg, rgba(174, 43, 76, .58), rgba(91, 20, 42, .62)) !important;
+  color: #ffd4dc !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 11px rgba(255, 79, 117, .18) !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.action-shutdown, .action-login, .alert-condition-delete, .jql-delete, .sql-query-delete, .alert-delete-rule, .grid-delete-button, .danger-button):hover:not(:disabled) {
+  border-color: #ffabb9 !important;
+  background: linear-gradient(180deg, rgba(204, 54, 89, .76), rgba(127, 27, 53, .8)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 18px rgba(255, 79, 117, .32) !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.primary-button, .sync-button, .sql-execute-button) {
+  border-color: #73c9ff !important;
+  background: linear-gradient(180deg, rgba(39, 117, 181, .58), rgba(22, 57, 113, .62)) !important;
+  color: #e0f4ff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 0 11px rgba(65, 176, 255, .17) !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.primary-button, .sync-button, .sql-execute-button):is(:hover:not(:disabled), :focus-visible) {
+  border-color: #a6e0ff !important;
+  background: linear-gradient(180deg, rgba(54, 148, 218, .76), rgba(31, 82, 157, .8)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24), 0 0 18px rgba(65, 176, 255, .3) !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.alert-new-rule-button, .grid-new-button) {
+  border-color: #c09bff !important;
+  background: linear-gradient(180deg, rgba(111, 70, 177, .54), rgba(58, 37, 109, .6)) !important;
+  color: #f0e5ff !important;
+}
+
+body .configuration-workspace button:not(.grid-configured-name):not(.time-reports-inline-search):not(.time-report-comments-button):not(.time-reports-sort-button):not(.time-reports-drag-handle):not(.time-reports-date-picker-trigger):is(.unified-add-button, .jql-add, .sql-query-add) {
+  border-color: #6cd9ff !important;
+  background: linear-gradient(180deg, rgba(35, 126, 171, .52), rgba(20, 63, 110, .58)) !important;
+  color: #dcf7ff !important;
+}
+
 /* Keep time-report sorting headers consistent with grid sorting headers. */
 body .configuration-workspace .dashboard-time-reports .time-reports-table {
   table-layout: fixed !important;
