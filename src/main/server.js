@@ -22,6 +22,7 @@ import {
 } from '../shared/grids/reportedTimes.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
+const RENDERER_DIR = path.resolve(process.cwd(), 'dist', 'renderer');
 const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
 const TIME_REPORT_EXPORTS_DIR = path.resolve(process.cwd(), 'exports');
 const RESTART_LAUNCHER_PATH = path.resolve(process.cwd(), 'scripts', 'restart-app.mjs');
@@ -138,6 +139,59 @@ function json(res, statusCode, payload) {
   res.end(JSON.stringify(payload, (_, value) => (
     typeof value === 'bigint' ? Number(value) : value
   )));
+}
+
+const STATIC_CONTENT_TYPES = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+};
+
+async function serveRenderer(req, res, pathname) {
+  if (req.method !== 'GET' || pathname.startsWith('/api/') || pathname.startsWith('/alert-images/')) return false;
+
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    return false;
+  }
+
+  const relativePath = decodedPath === '/' ? 'index.html' : decodedPath.replace(/^\/+/, '');
+  const requestedFile = path.resolve(RENDERER_DIR, relativePath);
+  if (requestedFile !== RENDERER_DIR && !requestedFile.startsWith(`${RENDERER_DIR}${path.sep}`)) {
+    res.writeHead(403).end();
+    return true;
+  }
+
+  let filePath = requestedFile;
+  let body;
+  try {
+    body = await fs.readFile(filePath);
+  } catch {
+    if (path.extname(relativePath)) {
+      res.writeHead(404).end();
+      return true;
+    }
+    filePath = path.join(RENDERER_DIR, 'index.html');
+    try {
+      body = await fs.readFile(filePath);
+    } catch {
+      return false;
+    }
+  }
+
+  res.writeHead(200, {
+    'Content-Type': STATIC_CONTENT_TYPES[path.extname(filePath)] ?? 'application/octet-stream',
+    'Cache-Control': path.basename(filePath) === 'index.html' ? 'no-cache' : 'public, max-age=3600',
+  });
+  res.end(body);
+  return true;
 }
 
 function readBody(req) {
@@ -1422,6 +1476,8 @@ const server = http.createServer(async (req, res) => {
   log('request', `${req.method} ${req.url}`);
   try {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+
+    if (await serveRenderer(req, res, url.pathname)) return;
 
     if (req.method === 'GET' && url.pathname === '/api/bootstrap-context') {
       await handleBootstrapContext(res);

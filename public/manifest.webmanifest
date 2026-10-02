@@ -1,0 +1,14 @@
+﻿{
+  "id": "/",
+  "name": "Jira Notifications",
+  "short_name": "Jira Alerts",
+  "description": "Alertas y seguimiento de Jira",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#172554",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "192x192 512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
