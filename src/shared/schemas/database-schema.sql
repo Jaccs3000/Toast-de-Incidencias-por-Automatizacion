@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS ALERT_RULES (
   condition_config TEXT,
   retry_syncs INTEGER NOT NULL DEFAULT 0,
   retry_minutes INTEGER NOT NULL DEFAULT 0,
+  auto_complete INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
   created TEXT,
   updated TEXT

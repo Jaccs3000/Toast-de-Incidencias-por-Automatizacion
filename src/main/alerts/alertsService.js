@@ -437,6 +437,7 @@ export class AlertsService {
     incomingSources = [],
     previousProjectGroups = [],
     incomingProjectGroups = [],
+    matchingIssueIdsByJql = new Map(),
   } = {}) {
     const rules = await this.persistence.query(`
       SELECT id, jql_id, alert_type, name, toast_text, toast_image, condition_config,
@@ -445,6 +446,31 @@ export class AlertsService {
       WHERE is_active = 1 AND jql_id IS NOT NULL
       ORDER BY jql_id, created, name
     `);
+    const unreadAutoCompleteAlerts = await this.persistence.query(`
+      SELECT a.id, a.issue_id, r.jql_id
+      FROM ALERTS a
+      JOIN ALERT_RULES r ON r.id = a.rule_id
+      WHERE a.is_read = 0 AND COALESCE(r.auto_complete, 0) = 1 AND r.jql_id IS NOT NULL
+    `);
+    let autoCompletedAlertsCount = 0;
+    const autoCompletedAt = new Date().toISOString();
+    for (const alert of unreadAutoCompleteAlerts) {
+      const jqlId = String(alert.jql_id ?? '');
+      const matchingIssueIds = matchingIssueIdsByJql.get(jqlId);
+      // If this JQL was not successfully evaluated, keep its alerts unread.
+      if (!(matchingIssueIds instanceof Set)) continue;
+      if (matchingIssueIds.has(String(alert.issue_id))) continue;
+      await this.persistence.exec(
+        'UPDATE ALERTS SET is_read = 1, updated = ? WHERE id = ? AND is_read = 0',
+        [autoCompletedAt, alert.id],
+      );
+      autoCompletedAlertsCount += 1;
+    }
+    if (autoCompletedAlertsCount > 0) {
+      await this.logs?.info?.('JQL alerts automatically marked as read after leaving their query results', {
+        count: autoCompletedAlertsCount,
+      });
+    }
     const beforeGroups = this.groupRows(previousSnapshot);
     const afterGroups = this.groupRows(incomingSnapshot);
     const beforeStates = new Map(previousProjectGroups.map((group) => [
@@ -556,6 +582,7 @@ export class AlertsService {
     return {
       ok: true,
       createdAlertsCount: createdAlerts.length,
+      autoCompletedAlertsCount,
       repeatedAlertsCount: 0,
       createdAlerts,
     };

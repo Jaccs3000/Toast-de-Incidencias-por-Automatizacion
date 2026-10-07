@@ -111,6 +111,12 @@ export class Persistence {
       // The column already exists in databases initialized after the schema update.
     }
     try {
+      await this.exec('ALTER TABLE ALERT_RULES ADD COLUMN auto_complete INTEGER DEFAULT 0');
+      await this.exec('UPDATE ALERT_RULES SET auto_complete = 0 WHERE auto_complete IS NULL');
+    } catch {
+      // The column already exists in databases initialized after the schema update.
+    }
+    try {
       await this.exec('ALTER TABLE ALERTS ADD COLUMN next_retry_at TEXT');
     } catch {
       // The column already exists in databases initialized after the schema update.

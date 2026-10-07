@@ -1034,6 +1034,7 @@ function emptyAlertForm(jqlId = null) {
     name: '',
     event: 'new_issue',
     retryMinutes: 0,
+    autoComplete: false,
     conditions: [],
     toastText: '',
     displayIssueType: '',
@@ -2362,6 +2363,7 @@ export default function App() {
           display_field: alertForm.displayField || null,
           display_fields: alertForm.displayFields,
           retry_minutes: Math.max(Number(alertForm.retryMinutes) || 0, 0),
+          auto_complete: alertForm.autoComplete,
           is_active: alertForm.isActive,
         }),
       });
@@ -2429,6 +2431,7 @@ export default function App() {
       name: rule.name ?? '',
       event: rule.alert_type ?? stored.event,
       retryMinutes: Number(rule.retry_minutes ?? 0),
+      autoComplete: Number(rule.auto_complete ?? 0) === 1 || rule.auto_complete === true,
       conditions: stored.conditions,
       toastText: rule.toast_text ?? '',
       displayIssueType: rule.display_issue_type ?? '',
@@ -2507,32 +2510,47 @@ export default function App() {
                 <option value="attribute_changed">Cambio de atributo</option>
               </select>
             </label>
-            <label className="alert-field">
-              <span>Reenviar Toast cada</span>
-              <span className="alert-number-field">
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={alertForm.retryMinutes}
-                  onChange={(event) => setAlertForm((current) => ({ ...current, retryMinutes: event.target.value }))}
-                  placeholder="0"
-                />
-                <small>minutos</small>
-              </span>
-            </label>
-            <label className="alert-switch-field">
-              <span>Alerta activa</span>
-              <span className="alert-switch-row">
-                <input
-                  type="checkbox"
-                  checked={alertForm.isActive}
-                  onChange={(event) => setAlertForm((current) => ({ ...current, isActive: event.target.checked }))}
-                />
-                <span className="alert-switch-control" aria-hidden="true" />
-                <small>{alertForm.isActive ? 'Activada' : 'Desactivada'}</small>
-              </span>
-            </label>
+            <div className="alert-settings-row">
+              <label className="alert-field alert-retry-field">
+                <span>Reenviar Toast cada</span>
+                <span className="alert-number-field">
+                  <input
+                    type="number"
+                    min="0"
+                    max="9999"
+                    step="1"
+                    value={alertForm.retryMinutes}
+                    onChange={(event) => setAlertForm((current) => ({ ...current, retryMinutes: event.target.value }))}
+                    placeholder="0"
+                  />
+                  <small>minutos</small>
+                </span>
+              </label>
+              <label className="alert-switch-field">
+                <span>Alerta activa</span>
+                <span className="alert-switch-row">
+                  <input
+                    type="checkbox"
+                    checked={alertForm.isActive}
+                    onChange={(event) => setAlertForm((current) => ({ ...current, isActive: event.target.checked }))}
+                  />
+                  <span className="alert-switch-control" aria-hidden="true" />
+                  <small>{alertForm.isActive ? 'Activada' : 'Desactivada'}</small>
+                </span>
+              </label>
+              <label className="alert-switch-field" title="Marca como leída en la siguiente sincronización si la incidencia deja de cumplir la consulta JQL.">
+                <span>Autocompletar tarea</span>
+                <span className="alert-switch-row">
+                  <input
+                    type="checkbox"
+                    checked={alertForm.autoComplete}
+                    onChange={(event) => setAlertForm((current) => ({ ...current, autoComplete: event.target.checked }))}
+                  />
+                  <span className="alert-switch-control" aria-hidden="true" />
+                  <small>{alertForm.autoComplete ? 'Activado' : 'Desactivado'}</small>
+                </span>
+              </label>
+            </div>
           </div>
         </section>
 

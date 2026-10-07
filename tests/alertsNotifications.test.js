@@ -267,6 +267,39 @@ function createJqlAlertHarness(rules) {
   };
 }
 
+test('auto-completes only unread JQL alerts whose issue left the matching JQL result', async () => {
+  const unread = [
+    { id: 'alert-left', issue_id: '100', jql_id: 'jql-1' },
+    { id: 'alert-still-matches', issue_id: '200', jql_id: 'jql-1' },
+    { id: 'alert-query-not-evaluated', issue_id: '300', jql_id: 'jql-2' },
+  ];
+  const updates = [];
+  const service = new AlertsService({
+    persistence: {
+      async query(sql) {
+        if (sql.includes('COALESCE(r.auto_complete')) return unread;
+        if (sql.includes('FROM ALERT_RULES')) return [];
+        return [];
+      },
+      async exec(sql, parameters) {
+        updates.push({ sql, parameters });
+      },
+    },
+    logs: { info: async () => {} },
+  });
+
+  const result = await service.evaluateJqlAlerts({
+    matchingIssueIdsByJql: new Map([
+      ['jql-1', new Set(['200'])],
+    ]),
+  });
+
+  assert.equal(result.autoCompletedAlertsCount, 1);
+  assert.equal(updates.length, 1);
+  assert.match(updates[0].sql, /SET is_read = 1/);
+  assert.equal(updates[0].parameters[1], 'alert-left');
+});
+
 test('creates a JQL new-issue alert only when the JQL source is new', async () => {
   const { service } = createJqlAlertHarness([{
     id: 'rule-new',

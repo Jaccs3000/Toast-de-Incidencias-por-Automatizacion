@@ -39,7 +39,8 @@ export class AlertsRepository {
     const rows = await this.persistence.query(
       `
       SELECT id, jql_id, alert_type, name, sql, toast_text, toast_image, condition_config,
-             display_issue_type, display_field, display_fields_json, retry_minutes, is_active, created, updated
+             display_issue_type, display_field, display_fields_json, retry_minutes, auto_complete,
+             is_active, created, updated
       FROM ALERT_RULES
       ORDER BY jql_id ASC, created ASC, name ASC
       `,

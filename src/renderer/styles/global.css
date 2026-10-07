@@ -4456,6 +4456,22 @@ h1 {
   margin: 10px 38px 0;
 }
 
+.configuration-workspace .dashboard-alert .alert-settings-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.3fr);
+  align-items: start;
+  gap: 12px 20px;
+}
+
+.configuration-workspace .dashboard-alert .alert-retry-field .alert-number-field {
+  max-width: 132px;
+}
+
+.configuration-workspace .dashboard-alert .alert-retry-field input {
+  padding-right: 60px;
+}
+
 .configuration-workspace .dashboard-alert .alert-field,
 .configuration-workspace .dashboard-alert .alert-switch-field {
   display: grid;
@@ -4948,6 +4964,10 @@ h1 {
     margin-left: 16px;
   }
 
+  .configuration-workspace .dashboard-alert .alert-settings-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.3fr);
+  }
+
   .configuration-workspace .dashboard-alert .condition-builder,
   .configuration-workspace .dashboard-alert .alert-validation-errors,
   .configuration-workspace .dashboard-alert .alert-message-insert {
@@ -4977,6 +4997,12 @@ h1 {
     grid-column: 3;
     grid-row: 1 / 3;
     height: 100%;
+  }
+}
+
+@container (max-width: 420px) {
+  .configuration-workspace .dashboard-alert .alert-settings-row {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -7580,6 +7606,8 @@ body .configuration-workspace .dashboard-jql .jql-save-actions > .save-action-bu
 }
 
 body .configuration-workspace .dashboard-jql .jql-save-actions > .jql-add-action {
+  align-self: stretch !important;
+  margin-top: 0 !important;
   border-style: solid !important;
   border-color: #79cfff !important;
   background: linear-gradient(180deg, rgba(26, 39, 78, .72), rgba(9, 15, 34, .9)) !important;
@@ -7677,7 +7705,7 @@ body .configuration-workspace .dashboard-grids .grid-add-issue-type {
   min-width: 210px !important;
   max-width: 210px !important;
   min-height: 40px !important;
-  margin: 2px 0 0 45px !important;
+  margin: 0 !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 8px !important;

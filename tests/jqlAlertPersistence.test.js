@@ -28,6 +28,11 @@ test('persists JQL definitions and removes only alerts associated with a deleted
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `, ['alert-1', 'identity-1', 'rule-1', '100', 'group-1', 0, now, now]);
 
+  const storedRules = await persistence.alerts.listRules();
+  assert.equal(Number(storedRules[0].auto_complete), 0);
+  await persistence.exec('UPDATE ALERT_RULES SET auto_complete = 1 WHERE id = ?', ['rule-1']);
+  assert.equal(Number((await persistence.alerts.listRules())[0].auto_complete), 1);
+
   const saved = await persistence.jqlDefinitions.replace([definitions[1]]);
   assert.equal(saved.length, 1);
   assert.equal(saved[0].id, definitions[1].id);

@@ -1326,8 +1326,9 @@ async function handleAlertRuleSave(req, res) {
       `
       INSERT INTO ALERT_RULES (
         id, jql_id, alert_type, name, sql, toast_text, toast_image, condition_config,
-        display_issue_type, display_field, display_fields_json, retry_syncs, retry_minutes, is_active, created, updated
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        display_issue_type, display_field, display_fields_json, retry_syncs, retry_minutes,
+        auto_complete, is_active, created, updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         jql_id = excluded.jql_id,
         alert_type = excluded.alert_type,
@@ -1341,6 +1342,7 @@ async function handleAlertRuleSave(req, res) {
         display_fields_json = excluded.display_fields_json,
         retry_syncs = excluded.retry_syncs,
         retry_minutes = excluded.retry_minutes,
+        auto_complete = excluded.auto_complete,
         is_active = excluded.is_active,
         updated = excluded.updated
       `,
@@ -1358,6 +1360,7 @@ async function handleAlertRuleSave(req, res) {
         JSON.stringify(displayFields),
         Math.max(Number(body?.retry_syncs ?? 0) || 0, 0),
         Math.max(Number(body?.retry_minutes ?? 0) || 0, 0),
+        body?.auto_complete === true ? 1 : 0,
         body?.is_active === false ? 0 : 1,
         body?.created ?? now,
         now,

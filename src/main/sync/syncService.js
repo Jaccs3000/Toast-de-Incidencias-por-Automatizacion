@@ -693,6 +693,7 @@ export class SyncService {
 
       const seedIssues = new Map();
       const seedJqlSources = new Map();
+      const matchingIssueIdsByJql = new Map(jqlDefinitions.map((definition) => [String(definition.id), new Set()]));
       const jqlStartedAt = Date.now();
       for (const definition of jqlDefinitions) {
         throwIfCanceled();
@@ -704,6 +705,8 @@ export class SyncService {
           issuesCount: searchResult?.issues?.length ?? 0,
         });
         for (const issue of searchResult?.issues ?? []) {
+          const matchedIssueId = String(issue?.id ?? '').trim();
+          if (matchedIssueId) matchingIssueIdsByJql.get(String(definition.id))?.add(matchedIssueId);
           if (issue?.key) {
             seedIssues.set(issue.key, issue);
             const sources = seedJqlSources.get(issue.key) ?? new Set();
@@ -873,6 +876,7 @@ export class SyncService {
           incomingSources,
           previousProjectGroups,
           incomingProjectGroups: consolidatedGroups,
+          matchingIssueIdsByJql,
         });
       });
       phaseTimings.persistenceMs = Date.now() - persistenceStartedAt;
