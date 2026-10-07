@@ -960,6 +960,15 @@ function calculateGridColumnWidths(columnGroups, availableWidth) {
   if (groups.length === 0) return [];
   const metrics = groups.map(([groupKey, columns]) => getGridColumnMetrics(groupKey, columns));
   const minimumWidth = metrics.reduce((total, metric) => total + metric.minimum, 0);
+  if (availableWidth > 0 && availableWidth < minimumWidth) {
+    const scale = availableWidth / minimumWidth;
+    return metrics.map((metric, index) => {
+      const width = index === metrics.length - 1
+        ? availableWidth - metrics.slice(0, -1).reduce((total, item) => total + Math.floor(item.minimum * scale), 0)
+        : Math.floor(metric.minimum * scale);
+      return Math.max(0, width);
+    });
+  }
   const distributableWidth = Math.max(0, availableWidth - minimumWidth);
   const totalWeight = metrics.reduce((total, metric) => total + metric.weight, 0);
   return metrics.map((metric) => Math.round(
@@ -1168,6 +1177,7 @@ export default function App() {
   const alertRetryEnabledRef = useRef(true);
   const servicesStoppedRef = useRef(false);
   const restartRequestedRef = useRef(false);
+  const restartWaitingForOfflineRef = useRef(false);
   const restartRecoveryInProgressRef = useRef(false);
   const jqlInitializedRef = useRef(false);
   const jqlDirtyRef = useRef(false);
@@ -1213,7 +1223,7 @@ export default function App() {
   }, [headerAlertsOpen]);
   const [activeTab, setActiveTab] = useState('config');
   const [configSection, setConfigSection] = useState('status');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('configuration-sidebar-collapsed') === 'true');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [grids, setGrids] = useState([]);
   const [gridFormOpen, setGridFormOpen] = useState(false);
   const [expandedGridId, setExpandedGridId] = useState(null);
@@ -1229,7 +1239,8 @@ export default function App() {
   const [gridRecordCounts, setGridRecordCounts] = useState({});
   const [gridLoading, setGridLoading] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
-  const [gridPage, setGridPage] = useState(1);
+  const [gridPage, setGridPage] = useState(0);
+  const [gridPageHistory, setGridPageHistory] = useState([]);
   const [gridSort, setGridSort] = useState(null);
   const [gridSearches, setGridSearches] = useState({});
   const [gridVisiblePageSize, setGridVisiblePageSize] = useState(10);
@@ -1464,7 +1475,7 @@ export default function App() {
     gridDataRequestRef.current = requestId;
     setGridLoading(true);
     try {
-      const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      const query = new URLSearchParams({ offset: String(page), pageSize: String(pageSize) });
       if (search.trim()) query.set('search', search.trim());
       if (sort?.field) {
         query.set('sortField', sort.field);
@@ -1484,6 +1495,11 @@ export default function App() {
     } finally {
       if (requestId === gridDataRequestRef.current) setGridLoading(false);
     }
+  };
+
+  const resetGridPagination = () => {
+    setGridPage(0);
+    setGridPageHistory([]);
   };
 
   const handleRefreshAll = async () => {
@@ -1942,6 +1958,16 @@ export default function App() {
 
       restartRecoveryInProgressRef.current = true;
       try {
+        if (restartWaitingForOfflineRef.current) {
+          try {
+            await api('/api/bootstrap-context');
+            return;
+          } catch {
+            restartWaitingForOfflineRef.current = false;
+            return;
+          }
+        }
+
         await refreshBootstrapContext();
         await refreshAlerts();
         await refreshAlertRules();
@@ -1949,6 +1975,7 @@ export default function App() {
         setStartupError(null);
         restartRequestedRef.current = false;
         setRestartRequested(false);
+        window.location.reload();
       } catch {
         // The backend and Vite can become available a few moments apart.
       } finally {
@@ -2049,6 +2076,7 @@ export default function App() {
       if (!tableWrap || !pagination) return;
 
       const headerHeight = tableWrap.querySelector('thead')?.getBoundingClientRect().height ?? 48;
+      const firstRenderedRow = tableWrap.querySelector('tbody tr');
       const fieldsByGroup = (gridData.grid?.columns ?? []).reduce((groups, column) => {
         const key = column.issueType || `__other::${column.field}`;
         const current = groups.get(key) ?? [];
@@ -2059,36 +2087,33 @@ export default function App() {
       const lineBudget = Math.max(1, ...[...fieldsByGroup.values()].map((fields) => (
         fields.reduce((total, field) => total + (['summary', 'description'].includes(field) ? 2 : 1), 0)
       )));
-      const rowHeight = Math.max(56, 26 + lineBudget * 20 + Math.max(0, lineBudget - 1) * 7);
-      const availableHeight = window.innerHeight
-        - tableWrap.getBoundingClientRect().top
-        - pagination.getBoundingClientRect().height
-        - 54;
+      const estimatedRowHeight = Math.max(56, 26 + lineBudget * 20 + Math.max(0, lineBudget - 1) * 7);
+      const rowHeight = firstRenderedRow?.getBoundingClientRect().height > 0
+        ? firstRenderedRow.getBoundingClientRect().height
+        : estimatedRowHeight;
+      const availableHeight = tableWrap.clientHeight - headerHeight;
       const configuredMaximum = Number(gridData.grid?.pageSize) || 10;
       const nextPageSize = Math.max(1, Math.min(
         configuredMaximum,
         Math.floor((availableHeight - headerHeight) / rowHeight),
       ));
 
-      setGridVisiblePageSize((current) => {
-        if (current === nextPageSize) return current;
-        const nextTotalPages = Math.max(1, Math.ceil((gridData.total ?? 0) / nextPageSize));
-        setGridPage((page) => {
-          const firstVisibleRecordIndex = Math.max(0, (page - 1) * current);
-          const pageKeepingCurrentRecord = Math.floor(firstVisibleRecordIndex / nextPageSize) + 1;
-          return Math.min(pageKeepingCurrentRecord, nextTotalPages);
-        });
-        return nextPageSize;
-      });
+      if (gridData.pageSize !== nextPageSize) setGridVisiblePageSize(nextPageSize);
     };
 
     const frame = window.requestAnimationFrame(calculateVisibleRows);
     window.addEventListener('resize', calculateVisibleRows);
+    const rowObserver = new ResizeObserver(calculateVisibleRows);
+    const table = gridTableWrapRef.current;
+    const pagination = gridPaginationRef.current;
+    if (table) rowObserver.observe(table);
+    if (pagination) rowObserver.observe(pagination);
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener('resize', calculateVisibleRows);
+      rowObserver.disconnect();
     };
-  }, [activeTab, gridData, gridLoading]);
+  }, [activeTab, gridData, gridLoading, gridPage, gridVisiblePageSize]);
 
   useEffect(() => {
     if (activeTab === 'config') return undefined;
@@ -3245,6 +3270,7 @@ export default function App() {
 
   const handleRestart = async () => {
     restartRequestedRef.current = true;
+    restartWaitingForOfflineRef.current = true;
     setRestartRequested(true);
     try {
       // Let the loading view paint before the backend receives the restart request.
@@ -3252,6 +3278,7 @@ export default function App() {
       await api('/api/restart', { method: 'POST', body: '{}' });
     } catch (error) {
       restartRequestedRef.current = false;
+      restartWaitingForOfflineRef.current = false;
       setRestartRequested(false);
       showUiToast(`No se pudo reiniciar la aplicacion: ${error.message}`, 'error');
     }
@@ -4146,12 +4173,9 @@ export default function App() {
     }, new Map());
     const columnWidths = calculateGridColumnWidths(columnGroups, gridTableAvailableWidth);
     const tableMinimumWidth = columnWidths.reduce((total, width) => total + width, 0);
-    const horizontalScrollRequired = gridTableAvailableWidth > 0
-      && tableMinimumWidth > gridTableAvailableWidth + 1;
     const totalRecords = Number(gridData?.total ?? 0);
-    const effectivePageSize = Number(gridData?.pageSize ?? gridVisiblePageSize) || 1;
-    const totalPages = Math.max(1, Math.ceil(totalRecords / effectivePageSize));
-    const firstVisibleRecord = rows.length > 0 ? ((gridPage - 1) * effectivePageSize) + 1 : 0;
+    const responseOffset = Number(gridData?.offset ?? gridPage);
+    const firstVisibleRecord = rows.length > 0 ? responseOffset + 1 : 0;
     const lastVisibleRecord = rows.length > 0
       ? Math.min(firstVisibleRecord + rows.length - 1, totalRecords)
       : 0;
@@ -4169,7 +4193,7 @@ export default function App() {
               onChange={(event) => {
                 const value = event.target.value;
                 setGridSearches((current) => ({ ...current, [activeTab]: value }));
-                setGridPage(1);
+                resetGridPagination();
               }}
               placeholder="Buscar en los campos visibles..."
               aria-label={`Buscar en ${gridData?.grid?.name ?? 'este grid'}`}
@@ -4180,7 +4204,7 @@ export default function App() {
                 className="grid-search-clear"
                 onClick={() => {
                   setGridSearches((current) => ({ ...current, [activeTab]: '' }));
-                  setGridPage(1);
+                  resetGridPagination();
                 }}
                 aria-label="Limpiar busqueda"
                 title="Limpiar busqueda"
@@ -4195,8 +4219,8 @@ export default function App() {
             </span>
           ) : null}
         </div>
-        <div className={`grid-table-wrap${gridLoading ? ' is-loading' : ''}${horizontalScrollRequired ? ' has-horizontal-overflow' : ''}`} ref={gridTableWrapRef} aria-busy={gridLoading}>
-          <table className="project-grid" style={{ minWidth: `${tableMinimumWidth}px` }}>
+        <div className={`grid-table-wrap${gridLoading ? ' is-loading' : ''}`} ref={gridTableWrapRef} aria-busy={gridLoading}>
+          <table className="project-grid" style={{ width: '100%' }}>
             <colgroup>
               {columnWidths.map((width, index) => <col style={{ width: `${width}px` }} key={`grid-column-${index}`} />)}
             </colgroup>
@@ -4220,7 +4244,7 @@ export default function App() {
                             field: sortColumn.field,
                             direction: direction === 'asc' ? 'desc' : 'asc',
                           });
-                          setGridPage(1);
+                          resetGridPagination();
                         }}
                         title={`Ordenar por ${heading}${direction === 'asc' ? ': ascendente' : direction === 'desc' ? ': descendente' : ''}`}
                       >
@@ -4330,8 +4354,13 @@ export default function App() {
           <button
             type="button"
             className="grid-pagination-button"
-            disabled={gridLoading || gridPage <= 1}
-            onClick={() => setGridPage((page) => page - 1)}
+            disabled={gridLoading || gridPageHistory.length === 0}
+            onClick={() => {
+              const previousOffsets = [...gridPageHistory];
+              const previousOffset = previousOffsets.pop() ?? 0;
+              setGridPageHistory(previousOffsets);
+              setGridPage(previousOffset);
+            }}
             aria-label="Mostrar registros anteriores"
             title="Registros anteriores"
           >
@@ -4343,8 +4372,12 @@ export default function App() {
           <button
             type="button"
             className="grid-pagination-button"
-            disabled={gridLoading || gridPage >= totalPages}
-            onClick={() => setGridPage((page) => page + 1)}
+            disabled={gridLoading || responseOffset + rows.length >= totalRecords}
+            onClick={() => {
+              const nextOffset = responseOffset + rows.length;
+              setGridPageHistory((history) => [...history, responseOffset]);
+              setGridPage(nextOffset);
+            }}
             aria-label="Mostrar registros siguientes"
             title="Registros siguientes"
           >
@@ -4437,7 +4470,7 @@ export default function App() {
                     setGridVisiblePageSize(Number(grid.pageSize) || 10);
                     setGridSort(null);
                     setActiveTab(grid.id);
-                    setGridPage(1);
+                    resetGridPagination();
                   }}
                   key={grid.id}
                 >
@@ -4609,6 +4642,7 @@ export default function App() {
                   key={section.id}
                   className={configSection === section.id ? 'configuration-menu-item is-active' : 'configuration-menu-item'}
                   data-tooltip={section.label}
+                  title={sidebarCollapsed ? section.label : undefined}
                   onClick={() => setConfigSection(section.id)}
                 >
                   <span className="configuration-menu-icon"><LineIcon name={section.icon} /></span>

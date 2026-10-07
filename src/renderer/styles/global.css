@@ -106,10 +106,7 @@ body {
 .app-tabs-scroll {
   min-width: 0;
   flex: 1 1 auto;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-color: rgba(157, 170, 255, .72) rgba(11, 16, 32, .72);
-  scrollbar-width: thin;
+  overflow: visible;
 }
 
 .app-tabs-scroll::-webkit-scrollbar {
@@ -131,8 +128,9 @@ body {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  min-width: max-content;
-  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
   margin-bottom: 0;
   padding: 18px 24px 0 28px;
 }
@@ -883,6 +881,298 @@ body {
   border-radius: 12px;
   background: linear-gradient(135deg, rgba(18, 30, 61, .7), rgba(9, 17, 38, .82));
   box-shadow: inset 0 1px 0 rgba(214, 221, 255, .04);
+}
+
+/* Keep the configuration status page inside the application viewport. */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+.app-shell:has(.configuration-layout) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px;
+}
+
+.app-shell:has(.configuration-layout) .hero {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.app-shell:has(.configuration-layout) .configuration-layout {
+  flex: 1 1 auto;
+  grid-template-columns: minmax(220px, 24vw) minmax(0, 1fr);
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+}
+
+.app-shell:has(.configuration-layout) .configuration-sidebar {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.app-shell:has(.configuration-layout) .configuration-workspace {
+  min-height: 0;
+  max-width: none;
+  overflow: auto;
+}
+
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .dashboard-grid {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .dashboard-editable-panels {
+  display: contents;
+}
+
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .dashboard-status {
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  align-content: stretch;
+}
+
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .status-summary-card,
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .dashboard-status .alerts-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .status-summary-card,
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .alerts-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .alerts-list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Ensure the compact rail wins over legacy layout rules at every narrow width. */
+@media (max-width: 900px) {
+  body .app-shell:has(.configuration-layout) .configuration-layout,
+  body .app-shell:has(.configuration-layout) .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout,
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: 62px minmax(0, 1fr) !important;
+  }
+
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar {
+    width: 62px;
+    min-width: 62px;
+    max-width: 62px;
+    padding: 42px 6px 12px;
+    overflow-x: hidden;
+  }
+
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar > div,
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu,
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-item {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-item {
+    justify-content: center;
+    padding: 8px 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell:has(.configuration-layout) .configuration-layout,
+  .app-shell:has(.configuration-layout) .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .app-shell:has(.configuration-layout) .configuration-sidebar {
+    padding: 42px 6px 10px;
+  }
+
+  .app-shell:has(.configuration-layout) .configuration-workspace {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 650px) {
+  .app-shell:has(.configuration-layout) .configuration-layout,
+  .app-shell:has(.configuration-layout) .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .app-shell:has(.configuration-layout) .configuration-workspace[data-section="status"] .dashboard-status {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(180px, .85fr) minmax(220px, 1.15fr);
+  }
+}
+
+
+/* Narrow configuration windows use a compact icon rail with breathing room. */
+@media (max-width: 900px) {
+  .app-shell:has(.configuration-layout) .configuration-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout,
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: 58px minmax(0, 1fr) !important;
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar {
+    width: 58px;
+    padding: 42px 5px 10px;
+    overflow-x: hidden;
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar > div,
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu,
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-item {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-item {
+    justify-content: center;
+    padding: 8px 0;
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-icon {
+    flex: 0 0 30px;
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar-toggle {
+    right: 0;
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* A collapsed sidebar stays icon-width on wide and narrow windows alike. */
+body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout,
+body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout.is-sidebar-collapsed {
+  grid-template-columns: 92px minmax(0, 1fr) !important;
+}
+
+body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar {
+  width: 92px;
+  min-width: 92px;
+  max-width: 92px;
+  padding-inline: 10px;
+  overflow-x: hidden;
+}
+
+body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar > div,
+body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu,
+body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-item {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-item {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+/* The rail clips its contents, so use the browser tooltip instead of a clipped pseudo-element. */
+body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-item::after {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout,
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: 62px minmax(0, 1fr) !important;
+  }
+
+  body .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar {
+    width: 62px;
+    min-width: 62px;
+    max-width: 62px;
+    padding-inline: 6px;
+  }
+}
+
+/* The collapsed configuration rail must not widen its layout at phone widths. */
+@media (max-width: 900px) {
+  .app-shell:has(.configuration-layout) .configuration-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0fr);
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout,
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-sidebar {
+    width: 54px;
+    padding-inline: 4px;
+  }
+
+  .app-shell:has(.configuration-layout.is-sidebar-collapsed) .configuration-menu-item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .app-shell:has(.configuration-layout) .configuration-sidebar,
+  .app-shell:has(.configuration-layout) .configuration-sidebar > *,
+  .app-shell:has(.configuration-layout) .configuration-menu,
+  .app-shell:has(.configuration-layout) .configuration-menu-item {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .app-shell:has(.configuration-layout) .configuration-sidebar {
+    overflow-x: hidden;
+  }
+
+  .app-shell:has(.configuration-layout) .configuration-sidebar-toggle {
+    right: 0;
+    max-width: 100%;
+  }
+
+  .app-shell:has(.configuration-layout) .configuration-menu-item {
+    padding-inline: 0;
+  }
 }
 .configuration-workspace .status-summary-card {
   container-type: inline-size;
@@ -8846,5 +9136,337 @@ body .configuration-workspace[data-section="time-reports"] .dashboard-time-repor
 
   body .configuration-workspace[data-section="time-reports"] .dashboard-time-reports {
     max-width: 100% !important;
+  }
+}
+
+/* Keep the status-panel check visually identical to the filled header action. */
+body .configuration-workspace button.alerts-read-button {
+  box-sizing: border-box !important;
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  flex: 0 0 34px !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid #58ec92 !important;
+  border-radius: 8px !important;
+  background: linear-gradient(180deg, #68f4a0, #39d979) !important;
+  color: #062817 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 15px rgba(75, 234, 141, .22) !important;
+}
+
+body .configuration-workspace button.alerts-read-button:hover:not(:disabled),
+body .configuration-workspace button.alerts-read-button:focus-visible {
+  border-color: #8af2b1 !important;
+  background: linear-gradient(180deg, #8af2b1, #58e98d) !important;
+  color: #062817 !important;
+}
+
+/* Let each view use the available window width instead of fixed panel sizes. */
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+.app-shell {
+  width: 100%;
+  min-width: 0;
+  padding: clamp(4px, .6vw, 10px);
+}
+
+.hero {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-header-bar,
+.app-tabs-scroll,
+.configuration-layout,
+.configuration-workspace,
+.dashboard-grid,
+.dashboard-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.configuration-layout {
+  grid-template-columns: minmax(0, 398px) minmax(0, 1fr);
+}
+
+.configuration-workspace {
+  width: 100%;
+  max-width: none;
+  padding: clamp(12px, 2.2vw, 36px);
+}
+
+.configuration-workspace .dashboard-status {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  width: 100%;
+  max-width: none;
+}
+
+.configuration-workspace .dashboard-status > *,
+.configuration-workspace .dashboard-grids > *,
+.configuration-workspace .dashboard-alert > *,
+.configuration-workspace .dashboard-time-reports > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .configuration-layout,
+  .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .configuration-sidebar {
+    min-width: 0;
+    padding: 42px 7px 12px;
+  }
+
+  .configuration-sidebar-title,
+  .configuration-menu-item > span:last-child,
+  .configuration-session-status {
+    display: none;
+  }
+
+  .configuration-menu {
+    gap: 8px;
+  }
+
+  .configuration-menu-item {
+    justify-content: center;
+    min-width: 0;
+    min-height: 56px;
+    padding: 8px;
+  }
+
+  .configuration-menu-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .configuration-workspace {
+    padding: clamp(12px, 2vw, 24px);
+  }
+
+  .app-header-bar {
+    flex-wrap: wrap;
+  }
+
+  .app-tabs-scroll {
+    flex: 1 1 100%;
+    overflow: visible;
+  }
+
+  .app-tabs {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    padding: 12px 16px 0;
+  }
+
+  .app-header-status-panel {
+    order: 2;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    flex: 1 1 100%;
+    margin: 8px 12px 12px;
+    flex-wrap: wrap;
+  }
+
+  .header-sync-summary {
+    min-width: 0;
+    flex: 1 1 180px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 650px) {
+  .configuration-layout,
+  .configuration-layout.is-sidebar-collapsed {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+
+  .configuration-sidebar {
+    padding-inline: 4px;
+  }
+
+  .configuration-menu-item {
+    min-height: 48px;
+    padding: 6px;
+  }
+
+  .configuration-menu-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .configuration-workspace {
+    padding: 10px;
+  }
+
+  .configuration-workspace-heading {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .configuration-workspace-heading h1 {
+    font-size: clamp(1.25rem, 5vw, 1.65rem);
+  }
+
+  .configuration-workspace .dashboard-status {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .configuration-workspace .dashboard-status .status-summary-card,
+  .configuration-workspace .dashboard-status .alerts-panel {
+    padding: 12px;
+  }
+
+  .app-header-status-panel {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .header-sync-timing {
+    min-width: 0;
+    flex: 1 1 112px;
+    white-space: normal;
+  }
+}
+
+/* Both alert lists use a different class for their read check; keep them green. */
+body button.alerts-read-button,
+body button.header-alert-read-button {
+  border: 1px solid #58ec92 !important;
+  border-radius: 8px !important;
+  background: linear-gradient(180deg, #68f4a0, #39d979) !important;
+  color: #062817 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 0 15px rgba(75, 234, 141, .22) !important;
+}
+
+body button.alerts-read-button:hover:not(:disabled),
+body button.header-alert-read-button:hover:not(:disabled),
+body button.alerts-read-button:focus-visible,
+body button.header-alert-read-button:focus-visible {
+  border-color: #8af2b1 !important;
+  background: linear-gradient(180deg, #8af2b1, #58e98d) !important;
+  color: #062817 !important;
+}
+
+/* Grid tabs fill the window; rows paginate to the visible height and columns shrink to fit. */
+.app-shell:has(.grid-tab-view) {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 4px;
+}
+
+.app-shell:has(.grid-tab-view) .hero {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.app-shell:has(.grid-tab-view) .app-header-bar {
+  flex: 0 0 auto;
+}
+
+.grid-tab-view {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(8px, 1.1vh, 14px);
+  overflow: hidden;
+  padding: clamp(8px, 1.2vw, 18px);
+}
+
+.grid-search-bar {
+  min-width: 0;
+  grid-template-columns: auto minmax(0, min(570px, 1fr)) auto;
+}
+
+.grid-table-wrap {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden !important;
+}
+
+.grid-table-wrap.has-horizontal-overflow {
+  overflow: hidden !important;
+}
+
+.project-grid {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.project-grid th,
+.project-grid td {
+  min-width: 0;
+  padding: clamp(4px, .65vw, 10px);
+  overflow-wrap: anywhere;
+}
+
+.project-grid .grid-issue-cell-content,
+.project-grid .grid-issue-cell-details,
+.project-grid .grid-group-value,
+.project-grid .grid-clamped-text {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.grid-pagination {
+  min-height: 38px;
+}
+
+@media (max-width: 800px) {
+  .grid-tab-view {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .grid-search-bar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .grid-search-label {
+    font-size: .78rem;
+  }
+
+  .project-grid th,
+  .project-grid td {
+    padding: 4px;
+    font-size: clamp(.62rem, 1.35vw, .78rem);
   }
 }

@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "vite build --configLoader native",
+    "postinstall": "node scripts/patch-playwright-windows-hide.mjs",
     "start:pwa": "node src/main/server.js",
+    "launch:pwa": "node scripts/launch-pwa.mjs",
     "test": "node --test --test-isolation=none tests/*.test.js",
     "start": "node src/main/server.js"
   },

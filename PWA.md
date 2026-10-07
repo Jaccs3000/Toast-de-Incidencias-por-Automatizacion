@@ -1,27 +1,28 @@
-# Usar Jira Notifications como PWA
+﻿# Usar Jira Notifications como PWA administrada
 
-La PWA se sirve desde el backend local para que la interfaz y la API usen el mismo origen. El frontend necesita que el backend esté activo; cerrar la ventana PWA no detiene el servidor.
+El acceso directo inicia un backend local que sirve el frontend compilado y la API desde `http://localhost:3000`. Chrome abre la interfaz en una ventana independiente. Al cerrarse la ultima ventana de la app, esta deja de enviar senales de actividad y el backend se apaga automaticamente. Si hay una sincronizacion en curso, espera a que termine antes de apagarse.
 
-## Preparar e iniciar
+## Preparacion (una vez y despues de cada actualizacion del frontend)
 
 Desde PowerShell, en la carpeta del proyecto:
 
 ```powershell
 npm ci
 npm run build
-npm run start:pwa
 ```
 
-Mantén abierta esa terminal mientras uses la app. Abre `http://localhost:3000` en Chrome. En el menú de Chrome, selecciona **Instalar Jira Notifications** (el texto puede variar según la versión). La app se abrirá en una ventana independiente; desde Windows puedes crear un acceso directo y anclarlo a la barra de tareas.
+Despues, haz doble clic en `create-pwa-shortcut.vbs`. Se creara `Jira Notifications (Iniciar servicios).lnk` en el escritorio. Ancla ese acceso a la barra de tareas. Si ya habias anclado la PWA directamente desde Chrome, desancla ese acceso anterior y ancla el nuevo acceso del escritorio: el acceso PWA directo no puede iniciar el backend.
 
 ## Uso diario
 
-1. Inicia el backend con `npm run start:pwa` desde la carpeta del proyecto.
-2. Abre Jira Notifications desde el icono instalado o anclado.
-3. Al terminar, cierra la ventana de la app y detén el backend con `Ctrl+C` en la terminal.
+1. Haz clic en el acceso nuevo anclado.
+2. El lanzador inicia el backend y abre la app en una ventana de Chrome sin la barra normal del navegador.
+3. Al cerrar la ventana, la app envia una senal de cierre y el backend se detiene automaticamente en unos 15 segundos. Si esa senal no llega, usa las senales periodicas como respaldo con una tolerancia de tres minutos para permitir que Chrome reduzca temporizadores cuando la ventana esta en segundo plano.
 
-Tras reiniciar Windows, repite el primer paso antes de abrir el icono. La app instalada no inicia el backend por sí sola.
+El lanzador y el backend se ejecutan ocultos. Los errores de inicio quedan registrados en `logs/pwa-launcher.log`; la actividad y los errores del backend quedan en `logs/pwa-backend.log`. Esta configuracion requiere Node.js y Google Chrome instalados, y no inicia servicios durante el arranque de Windows.
 
-## Actualizar la interfaz
+## Inicio manual
 
-Después de cambiar el código del frontend, vuelve a ejecutar `npm run build`. El service worker solicita la página a la red y usa la última página almacenada si el servidor no responde; no intercepta ni almacena en caché las rutas `/api/`. Las funciones que usan la API requieren que el backend esté disponible.
+Para iniciar el backend manualmente desde PowerShell, usa `npm run start:pwa`. En este modo, cerrar la ventana no detiene el backend; detenlo manualmente con `Ctrl+C`.
+
+El service worker no intercepta ni guarda en cache las solicitudes `/api/`. Las funciones de la app requieren que el backend este activo.

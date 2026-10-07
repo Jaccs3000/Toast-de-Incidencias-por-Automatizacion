@@ -1,5 +1,6 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -22,6 +23,7 @@ import {
 } from '../shared/grids/reportedTimes.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
+const MANAGED_APP_WINDOW = process.env.APP_WINDOW_LIFECYCLE === 'managed';
 const RENDERER_DIR = path.resolve(process.cwd(), 'dist', 'renderer');
 const ALERT_IMAGES_DIR = path.resolve(process.cwd(), 'data', 'alert-images');
 const TIME_REPORT_EXPORTS_DIR = path.resolve(process.cwd(), 'exports');
@@ -37,7 +39,17 @@ const ALERT_IMAGE_TYPES = {
 
 function log(message, details = '') {
   const suffix = details ? ` ${details}` : '';
-  console.log(`[backend ${new Date().toISOString()}] ${message}${suffix}`);
+  const entry = `[backend ${new Date().toISOString()}] ${message}${suffix}`;
+  console.log(entry);
+  if (MANAGED_APP_WINDOW) {
+    try {
+      const logDir = path.resolve(process.cwd(), 'logs');
+      mkdirSync(logDir, { recursive: true });
+      appendFileSync(path.join(logDir, 'pwa-backend.log'), `${entry}\n`, 'utf8');
+    } catch {
+      // Logging must not interfere with server requests or shutdown.
+    }
+  }
 }
 
 function gridFieldValue(issue, field) {
@@ -312,6 +324,7 @@ async function createAppState() {
 }
 
 const state = await createAppState();
+const serverStartTime = Date.now();
 let syncInProgress = false;
 let syncAbortController = null;
 let syncCancellationRequested = false;
@@ -319,16 +332,21 @@ let timeReportSearchInProgress = false;
 let timeReportAbortController = null;
 let timeReportCancellationRequested = false;
 let syncTimer = null;
+let syncTimerGeneration = 0;
 let alertRetryTimer = null;
 let alertRetryInProgress = false;
 let shuttingDown = false;
+let lastAppHeartbeatAt = Date.now();
+let receivedAppHeartbeat = false;
+let appWindowCloseRequestedAt = null;
 let windowsSessionState = { state: 'unknown', updatedAt: null };
 let windowsLockStartedAt = null;
 let windowsStateReadInProgress = false;
 
 function stopAutoSyncTimer() {
+  syncTimerGeneration += 1;
   if (syncTimer) {
-    clearInterval(syncTimer);
+    clearTimeout(syncTimer);
     syncTimer = null;
   }
 }
@@ -402,6 +420,7 @@ function stopAlertRetryTimer() {
 
 async function startAutoSyncTimer({ scheduleNext = false } = {}) {
   stopAutoSyncTimer();
+  const timerGeneration = syncTimerGeneration;
   const intervalSeconds = Number(state.runtime.configuration?.app?.syncIntervalSeconds ?? 0);
   if (!state.runtime.configuration?.app?.autoSyncEnabled
     || !Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
@@ -414,24 +433,44 @@ async function startAutoSyncTimer({ scheduleNext = false } = {}) {
     });
   }
 
-  syncTimer = setInterval(() => {
-    refreshWindowsSessionState().then(async () => {
-      const nextSyncAt = new Date(Date.now() + intervalSeconds * 1000).toISOString();
-      if (!canRunAutomaticWindowsWork()) {
-        await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: nextSyncAt });
-        log('automatic synchronization skipped; Windows session is not available', `state=${windowsSessionState.state} monitoring=${state.runtime.windowsSession?.isMonitoringAvailable?.()}`);
-        return;
+  const scheduleNextCycle = () => {
+    if (shuttingDown || timerGeneration !== syncTimerGeneration) return;
+    syncTimer = setTimeout(async () => {
+      syncTimer = null;
+      try {
+        await refreshWindowsSessionState();
+        if (!canRunAutomaticWindowsWork()) {
+          log('automatic synchronization skipped; Windows session is not available', `state=${windowsSessionState.state} monitoring=${state.runtime.windowsSession?.isMonitoringAvailable?.()}`);
+        } else if (syncInProgress) {
+          log('automatic synchronization skipped; another synchronization is in progress');
+        } else {
+          await refreshWindowsSessionState();
+          if (!canRunAutomaticWindowsWork()) {
+            log('automatic synchronization canceled before start; Windows session changed', `state=${windowsSessionState.state} monitoring=${state.runtime.windowsSession?.isMonitoringAvailable?.()}`);
+          } else {
+            await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
+            await runSyncCycle({ automatic: true });
+          }
+        }
+      } catch (error) {
+        log('automatic synchronization failed', error.message);
+      } finally {
+        if (shuttingDown || timerGeneration !== syncTimerGeneration) return;
+        if (!state.runtime.configuration?.app?.autoSyncEnabled) {
+          await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null })
+            .catch((error) => log('automatic synchronization schedule update failed', error.message));
+          return;
+        }
+
+        const nextSyncAt = new Date(Date.now() + intervalSeconds * 1000).toISOString();
+        await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: nextSyncAt })
+          .catch((error) => log('automatic synchronization schedule update failed', error.message));
+        scheduleNextCycle();
       }
-      await refreshWindowsSessionState();
-      if (!canRunAutomaticWindowsWork()) {
-        await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: nextSyncAt });
-        log('automatic synchronization canceled before start; Windows session changed', `state=${windowsSessionState.state} monitoring=${state.runtime.windowsSession?.isMonitoringAvailable?.()}`);
-        return;
-      }
-      await state.runtime.persistence.syncStatus.updateStatus({ next_sync_at: null });
-      await runSyncCycle({ automatic: true });
-    }).catch((error) => log('automatic synchronization failed', error.message));
-  }, intervalSeconds * 1000);
+    }, intervalSeconds * 1000);
+  };
+
+  scheduleNextCycle();
 }
 
 async function refreshState() {
@@ -1123,6 +1162,10 @@ async function handleGridData(req, res, id) {
     ? data.filter((row) => gridRowMatchesSearch(row, grid.columns, search))
     : data;
   const page = Math.max(1, Number(searchParams.get('page') ?? 1));
+  const requestedOffset = Number(searchParams.get('offset'));
+  const offset = Number.isInteger(requestedOffset) && requestedOffset >= 0
+    ? requestedOffset
+    : (page - 1) * pageSize;
   const requestedPageSize = Number(searchParams.get('pageSize'));
   const pageSize = Number.isInteger(requestedPageSize) && requestedPageSize > 0
     ? Math.min(requestedPageSize, grid.pageSize)
@@ -1138,13 +1181,14 @@ async function handleGridData(req, res, id) {
     filteredData.sort((left, right) => compareGridRows(left, right, sortColumn, sortDirection));
   }
 
-  const pagedData = filteredData.slice((page - 1) * pageSize, page * pageSize);
+  const pagedData = filteredData.slice(offset, offset + pageSize);
   json(res, 200, {
     grid,
     rows: pagedData,
     total: filteredData.length,
     totalUnfiltered,
     page,
+    offset,
     pageSize,
     search,
     sort: sortColumn ? { issueType: sortColumn.issueType ?? null, field: sortColumn.field, direction: sortDirection } : null,
@@ -1490,6 +1534,24 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/app-heartbeat') {
+      lastAppHeartbeatAt = Date.now();
+      receivedAppHeartbeat = true;
+      appWindowCloseRequestedAt = null;
+      json(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/app-window-closed') {
+      await readBody(req).catch(() => ({}));
+      if (MANAGED_APP_WINDOW) {
+        appWindowCloseRequestedAt = Date.now();
+        log('app window close signal received');
+      }
+      json(res, 200, { ok: true });
+      return;
+    }
+
     if (req.method === 'PUT' && url.pathname === '/api/settings') {
       await handleSettings(req, res);
       return;
@@ -1642,6 +1704,35 @@ server.listen(PORT, '127.0.0.1', () => {
     .then(() => startAlertRetryTimer())
     .catch((error) => log('automatic synchronization setup failed', error.message));
 });
+
+if (MANAGED_APP_WINDOW) {
+  const lifecycleTimer = setInterval(() => {
+    const launchGraceExpired = Date.now() - serverStartTime >= 60000;
+    const windowCloseSignalExpired = appWindowCloseRequestedAt !== null
+      && Date.now() - appWindowCloseRequestedAt >= 15000;
+    const heartbeatExpired = receivedAppHeartbeat && Date.now() - lastAppHeartbeatAt >= 180000;
+    const windowIsGone = windowCloseSignalExpired || heartbeatExpired;
+    if ((launchGraceExpired && !receivedAppHeartbeat || windowIsGone) && !syncInProgress && !shuttingDown) {
+      shuttingDown = true;
+      log(windowIsGone
+        ? 'managed app window closed; stopping backend'
+        : 'no app window connected after launch grace; stopping backend');
+      clearInterval(lifecycleTimer);
+      stopAutoSyncTimer();
+      stopAlertRetryTimer();
+      void (async () => {
+        try {
+          await state.runtime.windowsSession?.disableTasks();
+        } catch (error) {
+          log('Windows session tasks could not be disabled', error.message);
+        } finally {
+          server.close(() => process.exit(0));
+        }
+      })();
+    }
+  }, 3000);
+  lifecycleTimer.unref();
+}
 
 async function shutdownFromSignal() {
   if (shuttingDown) return;
